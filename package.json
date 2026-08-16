@@ -1,0 +1,23 @@
+{
+  "name": "hamsterhq",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "HamsterHQ: multi-tenant cloud deployment for DSH.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HuChundong/HamsterHQ.git"
+  },
+  "scripts": {
+    "lint": "oxlint",
+    "check": "scripts/check.sh",
+    "verify": "verify/verify.sh"
+  },
+  "devDependencies": {
+    "oxlint": "^1.42.0"
+  },
+  "engines": {
+    "node": "^22.19 || >=24"
+  }
+}

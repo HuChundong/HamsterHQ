@@ -1,0 +1,200 @@
+HamsterHQ
+Copyright (c) 2026 HamsterHQ contributors
+
+This project is licensed under the MIT License. See LICENSE.
+
+This distribution redistributes third-party material under the terms of
+the licenses that apply to that material. The notices below are for
+attribution. They do not imply affiliation, sponsorship, or endorsement
+by any copyright holder or trademark owner.
+
+
+In-tree redistributed material
+==============================
+
+@cubesandbox/sdk 0.3.0 (modified)
+---------------------------------
+Copyright holder: Copyright (C) 2026 Tencent. Author: Tencent Inc.
+License: Apache License 2.0.
+
+Location and use: vendor/cubesandbox-sdk-0.3.0+pr1485.tgz. The gateway
+uses this package to create and reclaim CubeSandbox sandboxes.
+
+Origin: built from the sdk/node tree of TencentCloud/CubeSandbox at
+revision 9c4837ec, with the change from
+https://github.com/TencentCloud/CubeSandbox/pull/1485.
+
+This is a modified version of the upstream package. The modification is
+that commands.run no longer sends a Connect-Timeout-Ms header that has
+already expired. Apache License 2.0 section 4(b) requires that this
+modification be stated prominently.
+
+The tarball does not contain a LICENSE file. The full upstream LICENSE,
+including the third-party appendix, is licenses/CubeSandbox-LICENSE.txt.
+The Apache License 2.0 text is licenses/Apache-2.0.txt.
+
+lucide-static 1.33.0 (path data)
+--------------------------------
+Copyright holder: Copyright (c) 2026 Lucide Icons and Contributors.
+License: ISC.
+
+The glyphs terminal, minimize-2, and log-out are derived from the
+Feather project and are also subject to the MIT License,
+Copyright (c) 2013-present Cole Bemis.
+
+Location and use: path data in packages/dsh-icons/extracted.js. The
+same path data also appears inline as DRAWN.signout in
+packages/dsh-tenant-account/client.js and as SANDBOX_GLYPH in
+packages/dsh-sandbox-host/client.js.
+
+License text: licenses/lucide-static-LICENSE.txt (ISC text and the
+Feather MIT text in a single file, as distributed by lucide-static).
+
+@deepseek-ai/dsh-client-ui-primitives 0.1.1-rc.1 (path data)
+------------------------------------------------------------
+Copyright holder: Copyright (c) 2026 DeepSeek.
+License: MIT.
+
+Location and use: path data in packages/dsh-icons/mirrored.js, used by
+gateway pages and the landing page (those surfaces have no module table
+and cannot require the harness React icon set).
+
+The glyph named panel-right is a modified version of the upstream
+IconPanelLeftOutline16 graphic: it is that drawing flipped horizontally.
+
+License text: licenses/DeepSeek-MIT.txt.
+
+Host Grotesk (latin subset)
+---------------------------
+Copyright holder: Copyright 2023 The Host Grotesk Project Authors.
+License: SIL Open Font License 1.1.
+
+Location and use: web/landing/fonts/host-grotesk-latin.woff2. Referenced
+by the landing page and by pages rendered from gateway/src/page-chrome.js.
+
+This file is a latin subset of the original Font Software and is
+therefore a Modified Version under the OFL.
+
+License text: licenses/OFL-1.1-HostGrotesk.txt.
+
+DM Sans (latin subset)
+----------------------
+Copyright holder: Copyright 2014 The DM Sans Project Authors.
+License: SIL Open Font License 1.1.
+
+Location and use: web/landing/fonts/dm-sans-latin.woff2. Referenced by
+the landing page and by pages rendered from gateway/src/page-chrome.js.
+
+This file is a latin subset of the original Font Software and is
+therefore a Modified Version under the OFL.
+
+License text: licenses/OFL-1.1-DMSans.txt.
+
+Fragment Mono (latin subset)
+----------------------------
+Copyright holder: Copyright 2022 The Fragment-Mono Project Authors.
+License: SIL Open Font License 1.1.
+
+Location and use: web/landing/fonts/fragment-mono-latin.woff2.
+Referenced by the landing page and by pages rendered from
+gateway/src/page-chrome.js.
+
+This file is a latin subset of the original Font Software and is
+therefore a Modified Version under the OFL.
+
+License text: licenses/OFL-1.1-FragmentMono.txt.
+
+web/landing/cubesandbox.svg
+---------------------------
+Upstream brand graphic used to identify an interoperability target.
+This file is not licensed under Apache License 2.0. See Trademarks
+below.
+
+
+Build-time / image-only material
+================================
+
+The following material is not committed in this source tree. It is
+present in built images or other build products.
+
+envd (e2b-dev/infra tag 2026.16)
+--------------------------------
+Copyright holder: Copyright 2023 FoundryLabs, Inc.
+License: Apache License 2.0.
+
+Location and use: compiled from e2b-dev/infra at the tag set as
+ENVD_REF in the Dockerfile. The arm64 image compiles envd; the amd64
+image copies the binary from
+ghcr.io/tencentcloud/cubesandbox-base:2026.16.
+
+License text: licenses/Apache-2.0.txt.
+
+@xterm/xterm 5.5.0 and @xterm/addon-fit 0.10.0
+----------------------------------------------
+Copyright holders: The xterm.js authors, SourceLair, Christopher Jeffrey.
+License: MIT.
+
+Location and use: installed at build time and bundled into the artifact
+panel client. The built lib/ output is gitignored and is not in the
+source tree.
+
+License text: licenses/xterm-MIT.txt.
+
+@deepseek-ai/dsh 0.1.1-rc.1
+@deepseek-ai/dsh-web-frontend 0.1.1-rc.1
+----------------------------------------
+Copyright holder: Copyright (c) 2026 DeepSeek.
+License: MIT.
+
+Location and use: installed from npm into the images.
+
+License text: licenses/DeepSeek-MIT.txt.
+
+Runtime npm dependencies (MIT)
+------------------------------
+e2b 2.45.0
+jose 6.x
+pg 8.23.0
+ws 8.21.x
+qrcode 1.5.4
+
+Build and development tools (MIT)
+---------------------------------
+oxlint
+vite
+esbuild
+
+These packages are installed from npm. Their MIT license texts
+accompany the packages as published and are not duplicated under
+licenses/.
+
+
+Related work
+============
+
+DSH-better-sidebar
+------------------
+Copyright holder: the DSH-better-sidebar authors.
+License: MIT.
+
+https://github.com/omdsh-dev/DSH-better-sidebar is a plugin for the same
+dsh frontend. No code from it is present in this repository; it is
+acknowledged here because docs/artifact-panel.md refers to it as related
+work on the same platform.
+
+
+Trademarks
+==========
+
+CubeSandbox, DeepSeek, DSH, Lucide, Feather, xterm.js, Host Grotesk,
+DM Sans, Fragment Mono, and any other product names, trade names,
+trademarks, service marks, and logos mentioned or depicted in this
+project are the property of their respective holders.
+
+This project uses those names and marks only to identify
+interoperability targets and upstream dependencies. It claims no
+ownership in them and does not imply affiliation, sponsorship, or
+endorsement.
+
+web/landing/cubesandbox.svg is an upstream brand graphic used for that
+identifying purpose. It is not within the grant of Apache License 2.0.
