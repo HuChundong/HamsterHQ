@@ -1,0 +1,12 @@
+{
+  "name": "dsh-ground",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "One lattice, for the two kinds of page that stand on it: bundled into the landing page, inlined into the gateway's.",
+  "exports": {
+    ".": "./index.js",
+    "./ground.js": "./ground.js",
+    "./package.json": "./package.json"
+  }
+}
