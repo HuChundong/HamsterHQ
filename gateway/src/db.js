@@ -1,0 +1,292 @@
+/**
+ * The deployment's one store.
+ *
+ * Everything the gateway keeps lives here: who has an account, which invites
+ * exist, which refresh tokens are live, and which sign-in codes are outstanding.
+ * Redis held all of it before and was removed rather than kept alongside —
+ * nothing was left in it once accounts had to be durable, and a second store
+ * would have meant a second backup, a second failure mode, and two answers to
+ * "is this deployment's data safe" instead of one.
+ *
+ * Sign-in codes are the only short-lived rows, and they expire by a column
+ * rather than by the store: every read filters on `expires_at`, so a row that
+ * outlived its use is already invisible, and the sweep below is housekeeping
+ * rather than correctness.
+ *
+ * The schema is applied at startup, and the whole of it is below.
+ */
+
+import process from 'node:process'
+import pg from 'pg'
+
+/** How often expired sign-in codes are swept. */
+const SWEEP_INTERVAL_MS = 10 * 60 * 1000
+
+/**
+ * The schema, applied on every boot.
+ *
+ * Every table is declared once, in the shape it has now. There is no migration
+ * history here because there has not been a release to be compatible with: a
+ * column that changed during development changed in its `CREATE TABLE`, and a
+ * table that stopped existing is gone rather than dropped on every boot for the
+ * rest of the project's life. `IF NOT EXISTS` throughout is what makes applying
+ * it to a database that already has it a no-op, not a licence to reshape one.
+ */
+const SCHEMA = `
+-- Who has an account.
+--
+-- \`id\` is what a tenant's durable state is named by, so it is generated here
+-- and never derived from the address: an address deleted and registered again
+-- has to be a different tenant, or it would inherit the previous holder's
+-- files.
+--
+-- \`display_name\` and \`avatar\` are what a tenant calls themselves and what
+-- they look like, both chosen by them and neither known until they have been
+-- through the profile page. The avatar is a whole data: URI rather than bytes
+-- and a type, because every reader of it puts it straight into an img element
+-- and would otherwise have to reassemble one; it is bounded on write, and
+-- there is no object store here to bound it. Null is the answer for an account
+-- that has never set them, which is also what the shell's gate reads to decide
+-- whether a tenant has been asked yet.
+--
+-- \`agreed_at\` and \`agreed_policy\` record which version of the policies this
+-- account last agreed to, and when. Consent that is asked for and not written
+-- down is consent nobody can show afterwards, which is the same as not having
+-- asked. The version is the date stamped on the documents, so a row can be
+-- compared against the text that was on the page rather than against whatever
+-- it says today.
+--
+-- \`plan\` is which tier this account is on. The set of them is in plans.js;
+-- this column is a text id and not an enum, so adding a tier is one line there
+-- rather than a change here. Nothing in the gateway enforces a difference
+-- between the tiers yet — this records what someone is on, and that is all.
+--
+-- \`model_key\` is the model credential this account holds, claimed once from
+-- the pool below. On the account and not looked up through the pool on every
+-- read, because this is a property of the tenant: which key is theirs is
+-- decided at registration and never again, and everything after that is one
+-- column of a row this deployment already reads to answer who the caller is.
+-- Null for an account that registered when the pool was empty; those are
+-- claimed by \`scripts/claim-model-keys.mjs\` once keys are loaded, which is a
+-- thing an operator does knowingly rather than something that happens inside
+-- somebody's sign-in.
+--
+-- (No backticks in here: this string is a template literal, and one would end
+-- the schema early — which fails at boot, on the statement after it.)
+CREATE TABLE IF NOT EXISTS accounts (
+  id            uuid        PRIMARY KEY,
+  email         text        NOT NULL UNIQUE,
+  disabled      boolean     NOT NULL DEFAULT false,
+  display_name  text,
+  avatar        text,
+  agreed_at     timestamptz,
+  agreed_policy text,
+  plan          text        NOT NULL DEFAULT 'free',
+  model_key     text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  last_seen_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- What a privileged action did, and who did it.
+--
+-- Append-only, and nothing here ever updates or deletes a row: an audit trail
+-- that can be edited is a record of what somebody was willing to leave behind.
+-- It is written beside the action rather than derived from it, because the
+-- things worth auditing — a model credential rotated, an account suspended,
+-- somebody's tier changed — leave no other trace at all. settings carries an
+-- updated_by, which says who touched it last and nothing about what it was
+-- before or how many times.
+--
+-- subject is who it was done TO, and is null for an action about the
+-- deployment rather than about a person. detail is jsonb so an action can
+-- record what it changed without a change here per action; nothing queries
+-- inside it today, and nothing should be put in it that a reader would need
+-- to query.
+--
+-- No foreign key to accounts on purpose: erasing an account must not erase
+-- the record that it was erased.
+CREATE TABLE IF NOT EXISTS audit (
+  id         bigserial   PRIMARY KEY,
+  at         timestamptz NOT NULL DEFAULT now(),
+  actor      text        NOT NULL,
+  action     text        NOT NULL,
+  subject    text,
+  detail     jsonb       NOT NULL DEFAULT '{}'::jsonb
+);
+
+-- Read newest-first, always, which is the only way anyone reads one of these.
+CREATE INDEX IF NOT EXISTS audit_at_idx ON audit (at DESC);
+
+-- What a browser holds to stay signed in.
+--
+-- Cascades from the account: a deleted account must not leave a token that
+-- still renews, and the database is a better place to guarantee that than a
+-- sequence of calls that can be interrupted halfway.
+--
+-- \`replaced_by\` and \`spent_at\` are what a spent token was replaced by, and
+-- when. A rotated token is kept for a grace period rather than deleted,
+-- because a browser waking from the background asks several times at once with
+-- the same one: the first rotation would win and every other request would be
+-- told its token is unknown. Within the grace period a spent token answers
+-- with its replacement, so those requests all succeed and all end up holding
+-- the same new token. Presented after it, or when it names no replacement, it
+-- is a token being replayed.
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  token       text        PRIMARY KEY,
+  email       text        NOT NULL REFERENCES accounts(email) ON DELETE CASCADE ON UPDATE CASCADE,
+  expires_at  timestamptz NOT NULL,
+  replaced_by text,
+  spent_at    timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS refresh_tokens_spent ON refresh_tokens (spent_at) WHERE spent_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS refresh_tokens_email ON refresh_tokens (email);
+
+-- One outstanding challenge per address, holding both the code and the rate
+-- limit: they are the same fact seen twice, and separate rows could disagree.
+CREATE TABLE IF NOT EXISTS challenges (
+  email          text        PRIMARY KEY,
+  code           text        NOT NULL,
+  attempts       integer     NOT NULL DEFAULT 0,
+  expires_at     timestamptz NOT NULL,
+  cooldown_until timestamptz NOT NULL
+);
+
+-- Deployment-wide configuration an administrator can change without a redeploy.
+-- The model credential lives here rather than only in the environment, so that
+-- rotating it is a form submission instead of an edit-and-restart — and so the
+-- gateway reads the current one when it starts a sandbox rather than the one it
+-- happened to boot with.
+CREATE TABLE IF NOT EXISTS settings (
+  key        text        PRIMARY KEY,
+  value      jsonb       NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by text
+);
+
+-- Environment a tenant asks for in their own sandbox.
+--
+-- Values are secrets in the ordinary sense — an API key for something the agent
+-- should reach — so they are written here and never read back to a browser:
+-- what the settings page shows is the name and when it changed. Cascading from
+-- the account matters more than usual, because a row that outlived its owner
+-- would be injected into whoever registered that address next.
+CREATE TABLE IF NOT EXISTS sandbox_secrets (
+  email      text        NOT NULL REFERENCES accounts(email) ON DELETE CASCADE ON UPDATE CASCADE,
+  name       text        NOT NULL,
+  value      text        NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (email, name)
+);
+
+-- The pool of model credentials, and who has claimed one.
+--
+-- The keys are made in bulk, offline, in whatever system meters this
+-- deployment's model, and loaded here as opaque strings by
+-- \`scripts/load-model-keys.mjs\`. Registration takes one and writes it onto
+-- the account; this table is then the record of which key went where, which is
+-- what an operator needs when a key has to be revoked or explained. Nothing in
+-- this deployment mints, prices or revokes them: a key is a string that works
+-- until the thing that issued it says otherwise.
+--
+-- The key is the primary key because it is the thing that must not appear
+-- twice — two rows carrying one credential would let two tenants spend one
+-- allowance and each look correct. \`email\` is the claim, unique so that a
+-- tenant holds exactly one, and NULL for a key nobody has taken yet, which is
+-- what the claim searches for.
+--
+-- Not cascading from accounts, and this is deliberate: a key outlives the
+-- account that held it, because the allowance it names was spent by somebody
+-- and an issued credential is not made unissued by a row going away here. What
+-- happens to it then is the operator's call — revoke it upstream, or leave it
+-- claimed as a record of what was handed out.
+CREATE TABLE IF NOT EXISTS model_keys (
+  api_key    text        PRIMARY KEY,
+  email      text        UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  claimed_at timestamptz
+);
+
+-- Which sandbox belongs to whom, and where it is.
+--
+-- This was a Map in the gateway process, which made three things true that
+-- should not be. A restart forgot every sandbox and reaped them all, so a
+-- tenant who stayed signed in came back to an empty workspace — silent loss of
+-- their history, where being signed out at least made the reset visible. A
+-- second gateway would do the same to the first one's tenants on startup. And
+-- two gateways could each start a sandbox for one tenant, mounting one volume
+-- twice: two backends writing one settings file and one session log.
+--
+-- The username is the primary key because the rule is one sandbox per tenant,
+-- and that rule belongs where it can be enforced rather than in whichever
+-- process happens to be asking. Cascading from the account matters for the
+-- same reason it does for secrets: a row that outlived its owner would hand
+-- the next holder of that address a machine that is not theirs.
+--
+-- gateway_id is not read yet. It records which instance created the sandbox
+-- and therefore holds its tunnel, which is what routing will need when there
+-- is more than one instance; writing it now costs nothing and means the table
+-- does not have to change then.
+CREATE TABLE IF NOT EXISTS sandboxes (
+  username     text        PRIMARY KEY REFERENCES accounts(email) ON DELETE CASCADE ON UPDATE CASCADE,
+  account_id   text        NOT NULL,
+  sandbox_id   text        NOT NULL UNIQUE,
+  handle       text        NOT NULL,
+  token        text        NOT NULL,
+  gateway_id   text        NOT NULL,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Redeemed rather than deleted, so an operator can see who used which invite.
+CREATE TABLE IF NOT EXISTS invites (
+  code        text        PRIMARY KEY,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  created_by  text,
+  redeemed_at timestamptz,
+  redeemed_by text
+);
+`
+
+/**
+ * Connect to the database, apply the schema, and start the sweep.
+ *
+ * Connected before the server listens: a gateway that cannot reach its store can
+ * authenticate nobody, and starting anyway would answer every request with a
+ * login page for no stated reason.
+ *
+ * @returns {Promise<import('pg').Pool>} the connected pool.
+ * @throws {Error} when the database cannot be reached or the schema cannot be applied.
+ */
+export async function connect() {
+  const pool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL ?? 'postgres://dsh:dsh@postgres:5432/dsh',
+    // An idle client that the database or a proxy has already dropped fails the
+    // next query rather than the connection; keeping the pool small and its
+    // clients short-lived is cheaper than detecting that.
+    max: Number(process.env.DATABASE_POOL_MAX ?? 10),
+    idleTimeoutMillis: 30_000,
+  })
+  // Errors on an idle client reach the pool rather than a caller, and an
+  // unhandled one would take the process down — which for this component means
+  // signing everybody out because a connection went away.
+  pool.on('error', (error) => { console.error(`gateway: postgres: ${error.message}`) })
+
+  await pool.query(SCHEMA)
+
+  const sweep = setInterval(() => {
+    void pool.query('DELETE FROM challenges WHERE expires_at < now()')
+      .catch((error) => { console.error(`gateway: sweeping expired codes failed: ${error.message}`) })
+    // Rotation keeps a spent token for its grace period rather than deleting
+    // it, so unlike before there is something here to clean up: rows past
+    // their expiry, and spent ones whose grace has long gone.
+    void pool.query(
+      `DELETE FROM refresh_tokens
+        WHERE expires_at < now()
+           OR (spent_at IS NOT NULL AND spent_at < now() - interval '1 hour')`,
+    ).catch((error) => { console.error(`gateway: sweeping spent tokens failed: ${error.message}`) })
+  }, SWEEP_INTERVAL_MS)
+  sweep.unref()
+
+  return pool
+}
