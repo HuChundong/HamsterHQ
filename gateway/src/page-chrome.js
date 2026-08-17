@@ -1,0 +1,901 @@
+/**
+ * What this deployment's server-rendered pages have in common.
+ *
+ * They no longer all belong to the gateway. The operator's console is a
+ * separate service on a separate hostname and imports this from here, which is
+ * the point rather than an accident: a tenant's sign-in and an operator's
+ * console are different products to different people and still have to look
+ * like one deployment.
+ *
+ * The palette, the wordmark, the toast, and the theme toggle were written twice
+ * before this existed, which is exactly as long as it took for a fix to land in
+ * one of them and not the other.
+ *
+ * Everything here is a string. Both pages are server-rendered documents with no
+ * build step — that is what lets them work when the frontend bundle has not
+ * loaded and may be why it has not — so composition is concatenation.
+ *
+ * The icons come from `dsh-icons` for the same reason they do everywhere else:
+ * these pages cannot ask the shell's module table for the harness's own set the
+ * way a plugin can, because there is no shell here and nothing to hold a React
+ * component. `svg()` hands back markup, which is the one thing concatenation
+ * can use.
+ */
+
+import { GROUND_SCRIPT } from 'dsh-ground'
+import { svg } from 'dsh-icons'
+
+import { asset } from './page-assets.js'
+
+/**
+ * Escape text for interpolation into HTML element content or a quoted attribute.
+ * @param {string} text - untrusted text.
+ * @returns {string} the escaped text.
+ */
+export function escapeHtml(text) {
+  return text.replace(/[<>&"']/g, (character) => `&#${character.charCodeAt(0)};`)
+}
+
+/**
+ * The faces the whole deployment is set in.
+ *
+ * The landing page's own three files, at the landing page's own URLs. They are
+ * static bytes under `/welcome/`, served by the same nginx that proxies this
+ * page from the gateway — so a visitor who came through the front door already
+ * has them and pays nothing to see this one, which a second copy under
+ * `/login-assets/` would have cost them twice. Where the gateway is reached
+ * without that nginx — the tunnel port a CubeSandbox deployment publishes — the
+ * faces do not arrive at all, and that is what `font-display: optional` is for:
+ * the page is read in the system sans rather than repainted around a face that
+ * turned up late.
+ *
+ * Latin subsets, as on the landing page. The Chinese is set by the system faces
+ * named in --sans; a CJK webfont would weigh more than everything else here
+ * together, for glyphs the reader already has.
+ */
+const FONT_CSS = `
+  @font-face {
+    font-family: "Host Grotesk"; font-style: normal; font-weight: 500 700;
+    font-display: optional; src: url("/fonts/host-grotesk-latin.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "DM Sans"; font-style: normal; font-weight: 400 500;
+    font-display: optional; src: url("/fonts/dm-sans-latin.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Fragment Mono"; font-style: normal; font-weight: 400;
+    font-display: optional; src: url("/fonts/fragment-mono-latin.woff2") format("woff2");
+  }
+`
+
+/**
+ * The preloads those faces need, for the head of a page that uses them.
+ *
+ * `optional` gives the browser a short window and then gives up for the visit,
+ * so without these the first load of a cold cache is set in the system sans and
+ * the second is not — the same page looking different on consecutive visits.
+ * The landing page preloads the same three URLs, which is what makes this free
+ * for anyone arriving from it.
+ */
+export const FONT_PRELOAD = [
+  'host-grotesk-latin',
+  'dm-sans-latin',
+  'fragment-mono-latin',
+].map((face) => `<link rel="preload" href="/fonts/${face}.woff2" as="font" type="font/woff2" crossorigin>`).join('\n')
+
+/**
+ * The head every page in this deployment opens with.
+ *
+ * Five pages carried their own copy of these seven lines, and copies are not
+ * how five pages stay one deployment: the console's sign-in page was the one
+ * without `color-scheme`, so its form controls and scrollbars stayed light on
+ * a dark screen — nobody wrote that, it is just what a copy that was taken
+ * before the line existed looks like.
+ *
+ * The title is escaped here, so a caller hands over text and not markup.
+ *
+ * @param {object} page - what this page differs in.
+ * @param {string} page.title - the whole title, escaped here.
+ * @param {boolean} [page.indexed] - false for a page search engines should not list.
+ * @param {string} [page.extra] - anything else this page needs in the head.
+ * @returns {string} the head's contents, without the element around them.
+ */
+export function documentHead({ title, indexed = true, extra = '' }) {
+  return [
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    `<title>${escapeHtml(title)}</title>`,
+    '<meta name="color-scheme" content="light dark">',
+    ...indexed ? [] : ['<meta name="robots" content="noindex, nofollow">'],
+    `<link rel="icon" href="${asset('favicon.svg')}">`,
+    FONT_PRELOAD,
+    ...extra === '' ? [] : [extra],
+  ].join('\n')
+}
+
+/**
+ * The dark half of the palette, stated once and emitted twice.
+ *
+ * --ink is the accent as well as the ink: the button fill, the badge, and the
+ * focus ring. Dark therefore inverts it rather than darkening it — a black
+ * button on a black page is not a button — while --fg stays the reading colour,
+ * so the two swap roles rather than both getting darker.
+ *
+ * --accent does not invert, it brightens: it is the green a running sandbox
+ * wears in the product's own sidebar, and it has to stay that green on both
+ * grounds while carrying enough contrast on each.
+ */
+const DARK_TOKENS = `
+    color-scheme: dark;
+    --ink: #ffffff;
+    --on-ink: #0a0a0a;
+    --ink-hover: hsla(0, 0%, 100%, .86);
+    --fg: #ffffff;
+    --muted: hsla(0, 0%, 100%, .48);
+    --faint: hsla(0, 0%, 100%, .28);
+    --line: hsla(0, 0%, 100%, .10);
+    --line-soft: hsla(0, 0%, 100%, .07);
+    --line-strong: hsla(0, 0%, 100%, .20);
+    --surface: hsla(0, 0%, 100%, .055);
+    --panel: #121213;
+    --sunken: #0e0e0f;
+    --bg: #0a0a0a;
+    --accent: #40d99b;
+    --accent-rgb: 64 217 155;
+    --on-accent: #05231a;
+    --danger: #e07a63;
+    --ring: rgb(64 217 155 / 14%);
+    --shadow: rgb(0 0 0 / 40%);
+    --lift: 0 30px 90px -30px rgb(0 0 0 / 80%);
+    --grid-line: hsla(0, 0%, 100%, .06);
+    --grid-dot: hsla(0, 0%, 100%, .13);
+    --glow: hsla(157, 68%, 55%, .10);`
+
+/**
+ * The palette, in all three states a visitor can be in.
+ *
+ * The values are the landing page's, token for token. The front door and the
+ * sign-in form are two documents with no build step between them and no way to
+ * share a stylesheet — one is a file in the web image, the other a string in
+ * this process — so the only thing that can keep them one product is that the
+ * numbers here are the numbers there. They were not, and the seam showed the
+ * moment anyone crossed it: a different white, a different black, a different
+ * idea of what a border is.
+ *
+ * The media query is the visitor who has expressed no choice; the attribute is
+ * the one who has. Neither can be folded into the other — a page that only
+ * followed the system would ignore the toggle, and one that only followed the
+ * toggle would ignore the system.
+ */
+export const PALETTE_CSS = `${FONT_CSS}
+  :root {
+    color-scheme: light;
+    --ink: #101113;
+    --on-ink: #ffffff;
+    --ink-hover: rgb(16 17 19 / 84%);
+    --fg: #101113;
+    --muted: rgb(16 17 19 / 56%);
+    --faint: rgb(16 17 19 / 40%);
+    --line: rgb(16 17 19 / 13%);
+    --line-soft: rgb(16 17 19 / 8.5%);
+    --line-strong: rgb(16 17 19 / 30%);
+    --surface: rgb(16 17 19 / 6%);
+    --panel: #fbfbfa;
+    --sunken: #f4f4f2;
+    --bg: #ffffff;
+    /* The green a running sandbox already wears in the product's sidebar, not
+       the upstream blue: the layout may say "same world", the colour must not
+       say "same publisher". */
+    --accent: #0a7d55;
+    --accent-rgb: 10 125 85;
+    --on-accent: #ffffff;
+    --danger: #b4341f;
+    --ring: rgb(10 125 85 / 10%);
+    --shadow: rgb(16 17 19 / 6%);
+    --lift: 0 30px 80px -32px rgb(16 17 19 / 28%);
+    --grid-line: rgb(16 17 19 / 5.5%);
+    --grid-dot: rgb(16 17 19 / 10%);
+    --glow: rgb(10 125 85 / 7%);
+
+    --radius-card: 24px;
+    --radius-panel: 16px;
+    --radius-field: 12px;
+    --radius-pill: 100px;
+
+    --display: "Host Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+    --sans: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    --mono: "Fragment Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans Mono CJK SC", "PingFang SC", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {${DARK_TOKENS}
+    }
+  }
+  :root[data-theme="dark"] {${DARK_TOKENS}
+  }
+
+  ::selection { background: var(--accent); color: var(--on-accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* The mark, in whichever direction this page is being read.
+
+   It is one ink-black line drawing with transparent negative space, embedded
+   as an <img> — so it inherits no colour, and its own media query could not
+   see this document's choice: an <img>-embedded SVG resolves
+   prefers-color-scheme against the SYSTEM. A page switched to dark by hand
+   on a light system showed a black mark on a black ground, which is the bug
+   this replaces. Decided out here, where the choice is known.
+
+   invert(1) rather than a second file: #101113 inverts to #EFEEEC, the warm
+   white the mark is meant to be, and one file cannot fall out of step with
+   itself. Matched on the name so the rule survives the build renaming it. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) img[src*="hamster"] { filter: invert(1); }
+}
+:root[data-theme="dark"] img[src*="hamster"] { filter: invert(1); }
+:root[data-theme="light"] img[src*="hamster"] { filter: none; }
+
+`
+
+/**
+ * The toast: what a page says about something that already happened.
+ *
+ * Fixed, so the toast is outside the layout entirely: it appears between one
+ * submit and the next, and anything that took up room would move whatever is
+ * under it at the moment someone is reaching for it.
+ *
+ * A confirmation dismisses itself; an error does not. The first says something
+ * already happened and is finished being useful a few seconds later, while the
+ * second is the reason the thing a person asked for did not happen, and taking
+ * it away on a timer means they have to reproduce the failure to read it again.
+ * Both are CSS animations rather than a script, so they behave the same on a
+ * page whose scripting is off.
+ */
+/**
+ * The deployment's name, set the way its brand sets it.
+ *
+ * Two parts, because the name is two parts: `Hamster` is the word and `HQ` is
+ * the mark on it. The mark sits in a rounded rectangle filled with the
+ * deployment's own green — the same colour the running-sandbox dot wears, and
+ * the reason it is green rather than ink: this is the one place the wordmark
+ * carries the brand colour, and the hamster beside it is deliberately
+ * monochrome so that they do not compete.
+ *
+ * Here rather than in each page, and as markup rather than as a rule, because
+ * four pages had four copies of a `.word` rule and a wordmark that is not
+ * identical in all of them is not a wordmark.
+ */
+export const WORDMARK = '<span class="word">Hamster<span class="word-hq">HQ</span></span>'
+
+/** What `WORDMARK` needs, for pages that show it. */
+export const BRAND_CSS = `
+  .brand .word {
+    display: inline-flex;
+    align-items: baseline;
+    gap: .18em;
+    font-family: var(--display);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -.03em;
+    color: var(--fg);
+  }
+  /* Reversed out, in the mark's own two colours: the brand is monochrome, so
+     the chip is ink with the surface showing through the letters, and it turns
+     over with the theme exactly as the hamster does.
+
+     A line-height of 1 is what keeps it tight. Inherited, the box is as tall
+     as a line of text rather than as tall as the letters, and the chip stands
+     off the word above and below by a leading it has no use for. */
+  .brand .word-hq {
+    display: inline-block;
+    padding: .1em .2em;
+    line-height: 1;
+    border-radius: .2em;
+    background: var(--ink);
+    color: var(--on-ink);
+    /* The chip is a lockup rather than running text: the negative tracking the
+       word carries would pull its two letters into each other. */
+    letter-spacing: 0;
+  }
+`
+
+/**
+ * The reset and the reading colours a centred page here starts from.
+ *
+ * The sign-in page, the profile page and the console's sign-in are one column
+ * on a full-height body, and each had written that out. The policy page and
+ * the console proper are not that shape — one scrolls a document, the other is
+ * two panes that do not scroll at all — so they say their own, which is the
+ * distinction worth keeping rather than a flag on this.
+ */
+export const PAGE_CSS = `
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+`
+
+/**
+ * A form's field and its submit button, as every form here draws them.
+ *
+ * Three pages carried this: the sign-in form, the profile form and the
+ * console's own sign-in. They agreed on all of it except the things a copy
+ * disagrees on by accident — one had lost the accent caret colour — and the
+ * autofill rule, which is the fiddliest part and the one most worth stating
+ * once.
+ *
+ * A rounded rectangle, not a pill: that is what you type into. The pill is for
+ * the thing you press.
+ */
+export const FIELD_CSS = `
+  .field {
+    display: flex;
+    align-items: center;
+    height: 3rem;
+    padding: 0 1rem;
+    margin-bottom: .625rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-field);
+    background: var(--bg);
+    transition: border-color .16s, box-shadow .16s;
+  }
+  .field:hover { border-color: var(--line-strong); }
+  .field:focus-within { border-color: var(--line-strong); box-shadow: 0 0 0 4px var(--ring); }
+  .field input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font: inherit;
+    color: var(--fg);
+    caret-color: var(--accent);
+  }
+  .field input::placeholder { color: var(--faint); }
+  /* An autofilled field is painted by the browser in its own pale blue, and
+     background-color does not reach it — an inset shadow is the only way to
+     cover it. Without this the one blue on the page appears behind the text of
+     whichever field the password manager filled, which on a two-field form is
+     most of it. */
+  .field input:-webkit-autofill,
+  .field input:-webkit-autofill:hover,
+  .field input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--fg);
+    -webkit-box-shadow: 0 0 0 100px var(--bg) inset;
+    box-shadow: 0 0 0 100px var(--bg) inset;
+    caret-color: var(--fg);
+  }
+  /* A field that is shown rather than filled in — the address a code was sent
+     to, the address an account is under. Inset against the card, and told
+     apart from the editable field beside it by being the one thing on the form
+     that is not --bg. */
+  .field.readonly { background: var(--surface); border-color: var(--line-soft); }
+  .field.readonly:hover { border-color: var(--line-soft); }
+  .field.readonly input { color: var(--muted); cursor: default; }
+`
+
+/**
+ * The button that submits one of those forms.
+ *
+ * Takes its selector, because the pages disagree about which button on them is
+ * this one — a page whose only button is the submit says `form button`, and a
+ * page with a file picker beside it has to say `button[type="submit"]`. The
+ * selector is the difference; the drawing is not.
+ *
+ * @param {string} selector - what this page calls its submit button.
+ * @returns {string} the rules.
+ */
+export function submitCss(selector) {
+  return `
+  ${selector} {
+    width: 100%;
+    height: 3rem;
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: var(--ink);
+    color: var(--on-ink);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .16s;
+  }
+  ${selector}:hover { background: var(--ink-hover); }
+`
+}
+
+export const TOAST_CSS = `
+  .toast {
+    position: fixed;
+    top: 1.25rem;
+    left: 50%;
+    z-index: 10;
+    max-width: min(90vw, 26rem);
+    padding: .65rem 1rem;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-field);
+    /* The capsule's own recipe, from the landing page's header: translucent
+       over whatever it covers, blurred so the lattice behind it stays a
+       texture rather than becoming text to read through. */
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    color: var(--fg);
+    font-size: .8125rem;
+    box-shadow: 0 1px 2px var(--shadow), 0 10px 28px var(--shadow);
+    animation: toast-in .18s ease-out both, toast-out .3s ease-in 4s both;
+  }
+  .toast.error {
+    border-color: color-mix(in srgb, var(--danger) 40%, var(--line));
+    color: var(--danger);
+    animation: toast-in .18s ease-out both;
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translate(-50%, -.5rem); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+  @keyframes toast-out {
+    from { opacity: 1; transform: translate(-50%, 0); visibility: visible; }
+    to   { opacity: 0; transform: translate(-50%, -.5rem); visibility: hidden; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .toast { animation: none; transform: translateX(-50%); }
+  }
+
+`
+
+/**
+ * What the console says after an action.
+ *
+ * Apart from the rest because the console has to ship the whole set to the
+ * browser: its actions are answered with a code and the toast is built there,
+ * so every one of these has to be lookup-able on a page where no element names
+ * it. `scripts/check-pages.mjs` reads this same export to know that, which is
+ * what keeps "a key nothing names" a real finding on that page rather than a
+ * rule with a hole in it.
+ *
+ * These were finished Chinese sentences passed straight through as notices,
+ * which the fallback in `toast` then showed as themselves — so every string on
+ * that page turned over with the toggle except the one reporting what had just
+ * happened. They also rode home in a query parameter, which meant prose in the
+ * address bar.
+ *
+ * The ceiling is four entries rather than one with two holes because both of
+ * its variable parts are WORDS, and a word substituted in here would be a word
+ * in whichever language this process picked.
+ */
+export const CONSOLE_NOTICES = {
+  'invites.minted':     { zh: '已生成 {count} 个邀请码。', en: 'Generated {count} invite code(s).' },
+  'invite.discarded':   { zh: '邀请码 {code} 已删除。', en: 'Invite code {code} deleted.' },
+  'invite.unknown':     { zh: '该邀请码不存在。', en: 'No such invite code.' },
+  'model.incomplete':   { zh: '接口地址和密钥都不能为空。', en: 'The endpoint and the key are both required.' },
+  'model.saved':        { zh: '已保存。已在运行的沙箱不受影响，新建的会用它。', en: 'Saved. Sandboxes already running are unaffected; new ones will use it.' },
+  'access.bad.limit':   { zh: '沙箱上限要填一个不小于 0 的整数（0 表示不限）。', en: 'The ceiling must be a whole number of 0 or more (0 means no limit).' },
+  'access.invite.capped':   { zh: '已保存：注册需要邀请码，沙箱上限 {limit}。', en: 'Saved: registration needs an invite code, ceiling {limit}.' },
+  'access.invite.uncapped': { zh: '已保存：注册需要邀请码，沙箱数量不限。', en: 'Saved: registration needs an invite code, no ceiling.' },
+  'access.open.capped':     { zh: '已保存：注册已开放，沙箱上限 {limit}。', en: 'Saved: registration is open, ceiling {limit}.' },
+  'access.open.uncapped':   { zh: '已保存：注册已开放，沙箱数量不限。', en: 'Saved: registration is open, no ceiling.' },
+  'self.refused':       { zh: '不能对当前登录的账号执行该操作。', en: 'That cannot be done to the account you are signed in as.' },
+  'account.suspended':  { zh: '{email} 已停用。', en: '{email} is now disabled.' },
+  'account.restored':   { zh: '{email} 已恢复。', en: '{email} is enabled again.' },
+  'account.erased':     { zh: '{email} 已删除。', en: '{email} has been deleted.' },
+  'account.erase.stuck': {
+    zh: '未删除：网关没有应答，什么都没有发生。账号仍在，可以稍后重试。',
+    en: 'Not deleted: the gateway did not answer, so nothing happened at all. The account is still there — try again shortly.',
+  },
+  'sandbox.reclaimed':  { zh: '{email} 的沙箱已回收，下次请求会重建一个。', en: 'The sandbox for {email} was reclaimed; the next request builds a new one.' },
+  'plan.moved':         { zh: '{email} 的套餐已更新。', en: 'The plan for {email} has been updated.' },
+  'plan.unknown':       { zh: '没有这个套餐。', en: 'No such plan.' },
+  'tfa.badpassword':    { zh: '密码不正确，没有做任何改动。', en: 'That password is not correct. Nothing was changed.' },
+  'tfa.badcode':        { zh: '验证码不正确，或注册已超时。两步验证没有开启，请重新扫码。', en: 'That code is not correct, or the enrolment timed out. Nothing was turned on — scan again.' },
+  'tfa.on':             { zh: '两步验证已开启。请保存下面的备用码。', en: 'Two-step verification is on. Save the recovery codes below.' },
+  'tfa.off':            { zh: '两步验证已关闭。现在只有密码挡在这个控制台前面。', en: 'Two-step verification is off. The password alone now opens this console.' },
+  'tfa.reminted':       { zh: '备用码已重新生成，旧的全部作废。', en: 'New recovery codes. Every earlier one has stopped working.' },
+  'tfa.notenrolled':    { zh: '这里没有可用的注册记录。', en: 'There is no enrolment here to reissue codes for.' },
+}
+
+/**
+ * Everything the gateway's pages say back to a person, in both languages.
+ *
+ * Here rather than at the place that decides to say it, because these are page
+ * copy and the pages are translated: a handler that returned a finished
+ * sentence would be a handler that had picked a language, and the language is
+ * not decided until the browser applies its own choice. So handlers name a
+ * message and this holds what it says.
+ *
+ * Only what a PAGE shows. The JSON the panel answers with is read by the
+ * application shell, not by these pages, and is not translated here.
+ */
+export const MESSAGES = {
+  'email.invalid':    { zh: '请填写一个有效的邮箱地址。', en: 'Enter a valid email address.' },
+  'invite.rejected':  { zh: '邀请码无效或已被使用。', en: 'That invite code is not valid, or has already been used.' },
+  'code.unsent':      { zh: '验证码发送失败，请稍后再试。', en: 'The code could not be sent. Try again shortly.' },
+  'code.wrong':       { zh: '验证码不正确。', en: 'That code is not correct.' },
+  'code.expired':     { zh: '验证码已失效，请重新获取。', en: 'That code has expired. Ask for another.' },
+  'capacity.full':    { zh: '当前在线沙箱已达上限，请稍后再试。', en: 'Every sandbox is in use right now. Try again shortly.' },
+  'account.disabled': { zh: '该账号已被停用，请联系管理员。', en: 'This account has been disabled. Contact the operator.' },
+  'delete.confirm':   { zh: '请输入你的完整邮箱地址以确认注销。', en: 'Type your full email address to confirm closing the account.' },
+  'name.required':    { zh: '请填写昵称，最多 {max} 个字符。', en: 'Enter a name, at most {max} characters.' },
+  'secret.name.invalid':  { zh: '名称只能由字母、数字和下划线组成，且不能以数字开头。', en: 'A name may hold only letters, digits and underscores, and may not begin with a digit.' },
+  'secret.name.reserved': { zh: '{name} 由部署本身设置，不能覆盖。', en: '{name} is set by the deployment itself and cannot be overridden.' },
+  'avatar.large':     { zh: '头像太大了，请换一张。', en: 'That picture is too large. Choose a smaller one.' },
+  'avatar.format':    { zh: '头像格式不受支持，请重新选择图片。', en: 'That image format is not supported. Choose another picture.' },
+
+  ...CONSOLE_NOTICES,
+}
+
+/**
+ * One message, or nothing.
+ *
+ * The argument is a key from `MESSAGES`, not a sentence. Anything that is not a
+ * key is shown as itself, so a message added in a hurry still reaches the
+ * reader — in one language, which `scripts/check-pages.mjs` then objects to.
+ *
+ * @param {string} [error] - what went wrong; shown in the danger colour and not dismissed on a timer.
+ * @param {string} [notice] - what went right; dismisses itself.
+ * @returns {string} the markup, empty when there is nothing to say.
+ */
+export function toast(error, notice) {
+  const said = (problem) => {
+    const code = typeof problem === 'string' ? problem : problem?.code
+    const template = MESSAGES[code]?.zh ?? code ?? ''
+    return escapeHtml(fill(template, typeof problem === 'string' ? undefined : problem?.params))
+  }
+  if (error !== undefined) return `<div class="toast error" role="alert" data-t="msg">${said(error)}</div>`
+  if (notice !== undefined) return `<div class="toast" role="status" data-t="msg">${said(notice)}</div>`
+  return ''
+}
+
+/**
+ * The table entry a rendered banner needs, if there is one.
+ *
+ * One key, because one banner: a page shows the error or the notice, never
+ * both, so the message on screen is always `msg`.
+ *
+ * @param {string} [error] - the key passed to `toast`.
+ * @param {string} [notice] - the other key passed to `toast`.
+ * @returns {Record<string, {en: string, zh: string}>} the entry, or nothing.
+ */
+export function toastEntry(error, notice) {
+  const problem = error ?? notice
+  if (problem === undefined) return {}
+  const code = typeof problem === 'string' ? problem : problem?.code
+  const params = typeof problem === 'string' ? undefined : problem?.params
+  const entry = MESSAGES[code] ?? { zh: code, en: code }
+  return { msg: { zh: fill(entry.zh, params), en: fill(entry.en, params) } }
+}
+
+/**
+ * Put values into a message's holes.
+ *
+ * The same `{name}` spelling the shell's own locale service uses, so a string
+ * reads the same wherever it is written.
+ *
+ * @param {string} template - the message, possibly with holes.
+ * @param {Record<string, unknown>} [params] - what fills them.
+ * @returns {string} the filled message.
+ */
+function fill(template, params) {
+  if (params === undefined) return template
+  return template.replaceAll(/\{(\w+)\}/g, (whole, name) => (name in params ? String(params[name]) : whole))
+}
+
+/**
+ * The theme toggle: its own styles, its own scripts, and the button between
+ * them.
+ *
+ * Self-contained because it was not, and the seam showed the moment a fourth
+ * page used it. Its CSS lived in `TOAST_CSS` — a page that had a toast and a
+ * toggle needed one import, and the policy pages, which have only a toggle,
+ * rendered it as an unstyled button with both of its icons showing, in a strip
+ * across the top of the document. A widget whose markup and appearance can be
+ * imported separately will eventually be imported separately.
+ *
+ * A `<style>` in the body rather than in the head, which is legal and is the
+ * price of that: the alternative is a second export that every page has to
+ * remember, which is the arrangement that just failed.
+ *
+ * The choice is applied before first paint, from an inline script rather than a
+ * deferred one, because anything later means a light flash on a dark page.
+ * `data-theme` is set only when a choice exists, so a visitor who has made none
+ * keeps following their system.
+ */
+export const THEME_TOGGLE = `<style>
+  /* Square and quiet: on the sign-in page it is the only control that is not
+     the form, and it must not read as a second submit button. */
+  .theme {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 10;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line-soft);
+    /* A circle, because every other free-standing control in this design is a
+       pill and a square one would be the only rounded rectangle on the page. */
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    color: var(--muted);
+    cursor: pointer;
+    transition: color .16s, border-color .16s;
+  }
+  .theme:hover { color: var(--fg); border-color: var(--line-strong); }
+  /* One button, two icons: which one shows is a question about the theme in
+     force, which only CSS knows — the button itself never has to be told.
+
+     It shows the theme it SWITCHES TO, not the one already on. Both readings
+     exist and this one is what a control means: a button is named by what it
+     does. Drawn the other way round, the dark page showed a moon — an
+     illustration of where you already are, on the one control whose whole job
+     is to take you somewhere else, and the way to get back to light was to
+     press the picture of night. */
+  .theme .sun { display: none; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme .moon { display: none; }
+    :root:not([data-theme="light"]) .theme .sun { display: block; }
+  }
+  :root[data-theme="dark"] .theme .moon { display: none; }
+  :root[data-theme="dark"] .theme .sun { display: block; }
+  :root[data-theme="light"] .theme .moon { display: block; }
+  :root[data-theme="light"] .theme .sun { display: none; }
+</style>
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('dsh-theme')
+      if (saved === 'dark' || saved === 'light') document.documentElement.dataset.theme = saved
+    } catch (error) {
+      // Storage can be denied outright — private windows, blocked third-party
+      // storage — and a theme is not worth failing the page over.
+    }
+  })()
+</script>
+<button type="button" class="theme" id="theme" data-ta="theme.label" aria-label="切换深色/浅色">
+  ${svg('light', { className: 'sun' })}
+  ${svg('dark', { className: 'moon' })}
+</button>
+<script>
+  document.getElementById('theme').addEventListener('click', function () {
+    // Reads what is rendered rather than what was stored, so the first click
+    // from a system-dark page goes to light rather than to dark again.
+    var dark = matchMedia('(prefers-color-scheme: dark)').matches
+    var current = document.documentElement.dataset.theme || (dark ? 'dark' : 'light')
+    var next = current === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    try { localStorage.setItem('dsh-theme', next) } catch (error) { /* as above */ }
+  })
+</script>`
+
+/**
+ * The language control, and the machinery that applies a choice.
+ *
+ * One export carrying style, markup and script together, for the reason
+ * `THEME_TOGGLE` gives above it: a widget whose parts can be imported
+ * separately will eventually be imported separately, and half of one is worse
+ * than none.
+ *
+ * The contract is the landing page's, deliberately — `data-t` writes
+ * textContent, `data-th` writes innerHTML, `data-tp` a placeholder and its
+ * aria-label, `data-ta` an aria-label alone — so there is one way to say this
+ * across the deployment rather than one per surface. `dsh-lang` is the same key
+ * the landing page stores under, so a visitor who chose English there does not
+ * meet a Chinese form one link later.
+ *
+ * These pages are WRITTEN in Chinese, which is the difference from the landing
+ * page: there the markup is English and a choice only rewrites it. So the table
+ * is applied on load whichever language wins, and a string with no key of its
+ * own simply stays as written — which is why `scripts/check-pages.mjs` renders
+ * each page and refuses any Chinese it finds outside this table.
+ *
+ * @param {Record<string, {en: string, zh: string}>} table - every string the page shows, in both languages.
+ * @returns {string} the control and its script.
+ */
+export function langToggle(table) {
+  // `<` escaped, because this JSON is embedded in a script element and a `</`
+  // inside any string would close it early — ending the script in the middle of
+  // a sentence, which browsers do not treat as an error, only as the end.
+  // The chrome's own strings, which belong to the controls rather than to any
+  // page. Merged underneath, so a page that wants to say one of them
+  // differently still can.
+  const withChrome = { 'theme.label': { zh: '切换深色/浅色', en: 'Switch between light and dark' }, ...table }
+  const json = JSON.stringify(withChrome).replaceAll('<', '\\u003c')
+  return `<style>
+  /* Beside the theme control, because they are the same kind of thing: two
+     settings for how the page is read, neither of them content. Left of it, in
+     reading order, so the pair does not reshuffle between pages. */
+  .lang {
+    position: fixed;
+    top: 1.25rem;
+    right: 4rem;
+    z-index: 10;
+    display: flex;
+    padding: 3px;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .lang button {
+    font: inherit; font-size: .8125rem; line-height: 1; cursor: pointer;
+    padding: 6px 10px; border: 0; border-radius: var(--radius-pill);
+    background: none; color: var(--muted); white-space: nowrap;
+    transition: color .16s, background .16s;
+  }
+  .lang button:hover { color: var(--fg); }
+  .lang button[aria-pressed="true"] { background: var(--line-soft); color: var(--fg); }
+</style>
+<div class="lang">
+  <button type="button" data-lang="zh" aria-pressed="true">中文</button>
+  <button type="button" data-lang="en" aria-pressed="false">EN</button>
+</div>
+<script type="application/json" id="dsh-strings">${json}</script>
+<script>
+  (function () {
+    // Read from an element rather than written into the script, so a page that
+    // swaps its content for another section's can hand over that section's
+    // vocabulary with it. Inlined, the words a page had at load were the only
+    // words it could ever say.
+    var T = JSON.parse(document.getElementById('dsh-strings').textContent)
+    function apply(next) {
+      document.documentElement.lang = next === 'zh' ? 'zh-CN' : 'en'
+      if (T['doc.title']) document.title = T['doc.title'][next]
+      var write = function (selector, attribute, set) {
+        var nodes = document.querySelectorAll(selector)
+        for (var i = 0; i < nodes.length; i += 1) {
+          var entry = T[nodes[i].getAttribute(attribute)]
+          if (entry) set(nodes[i], entry[next])
+        }
+      }
+      write('[data-t]',  'data-t',  function (el, text) { el.textContent = text })
+      write('[data-th]', 'data-th', function (el, html) { el.innerHTML = html })
+      // Attributes, not content: a placeholder and a label have to be
+      // translated too, and neither is reachable through textContent.
+      write('[data-tp]', 'data-tp', function (el, text) { el.placeholder = text; el.setAttribute('aria-label', text) })
+      write('[data-ta]', 'data-ta', function (el, text) { el.setAttribute('aria-label', text) })
+      var buttons = document.querySelectorAll('.lang button')
+      for (var j = 0; j < buttons.length; j += 1) {
+        buttons[j].setAttribute('aria-pressed', String(buttons[j].dataset.lang === next))
+      }
+      current = next
+      try { localStorage.setItem('dsh-lang', next) } catch (error) { /* private mode */ }
+    }
+    // For the strings a page's own script produces rather than renders: a hint
+    // written into an element on an event, the sentence a confirm dialog asks.
+    // They cannot carry a data-t attribute because they do not exist until
+    // something happens, so the page asks for them by the same key instead.
+    var current = 'zh'
+    window.dshText = function (key, params) {
+      var entry = T[key]
+      var said = entry === undefined ? key : entry[current]
+      if (params) {
+        for (var name in params) {
+          if (Object.prototype.hasOwnProperty.call(params, name)) {
+            said = said.split('{' + name + '}').join(String(params[name]))
+          }
+        }
+      }
+      return said
+    }
+    // For a page that replaces markup after it has loaded.
+    //
+    // The applier runs on load and on the toggle, which was the whole story while
+    // every page here was rendered once and then only read. The console is not:
+    // every action re-reads the console and swaps the whole of main for what
+    // the server sent, and what the server sends is Chinese with a key beside
+    // it.
+    // A reader who had chosen English got their table back in Chinese after
+    // every suspend, reclaim and delete — the toggle still said EN, because the
+    // toggle is outside main and was never replaced.
+    //
+    // Re-running is enough, and re-running everything rather than the new
+    // subtree is deliberate: applying is idempotent, the pages are small, and a
+    // version that took a root would have to be told the right one by every
+    // caller that swaps markup.
+    window.dshApply = function () { apply(current) }
+
+    // For a page that navigated without reloading. Every section ships only
+    // the strings its own markup names — which is what keeps the check that a
+    // page names everything it carries sharp — so arriving at another section
+    // means arriving with another vocabulary.
+    window.dshVocabulary = function (next) {
+      T = next
+      apply(current)
+    }
+    var stored = null
+    try { stored = localStorage.getItem('dsh-lang') } catch (error) { /* as above */ }
+    // No stored choice falls back to the browser's own, which for this
+    // deployment's audience is usually the one already on screen.
+    apply(stored === 'zh' || stored === 'en' ? stored
+      : (navigator.language || '').indexOf('zh') === 0 ? 'zh' : 'en')
+    var controls = document.querySelectorAll('.lang button')
+    for (var k = 0; k < controls.length; k += 1) {
+      controls[k].addEventListener('click', function () { apply(this.dataset.lang) })
+    }
+  })()
+</script>`
+}
+
+/**
+ * The ground the whole deployment stands on: the landing page's lattice.
+ *
+ * A field of points, each held to its rest position by a spring and pushed away
+ * by the cursor. This is `web/landing/index.html`'s canvas, constant for
+ * constant — 90px cells, a 140px reach, a peak push of 30, a 0.05 spring and
+ * 0.85 damping, capped at 30fps — because the two are the same ground and a
+ * lattice on a different pitch would read as a different site. It is copied
+ * rather than shared for the reason everything else here is: the landing page
+ * is a file in the web image and these pages are strings in this process, with
+ * no build step anywhere between them.
+ *
+ * Cheap enough to leave running behind a form. It sleeps as soon as the lattice
+ * has settled and wakes on the next mouse move, so a sign-in page nobody is
+ * touching costs nothing at all; where it cannot be driven — a touch screen, or
+ * a reader who asked for stillness — it draws one static frame, because this is
+ * the ground rather than an effect laid over one.
+ *
+ * The canvas is `.ground` and not `.field`, which is what the landing page calls
+ * it: on these pages `.field` is already a row of the form.
+ */
+export const GROUND_HTML = '<canvas class="ground" data-ground aria-hidden="true"></canvas>'
+
+/**
+ * What the ground needs from the page it is dropped into.
+ *
+ * The page colour moves to `html` and `body` goes transparent: the canvas sits
+ * at `z-index: -1`, and an opaque body would paint straight over it.
+ */
+export const GROUND_CSS = `
+  html { background: var(--bg); }
+  body { background: transparent; }
+  .ground {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    pointer-events: none;
+  }
+  /* Upstream paints its hero light with a WebGL2 flowmap. This is the same
+     light on a keyframe: a compositor-only transform, nothing to fall back
+     from. \`translateX(-50%)\` is repeated inside the keyframes, or the animation
+     drops the centring. */
+  .glow {
+    position: fixed;
+    left: 50%;
+    top: -22%;
+    width: min(1100px, 130%);
+    aspect-ratio: 2 / 1;
+    z-index: -1;
+    transform: translateX(-50%);
+    pointer-events: none;
+    will-change: transform;
+    background: radial-gradient(closest-side, var(--glow), transparent 72%);
+    animation: glow-drift 22s ease-in-out infinite;
+  }
+  @keyframes glow-drift {
+    0%, 100% { transform: translateX(-50%) translate3d(0, 0, 0) scale(1); }
+    50%      { transform: translateX(-50%) translate3d(3%, -4%, 0) scale(1.1); }
+  }
+  @media (prefers-reduced-motion: reduce) { .glow { animation: none; } }
+`
+
+/**
+ * The lattice itself. Goes last in the body, after the canvas it draws on.
+ *
+ * Re-exported rather than written here: the landing page draws the same ground
+ * from the same file, and it lived in this one as a string with every backtick
+ * escaped until the two copies started to differ. See `packages/dsh-ground`.
+ */
+export { GROUND_SCRIPT }
