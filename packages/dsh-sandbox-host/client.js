@@ -1,0 +1,1791 @@
+/**
+ * The sandbox adaptation layer, browser half.
+ *
+ * Four surfaces, all of which exist because the backend is not on this machine:
+ *
+ * - an "附件" group in the trigger menu, so a file has a way in at all;
+ * - the same group spliced onto the `+` menu, which cannot host it properly
+ *   (see the note on PlusAttachmentGroup);
+ * - attachment cards above the composer, bound to the draft the way dsh's own
+ *   image rail is bound to it;
+ * - a Configuration page in Settings, because the shipped control hands the
+ *   settings document to a desktop that is not there — and nothing at all in
+ *   the Settings header, where that control used to be.
+ *
+ * One file, deliberately: the client-module registry serves a plugin's `client`
+ * export verbatim — nothing resolves through node_modules and there is no build
+ * step — so a second file would be a second module the shell never fetches.
+ * `require` here is the shell's own module table, which is where React comes
+ * from.
+ */
+
+window.__ModuleLoader__.load({
+  id: 'dsh-sandbox-host',
+  factory: (require) => {
+    const React = require('react')
+    const ReactDom = require('react-dom')
+
+    /**
+     * The shell's own icon set.
+     *
+     * `?? {}` and a `try`, because the module table answers `undefined` for an
+     * id it does not carry and every use below is a property read — which on
+     * `undefined` is a TypeError during render, and a render error takes the
+     * seat down. A missing glyph should cost the glyph, not the composer.
+     */
+    let primitives = {}
+    try {
+      primitives = require('@deepseek-ai/dsh-client-ui-primitives') ?? {}
+    } catch (error) {
+      console.warn('[dsh-sandbox-host] ui-primitives did not load; rows render without glyphs', error)
+    }
+
+    /**
+     * The one glyph this plugin draws itself.
+     *
+     * The nav's other row and the composer's clip are the harness's own,
+     * required above. A sandbox is not in that set — `ArchiveOutline20` is a
+     * lidded box and means archive — so this comes from
+     * `packages/dsh-icons`, drawn to the same rules: a 16 grid, a 1.3 stroke
+     * expanded to a filled outline, `currentColor`.
+     *
+     * Inlined rather than imported: this file is read as source by the shell's
+     * module loader — require here is the shell's table, not Node's — so there
+     * is no build step to resolve a sibling package through.
+     * scripts/check-icons.mjs holds these bytes to the dsh-icons originals.
+     */
+    const SANDBOX_GLYPH = {
+      viewBox: '0 0 24 24',
+      paths: [
+        'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z',
+        'm3.3 7 8.7 5 8.7-5',
+        'M12 22V12',
+      ],
+      stroke: { width: 2, linecap: 'round', linejoin: 'round' },
+    }
+
+    /** Which glyph each nav row wears, by the name the call sites use. */
+    const GLYPHS = {
+      configuration: primitives.IconListPenOutline16,
+      sandbox: SANDBOX_GLYPH,
+    }
+
+    /**
+     * One glyph, whichever half it comes from.
+     *
+     * @param {object} props - `name`, and an optional `size`.
+     * @returns {object | null} the icon, or null when nothing carries that name.
+     */
+    const Glyph = ({ name, size = 16 }) => {
+      const glyph = GLYPHS[name]
+      if (glyph === undefined) return null
+      if (typeof glyph === 'function') return React.createElement(glyph, { size })
+      // Painted the way it was drawn, and sized by its own box: the harness's
+      // glyphs are filled outlines on a 16 grid, the extracted half is strokes
+      // on a 24. Filling a stroke turns a drawing into a blot, and a 24-box
+      // glyph forced through a 16 viewBox is a quarter of a drawing.
+      const paint = glyph.stroke === undefined
+        ? { fill: 'currentColor', fillRule: 'evenodd' }
+        : {
+            fill: 'none',
+            stroke: 'currentColor',
+            strokeWidth: glyph.stroke.width,
+            strokeLinecap: glyph.stroke.linecap,
+            strokeLinejoin: glyph.stroke.linejoin,
+          }
+      return React.createElement('svg', {
+        width: size, height: size, viewBox: glyph.viewBox, fill: 'none',
+        style: { flex: 'none' }, 'aria-hidden': true,
+      }, ...glyph.paths.map((d, at) => React.createElement('path', { key: at, d, transform: glyph.transform, ...paint })))
+    }
+
+    // ---------------------------------------------------------------- wire --
+
+    /** The channel the host half owns. One path segment; see its module note. */
+    const CHANNEL = '/files'
+
+    /** Marks a nav label that brought its own glyph. */
+    const NAV_GLYPH = 'dsh-settings-nav-glyph'
+
+    /** Hides the panel's fallback gear on any cell whose label brought one. */
+    const NAV_GLYPH_CSS = `
+      button:has(> span > .${NAV_GLYPH}) > svg { display: none; }
+    `
+
+    /**
+     * A settings-nav label that carries its own glyph.
+     *
+     * The panel picks its nav icon from a hardcoded list of three section ids
+     * and gives everything else the same gear, and its registration contract
+     * has no icon field — but `resolveSlotLabel` is `typeof x === 'function' ?
+     * x() : x`, so a label is passed through verbatim and may be a node. The
+     * glyph therefore rides in on the label, inside the span the panel renders
+     * it into.
+     *
+     * The rule that hides the fallback gear is mounted separately rather than
+     * from inside this label: a style tag here would put its CSS into the nav
+     * cell's `textContent`, which is the cell's accessible name — a screen
+     * reader would read the stylesheet out. It is written structurally — a
+     * button whose label holds our marker, hide the svg that is its own direct
+     * child — so it names no content-hashed class and survives the panel's
+     * styles being rebuilt. If upstream ever changes that shape the worst case
+     * is two glyphs, not a broken page.
+     *
+     * @param {string} d - the path data for a 16px glyph.
+     * @param {string} text - the section name.
+     * @returns {object} the label node.
+     */
+    /**
+     * A settings nav row: a glyph, and the section's name in the current
+     * language.
+     *
+     * A component rather than an element, because this is built once when the
+     * section registers and then held in the registration for as long as the
+     * plugin lives. An element would hold whichever language was active at
+     * registration and keep showing it; a component re-renders when the
+     * language changes, like everything else here.
+     *
+     * `data-dsh-section` is how the row is found again — see
+     * `selectSandboxPage`. It used to be found by matching its own visible
+     * text, which is exactly the kind of handle that stops working the moment
+     * the text is translated.
+     */
+    const NavLabel = ({ name, section }) => {
+      const t = useT()
+      return React.createElement(
+        'span',
+        {
+          className: NAV_GLYPH,
+          'data-dsh-section': section,
+          style: { display: 'inline-flex', alignItems: 'center', gap: '8px' },
+        },
+        React.createElement(Glyph, { name }),
+        t(section),
+      )
+    }
+
+    /** The registration's `label`: an element, and this one keeps rendering. */
+    const navLabel = (name, section) => React.createElement(NavLabel, { name, section })
+
+
+    /**
+     * The plugin context, captured at mount.
+     *
+     * A module-level holder rather than React context, because two of the three
+     * callers are not components: the trigger source's `onPick` runs inside the
+     * input pipeline, and the upload chain outlives whatever rendered it.
+     */
+    let plugin
+
+    /**
+     * Translate, and re-render this component when the language changes.
+     *
+     * Subscribing here rather than taking the `t` the slot machinery hands a
+     * slot's root component: most of what this plugin says is said several
+     * levels below a root, and one of the things it says is a settings section
+     * LABEL — which is an element built once at registration, so nothing would
+     * ever ask it to render again. A component that subscribes for itself does
+     * not care how far from a slot it sits, or whether it is inside one.
+     *
+     * `getSnapshot`/`subscribe` are the locale service's own pair, so this is
+     * the same signal the shell's own rows re-render on.
+     *
+     * @returns {(key: string, params?: object) => string} the translator.
+     */
+    const useT = () => {
+      React.useSyncExternalStore(
+        (notify) => plugin.locale.subscribe(notify),
+        () => plugin.locale.getSnapshot(),
+      )
+      return plugin.locale.bind(NS)
+    }
+
+    /**
+     * Translate outside a component, for the callers that are not one.
+     * @returns {(key: string, params?: object) => string} the translator.
+     */
+    const say = () => plugin.locale.bind(NS)
+
+    /**
+     * Read one Blob as base64, without holding a second copy as a JS string of
+     * char codes. `btoa(String.fromCharCode(...bytes))` is the obvious spelling
+     * and it exceeds the argument limit somewhere around a megabyte, which is a
+     * quarter of one chunk.
+     * @param {Blob} blob - the slice to encode.
+     * @returns {Promise<string>} its base64, without the data-URL prefix.
+     */
+    const toBase64 = (blob) => new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onerror = () => { reject(reader.error ?? new Error('could not read the file')) }
+      reader.onload = () => {
+        const result = String(reader.result)
+        resolve(result.slice(result.indexOf(',') + 1))
+      }
+      reader.readAsDataURL(blob)
+    })
+
+    /**
+     * One call on the file channel, with the envelope's error thrown.
+     * @param {string} endpoint - channel-relative endpoint.
+     * @param {object} payload - the request payload.
+     * @returns {Promise<object>} the value the host returned.
+     */
+    const call = async (endpoint, payload) => {
+      const result = await plugin.connection.rpc.call(CHANNEL, endpoint, payload)
+      if (result.ok) return result.value
+      throw new Error(result.error.message)
+    }
+
+    /**
+     * Send one file to the sandbox and return where it landed.
+     *
+     * Chunks are sequential rather than parallel. The host appends them in
+     * arrival order, and the tunnel is one socket anyway — parallelism here
+     * would buy nothing and would need sequence numbers to be correct.
+     *
+     * @param {File} file - the browser's file.
+     * @param {(sent: number) => void} onProgress - bytes accepted so far.
+     * @returns {Promise<{path: string, name: string, bytes: number}>} the published file.
+     */
+    const upload = async (file, onProgress) => {
+      const { id, chunkBytes } = await call('upload.begin', { name: file.name, size: file.size })
+      try {
+        for (let offset = 0; offset < file.size; offset += chunkBytes) {
+          const data = await toBase64(file.slice(offset, offset + chunkBytes))
+          const { received } = await call('upload.chunk', { id, data })
+          onProgress(received)
+        }
+        return await call('upload.commit', { id, sessionId: composer.sessionId })
+      } catch (error) {
+        // The staging file would age out on its own, but a browser that failed
+        // mid-upload is exactly the case where the tenant retries immediately
+        // and meets the in-flight limit.
+        await call('upload.abort', { id }).catch(() => {})
+        throw error
+      }
+    }
+
+    // -------------------------------------------------------------- picking --
+
+    /**
+     * Ask the person for files.
+     *
+     * A fresh input each time, removed on either outcome. `cancel` is what
+     * closes the dialog without choosing; without listening for it, every
+     * cancelled pick would leave an element on the page for the life of the
+     * session.
+     *
+     * @returns {Promise<File[]>} what they chose, empty when they cancelled.
+     */
+    const pickFiles = () => new Promise((resolve) => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.multiple = true
+      input.style.display = 'none'
+      document.body.append(input)
+      const settle = (files) => { input.remove(); resolve(files) }
+      input.addEventListener('change', () => { settle([...(input.files ?? [])]) }, { once: true })
+      input.addEventListener('cancel', () => { settle([]) }, { once: true })
+      input.click()
+    })
+
+    // --------------------------------------------------------------- store --
+
+    /**
+     * The cards, and the composer they belong to.
+     *
+     * A store rather than props: uploads are started from three places — the
+     * trigger menu, the spliced `+` group, and a drop — and only one of them is
+     * a component. `composer` is the live draft face, refreshed by the card row
+     * on every render, so the non-component callers can still write a path into
+     * the message being composed.
+     */
+    const createStore = () => {
+      const listeners = new Set()
+      /** @type {Array<{key: number, name: string, size: number, sent: number, path?: string, error?: string}>} */
+      let rows = []
+      let nextKey = 1
+      const emit = () => { for (const listener of Array.from(listeners)) listener() }
+      return {
+        subscribe(listener) {
+          listeners.add(listener)
+          return () => { listeners.delete(listener) }
+        },
+        snapshot: () => rows,
+        add(file, sessionId) {
+          const key = nextKey
+          nextKey += 1
+          rows = [...rows, { key, sessionId, name: file.name, size: file.size, sent: 0 }]
+          emit()
+          return key
+        },
+        update(key, patch) {
+          rows = rows.map((row) => (row.key === key ? { ...row, ...patch } : row))
+          emit()
+        },
+        remove(key) {
+          rows = rows.filter((row) => row.key !== key)
+          emit()
+        },
+        /**
+         * Drop the cards whose file has been handed to a turn.
+         *
+         * A card is the receipt for an attachment waiting on the next message.
+         * The moment that message starts running, the notice has been claimed
+         * and the card has nothing left to say — which is what stops it from
+         * becoming the permanent upload log it was in the first cut.
+         */
+        settle() {
+          const next = rows.filter((row) => row.path === undefined && row.error === undefined)
+          if (next.length === rows.length) return
+          rows = next
+          emit()
+        },
+      }
+    }
+
+    const store = createStore()
+
+    /** How long a failed upload keeps its card. */
+    const FAILURE_LINGER_MS = 8000
+
+    /** Which session the uploads belong to, refreshed by the card row. */
+    const composer = { sessionId: undefined }
+
+    /**
+     * Tail of the upload chain.
+     *
+     * One at a time across the whole page: the tunnel is one socket, so
+     * concurrent uploads only take turns more expensively.
+     */
+    let queue = Promise.resolve()
+
+    /**
+     * Upload files and let the host tell the agent about each one.
+     *
+     * Nothing is written into the draft. On a local host the person types a
+     * path because the path is theirs to type; here it would be a path they did
+     * not write appearing in a box that already shows them a card for the same
+     * file. The host injects the notice into the agent's inbox instead, where
+     * it rides the next turn and renders as context rather than as words the
+     * person appears to have said.
+     *
+     * @param {Iterable<File>} files - what to send.
+     */
+    const sendFiles = (files) => {
+      for (const file of files) {
+        const key = store.add(file, composer.sessionId)
+        queue = queue
+          .then(() => upload(file, (sent) => { store.update(key, { sent }) }))
+          .then((published) => {
+            store.update(key, {
+              path: published.path,
+              name: published.name,
+              sent: published.bytes,
+              messageId: published.messageId,
+            })
+          })
+          .catch((error) => {
+            store.update(key, { error: error.message })
+            // A failure has no card lifetime of its own — nothing in the
+            // composer refers to it — so it is the one card that times out.
+            setTimeout(() => { store.remove(key) }, FAILURE_LINGER_MS)
+          })
+      }
+    }
+
+    /** Open the picker and send whatever comes back. */
+    const pickAndSend = () => { void pickFiles().then((files) => { sendFiles(files) }) }
+
+    /**
+     * What this plugin's slash command is called.
+     *
+     * English, lowercase, one word, and NOT the translated label the `+` menu
+     * shows — because this string is not a label, it is what a person types.
+     * The menu matches a query against a candidate's `name`, so a Chinese name
+     * made the command unreachable from the keyboard in either language: `/up`
+     * matched nothing, and the row could only ever be clicked. The shell's own
+     * commands are named the same way for the same reason, and what a row says
+     * IN a language is the description beside it.
+     */
+    const UPLOAD = 'upload'
+
+    /**
+     * Whether a typed query still names this command.
+     *
+     * Subsequence rather than prefix, which is how the shell's command source
+     * ranks its own rows — `/upl`, `/uld` and `/u` all still find it, and a
+     * query that has run past the name (`/upx`) drops it. Case-folded because
+     * nothing about a command is case.
+     *
+     * @param {string} query - what has been typed after the trigger.
+     * @returns {boolean} whether the command survives it.
+     */
+    const named = (query) => {
+      const want = query.toLowerCase()
+      let at = 0
+      for (const ch of UPLOAD) {
+        if (at < want.length && want[at] === ch) at += 1
+      }
+      return at === want.length
+    }
+
+    /**
+     * Subscribe a component to the store.
+     * @returns {Array<object>} the current rows.
+     */
+    const useRows = () => {
+      const [rows, setRows] = React.useState(store.snapshot)
+      React.useEffect(() => store.subscribe(() => { setRows(store.snapshot()) }), [])
+      return rows
+    }
+
+    // ---------------------------------------------------------------- copy --
+
+    /**
+     * Human byte count, for a line nobody should have to decode.
+     * @param {number} bytes - the count.
+     * @returns {string} e.g. `1.4 MB`.
+     */
+    const humanBytes = (bytes) => {
+      if (bytes < 1024) return `${String(bytes)} B`
+      const units = ['KB', 'MB', 'GB']
+      let value = bytes / 1024
+      let unit = 0
+      while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
+      return `${value < 10 ? value.toFixed(1) : String(Math.round(value))} ${units[unit]}`
+    }
+
+    /**
+     * This plugin's own dictionary namespace.
+     *
+     * Its own, because a namespace is the unit `locale.register` refuses to
+     * collide on: two plugins registering the same one is an error rather than
+     * a silent last-writer-wins, and that is worth having.
+     */
+    const NS = 'hamsterhq.sandbox'
+
+    /**
+     * Everything this plugin says, in both languages.
+     *
+     * Chinese first because this deployment's audience is, and English beside
+     * it because the shell offers a language switch and a plugin that ignores
+     * it is a plugin that half-translates the window. `{name}` holes are filled
+     * by the locale service.
+     */
+    const DICTIONARY = {
+      zh: {
+        'attach.group': '附件',
+        'attach.item.about': '从这台电脑选择文件，送进你的沙箱',
+        'attach.drop': '松手即可上传到你的沙箱',
+        'attach.uploading': '上传中 {sent} / {size}',
+        'attach.remove': '移除附件 {name}',
+
+        sandbox: '沙箱',
+        configuration: '配置文件',
+
+        'status.running': '运行中',
+        'status.starting': '连接中',
+        'status.claiming': '申请中',
+        'status.unknown': '未知',
+
+        memory: '内存',
+        disk: '磁盘',
+
+        // Inside the ring, which is 20px across. The full word fits in
+        // Chinese at two characters and does not in English, so the ring
+        // takes the short form and the settings page keeps the word.
+        'ring.memory': '内存',
+        'ring.disk': '磁盘',
+        measuring: '正在测量',
+        'cpu.measuring': 'CPU：正在测量',
+        'cpu.title': 'CPU {percent}%',
+        'cpu.title.cores': 'CPU {percent}%（{cores} 核）',
+        'cpu.value': '{percent}%',
+        'cpu.value.cores': '{cores} 核 · {percent}%',
+        'memory.title': '内存 {value}',
+        'disk.title': '磁盘 {value}',
+
+        'row.id': '标识',
+        'row.status': '状态',
+        'row.usage': '用量',
+        yours: '这台机器只属于你：会话、工作区与文件都不与其他用户共享。闲置一段时间后它会被回收，下次打开时重新创建。',
+
+        'config.reading': '读取中…',
+        'config.unreadable': '无法读取配置文件：{message}',
+        'config.where': '你的后端运行在沙箱里，这个文件在那台机器上，不在你的电脑上——所以它在这里显示，而不是被打开。',
+        'config.empty': '（空）',
+        copy: '复制',
+        download: '下载',
+      },
+      en: {
+        'attach.group': 'Attachments',
+        'attach.item.about': 'Choose a file on this computer and send it to your sandbox',
+        'attach.drop': 'Drop to upload to your sandbox',
+        'attach.uploading': 'Uploading {sent} / {size}',
+        'attach.remove': 'Remove attachment {name}',
+
+        sandbox: 'Sandbox',
+        configuration: 'Configuration',
+
+        'status.running': 'Running',
+        'status.starting': 'Connecting',
+        'status.claiming': 'Requesting',
+        'status.unknown': 'Unknown',
+
+        memory: 'Memory',
+        disk: 'Disk',
+
+        // The rings are a readout rather than a sentence, so their labels are
+        // set as abbreviations — and as the same two the front door's picture
+        // of this sidebar shows. They read `RAM` and `Disk` here while that
+        // picture read `MEM` and `DISK`, which made the still a still of a
+        // product that does not exist. `memory` and `disk` above keep their
+        // whole words: those label rows, where there is room to say it.
+        'ring.memory': 'MEM',
+        'ring.disk': 'DISK',
+        measuring: 'measuring',
+        'cpu.measuring': 'CPU: measuring',
+        'cpu.title': 'CPU {percent}%',
+        'cpu.title.cores': 'CPU {percent}% ({cores} cores)',
+        'cpu.value': '{percent}%',
+        'cpu.value.cores': '{cores} cores · {percent}%',
+        'memory.title': 'Memory {value}',
+        'disk.title': 'Disk {value}',
+
+        'row.id': 'ID',
+        'row.status': 'State',
+        'row.usage': 'Usage',
+        yours: 'This machine is yours alone: its sessions, workspace and files are shared with nobody. It is reclaimed after a period of inactivity and built again the next time you open it.',
+
+        'config.reading': 'Reading…',
+        'config.unreadable': 'Could not read the configuration file: {message}',
+        'config.where': 'Your backend runs in the sandbox, and this file is on that machine rather than on yours — which is why it is shown here instead of opened.',
+        'config.empty': '(empty)',
+        copy: 'Copy',
+        download: 'Download',
+      },
+    }
+
+
+    // --------------------------------------------------------------- style --
+
+    /** Classes the rules below are scoped to; nothing else in the page uses them. */
+    const P = 'dsh-sandbox-host'
+
+    /**
+     * Built from the theme tokens on body, not from a hashed CSS-module class
+     * name, so both themes follow and this file does not name any private class.
+     */
+    /**
+     * How long the arc takes to reach a new reading.
+     *
+     * Short, and nothing to do with how often readings arrive. Pacing it to the
+     * sampler's five seconds was the previous attempt and it was worse than
+     * either thing it was trying to balance: an arc interpolating across the
+     * whole interval is never showing the current reading, only travelling
+     * towards it, so the ring disagreed with the number under the pointer for
+     * seconds at a time. That is the lag, and no amount of smoothness pays for
+     * it.
+     *
+     * Parking between readings is not a fault to design around. The value
+     * genuinely does not change between samples, and a still arc says so.
+     *
+     * Declared HERE, above the stylesheet, because `STYLE` interpolates it at
+     * module scope. Further down it was in the temporal dead zone by the time
+     * that template ran, and the plugin failed to import at all.
+     */
+    const ARC_MS = 420
+
+    const STYLE = `
+      .${P}-cards { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 14px 0; }
+      .${P}-card {
+        display: inline-flex;
+        align-items: center;
+        max-width: 16rem;
+        gap: 8px;
+        padding: 6px 10px;
+        border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+        border-radius: 10px;
+        background: var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
+        font-size: 13px;
+        line-height: 18px;
+      }
+      .${P}-icon { flex: none; color: var(--dsw-alias-label-tertiary, #81858c); }
+      .${P}-text { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+      .${P}-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .${P}-meta { color: var(--dsw-alias-label-tertiary, #81858c); font-size: 12px; line-height: 16px; }
+      .${P}-fail { color: var(--dsw-alias-state-error-primary, #ec1313); }
+      .${P}-bar {
+        height: 2px;
+        border-radius: 2px;
+        background: var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
+        overflow: hidden;
+      }
+      .${P}-bar > i { display: block; height: 100%; background: var(--dsw-alias-label-tertiary, #81858c); }
+      .${P}-x {
+        flex: none;
+        width: 22px; height: 22px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: none; border-radius: 6px; background: transparent;
+        color: var(--dsw-alias-label-tertiary, #81858c);
+        cursor: pointer; font-size: 14px; line-height: 1; padding: 0;
+      }
+      .${P}-x:hover { background: var(--dsw-alias-button-floating-hover, rgb(241 243 245)); }
+      .${P}-drop {
+        display: flex; align-items: center; justify-content: center;
+        padding: 10px;
+        border: 1px dashed var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+        border-radius: 12px;
+        color: var(--dsw-alias-label-tertiary, #81858c);
+        font-size: 13px;
+      }
+      .${P}-drop[data-over='true'] {
+        border-color: var(--dsw-alias-label-primary, #0f1115);
+        color: var(--dsw-alias-label-primary, #0f1115);
+      }
+      .${P}-document {
+        margin: 0; padding: 12px 14px; max-height: 420px; overflow: auto;
+        border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+        border-radius: 10px;
+        background: var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
+        color: var(--dsw-alias-label-primary, inherit);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; line-height: 1.6; white-space: pre;
+      }
+      .${P}-button {
+        display: inline-flex; align-items: center; height: 32px; padding: 0 14px;
+        border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+        border-radius: 10px;
+        background: var(--dsw-alias-button-elevated-fill, #fff);
+        color: var(--dsw-alias-label-primary, inherit);
+        font-family: inherit; font-size: 13px; cursor: pointer;
+      }
+      .${P}-button:hover { background: var(--dsw-alias-button-floating-hover, rgb(241 243 245)); }
+      .${P}-sandbox {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 8px; width: 100%; box-sizing: border-box;
+        padding: 8px; border-radius: 12px;
+        background: transparent;
+        transition: background 120ms ease;
+      }
+      /* The same card the sidebar's own rows take under the pointer, at the
+         radius they use. Nothing here is clickable, so the cursor is left
+         alone: the tint says "these figures are one thing", not "press me". */
+      /* The wash the shell uses for its own hoverable rows, not a solid fill.
+          The account row directly below this one is inside the shell's Settings
+          button and hovers with that wash; a solid fill here made two rows in
+          one column light up at visibly different strengths. Solid tokens are
+          also a trap on this palette — ghost-active-fill and elevated-fill are
+          the same colour in dark, so a fill can silently equal its own
+          background. An overlay cannot. */
+      .${P}-sandbox:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 5%)); }
+      .${P}-sandbox-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .${P}-sandbox-title { font-size: 12px; color: var(--dsw-alias-label-tertiary, #81858c); line-height: 16px; }
+      .${P}-sandbox-state {
+        display: inline-flex; align-items: center; gap: 5px;
+        font-size: 13px; color: var(--dsw-alias-label-secondary, #61666b); line-height: 18px;
+      }
+      .${P}-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+      .${P}-rings { display: inline-flex; gap: 6px; flex: none; }
+      .${P}-ring { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+      .${P}-ring-label, .${P}-ring-value {
+        position: absolute; line-height: 1;
+        transition: opacity 120ms ease;
+      }
+      .${P}-ring-label { font-size: 8px; color: var(--dsw-alias-label-tertiary, #81858c); }
+      /* The number the ring is drawing, for a pointer that stops on it. The
+         arc says roughly; this says exactly, without spending a row of the
+         sidebar on three figures nobody is reading most of the time.
+
+         Smaller than the label because it has to hold four characters inside a
+         20px opening, and tabular so the last digit does not step sideways as
+         the value changes under the pointer. */
+      .${P}-ring-value {
+        font-size: 8px; font-variant-numeric: tabular-nums; opacity: 0;
+        color: var(--dsw-alias-label-primary, #1a1a1a);
+      }
+      .${P}-ring:hover .${P}-ring-label { opacity: 0; }
+      .${P}-ring:hover .${P}-ring-value { opacity: 1; }
+
+      /* The arc moves to each new reading and then holds it.
+
+         ease-out, which is the part the first version got wrong. It used
+         ease — ease-in-OUT — whose slow start reads as hesitation: the
+         reading lands, and for the first fraction of a second nothing appears
+         to happen. Starting at full speed and decelerating into place reads as
+         a response.
+
+         Short enough that the ring and the number shown on hover are never
+         meaningfully apart, which is the whole reason not to stretch this. */
+      .${P}-ring-arc { transition: stroke-dashoffset ${String(ARC_MS)}ms ease-out, stroke 300ms ease; }
+      @media (prefers-reduced-motion: reduce) {
+        .${P}-ring-label, .${P}-ring-value, .${P}-ring-arc { transition: none; }
+      }
+    `
+
+    /** The stylesheet, mounted by whichever of our seats renders first. */
+    const Style = () => React.createElement('style', null, STYLE)
+
+    /** A paperclip, at the size the composer's own chrome uses. */
+    const Clip = ({ size = 16 }) => (primitives.IconPaperclipOutline16 === undefined
+      ? null
+      : React.createElement(primitives.IconPaperclipOutline16, { size, className: `${P}-icon` }))
+
+    // ------------------------------------------------------------ the cards --
+
+    /**
+     * The attachment cards, rendered where dsh renders its own image rail.
+     *
+     * The slot this registers into (`conversation.input.dock`) paints a row
+     * ABOVE the composer card, and dsh's image thumbnails sit INSIDE it, above
+     * the textarea. That seat — `accessory` on the composer bar's owner props —
+     * is not a slot, so this puts a container of its own where the rail lives
+     * and renders into it through a portal.
+     *
+     * No public slot reaches the image rail, so this locates a container by
+     * structure (the textarea) and renders through a portal; reported upstream.
+     * It keys on the textarea rather than on the card's hashed class name, and
+     * it re-seats its container when React rebuilds the composer.
+     *
+     * @param {object} props - the session standard kit.
+     * @returns {object|null} the cards, or nothing to show.
+     */
+    const AttachmentCards = ({ useSession, sessionId }) => {
+      const t = useT()
+      const rows = useRows()
+      const [dragging, setDragging] = React.useState(false)
+      const running = useSession((state) => state.running) ?? false
+      const [seat, setSeat] = React.useState(null)
+      // A node React owns and never moves: the anchor the placement below walks
+      // up from, so the composer card is found by structure rather than by a
+      // document-wide query.
+      const anchor = React.useRef(null)
+      // Cards belong to the session they were uploaded from; the store is one
+      // module-level list shared by every scope that mounts this.
+      const mine = rows.filter((row) => row.sessionId === sessionId)
+
+      composer.sessionId = sessionId
+
+      // A container of our own, placed in the composer card and filled through
+      // a portal.
+      //
+      // Moving React's OWN node there instead is what froze the page: React
+      // still believes the node is a child of the dock container, and the first
+      // time it unmounts the entry — which happens when the composer is rebuilt
+      // on the blank-to-active flip — `removeChild` throws on a node that is no
+      // longer there, and it throws again on every retry. A portal inverts it:
+      // React renders into a container it does not own the position of, and
+      // this side owns nothing React renders.
+      const held = React.useRef(null)
+      held.current ??= (() => {
+        const container = document.createElement('div')
+        container.dataset.dshSandboxHost = 'attachments'
+        return container
+      })()
+
+      // Placed after every render, which costs one `isConnected` read in the
+      // case that matters and a walk only when the composer has been rebuilt.
+      //
+      // The first cut watched `document.body` for childList instead. That is a
+      // callback on every React commit anywhere in the page — every token of a
+      // streaming reply — each one running a document-wide
+      // `querySelector('textarea')`. It is also unnecessary: this component
+      // re-renders on the same commit that rebuilds the composer, because the
+      // input state it reads changes with it.
+      React.useLayoutEffect(() => {
+        const container = held.current
+        // The whole cost in the common case. Everything below runs once, and
+        // again only when the composer has been rebuilt under it.
+        if (container.isConnected) return
+        const dock = anchor.current
+        if (dock === null) return
+        // The textarea belonging to THIS composer, found by walking up from a
+        // node React keeps in the dock row rather than by a document-wide
+        // query — so another textarea elsewhere on the page cannot claim it.
+        // The walk stops at the first ancestor that contains one, which is the
+        // input bar; the card is that textarea's own scroll region's parent.
+        let scope = dock.parentElement
+        let input = null
+        while (scope !== null && input === null) {
+          input = scope.querySelector('textarea')
+          if (input === null) scope = scope.parentElement
+        }
+        const scroll = input?.parentElement?.parentElement
+        if (scroll === undefined || scroll === null || scroll.parentElement === null) return
+        scroll.before(container)
+        setSeat(container)
+      })
+
+      React.useEffect(() => () => { held.current?.remove() }, [])
+
+      // The turn claims the notices, so the cards have nothing left to say.
+      const wasRunning = React.useRef(running)
+      React.useEffect(() => {
+        if (running && !wasRunning.current) store.settle()
+        wasRunning.current = running
+      }, [running])
+
+      // Non-image file drags, taken before dsh sees them.
+      //
+      // dsh claims document-level drops for the image rail and answers anything
+      // else with "仅支持 PNG、JPG、WebP、GIF 格式的图片" — true of its own
+      // attachment plane and false of this deployment. Capture phase plus
+      // `stopPropagation` means its handler never runs for a drag carrying no
+      // image at all; a drag carrying one is left entirely alone.
+      React.useEffect(() => {
+        const onlyFiles = (transfer) => {
+          const items = [...(transfer?.items ?? [])].filter((item) => item.kind === 'file')
+          return items.length > 0 && items.every((item) => !String(item.type).startsWith('image/'))
+        }
+        // The hint is driven from here rather than from a window listener,
+        // because `stopPropagation` at capture means nothing further out ever
+        // sees these events.
+        let depth = 0
+        const guard = (event) => {
+          if (!onlyFiles(event.dataTransfer)) return
+          event.stopPropagation()
+          if (event.type === 'dragenter') { depth += 1; setDragging(true); return }
+          if (event.type === 'dragleave') {
+            depth = Math.max(0, depth - 1)
+            if (depth === 0) setDragging(false)
+            return
+          }
+          event.preventDefault()
+          if (event.type !== 'drop') return
+          depth = 0
+          setDragging(false)
+          sendFiles(event.dataTransfer?.files ?? [])
+        }
+        const kinds = ['dragenter', 'dragover', 'dragleave', 'drop']
+        for (const kind of kinds) document.addEventListener(kind, guard, true)
+        return () => { for (const kind of kinds) document.removeEventListener(kind, guard, true) }
+      }, [])
+
+      /**
+       * Take a card off the message, and the notice off the agent with it.
+       * @param {object} row - the card's row.
+       */
+      const detach = (row) => {
+        if (row.messageId !== undefined) {
+          void call('upload.retract', { sessionId, messageId: row.messageId }).catch(() => {})
+        }
+        store.remove(row.key)
+      }
+
+      const body = !dragging && mine.length === 0
+        ? null
+        : React.createElement(
+          'div',
+          { className: `${P}-cards` },
+          React.createElement(Style),
+          dragging && mine.length === 0 && React.createElement(
+            'div',
+            { className: `${P}-drop` },
+            t('attach.drop'),
+          ),
+          ...mine.map((row) => {
+            const done = row.path !== undefined
+            const failed = row.error !== undefined
+            return React.createElement(
+              'div',
+              { key: row.key, className: `${P}-card` },
+              React.createElement(Clip, null),
+              React.createElement(
+                'span',
+                { className: `${P}-text` },
+                React.createElement('span', { className: `${P}-name`, title: row.path ?? row.name }, row.name),
+                React.createElement(
+                  'span',
+                  { className: `${P}-meta${failed ? ` ${P}-fail` : ''}` },
+                  failed
+                    ? row.error
+                    : done
+                      ? humanBytes(row.size)
+                      : t('attach.uploading', { sent: humanBytes(row.sent), size: humanBytes(row.size) }),
+                ),
+                !done && !failed && React.createElement(
+                  'span',
+                  { className: `${P}-bar` },
+                  React.createElement('i', {
+                    style: { width: `${String(row.size === 0 ? 100 : Math.round((row.sent / row.size) * 100))}%` },
+                  }),
+                ),
+              ),
+              React.createElement(
+                'button',
+                {
+                  type: 'button',
+                  className: `${P}-x`,
+                  // The wording dsh uses for the same gesture on an image is
+                  // "移除图片 <name>"; this is its sibling.
+                  title: t('attach.remove', { name: row.name }),
+                  'aria-label': t('attach.remove', { name: row.name }),
+                  onClick: () => { detach(row) },
+                },
+                '×',
+              ),
+            )
+          }),
+        )
+
+      return React.createElement(
+        React.Fragment,
+        null,
+        React.createElement('div', { ref: anchor, style: { display: 'none' } }),
+        seat === null ? null : ReactDom.createPortal(body, seat),
+      )
+    }
+
+    // ------------------------------------------------------ the + addition --
+
+    /**
+     * Read the class names an element carries, minus the ones that mark state.
+     *
+     * The shell's classes are content-hashed CSS-module names, so they cannot
+     * be written down. They are read off the live element's class list; the
+     * intersection across siblings then inherits hover, focus and theme from
+     * the same stylesheet the real rows use, and keeps inheriting them
+     * through an upstream restyle. The intersection is what drops the state
+     * classes: the highlighted row carries one the others do not.
+     *
+     * @param {NodeListOf<Element>|Element[]} kin - the siblings to compare.
+     * @returns {string} the classes every one of them has.
+     */
+    const sharedClasses = (kin) => {
+      const lists = [...kin].map((el) => [...el.classList])
+      if (lists.length === 0) return ''
+      return lists[0].filter((name) => lists.every((list) => list.includes(name))).join(' ')
+    }
+
+    /**
+     * The "附件" group, added to the `+` menu's own panel.
+     *
+     * The honest route is closed: `+` calls
+     * `inputTriggers.toggleSource('command', …)`, which seeds the menu with
+     * exactly one source, so a registered source appears when the person types
+     * `/` and never under `+`. Reported upstream; see docs/sandbox-pitfalls.md.
+     *
+     * So this puts its group INSIDE the shipped panel rather than drawing a
+     * second one above it — the person sees one card, which is what a menu is.
+     * Everything it keys on is a role or an ARIA state: the panel is
+     * `[role=listbox]`, its rows are `[role=option]`, its headings are
+     * `[role=presentation][data-source]`, and whether to appear at all comes
+     * from `aria-expanded` on the `+` button, true only for the launcher and
+     * false while the person is typing a trigger.
+     *
+     * The container goes in as the panel's first child and React renders into
+     * it through a portal — never a node moved after the fact, which is what
+     * froze the page when the attachment cards did it.
+     *
+     * @returns {object|null} the group, or nothing.
+     */
+    const PlusAttachmentGroup = () => {
+      const t = useT()
+      const [seat, setSeat] = React.useState(null)
+      const [look, setLook] = React.useState(null)
+      const held = React.useRef(null)
+      held.current ??= document.createElement('div')
+
+      React.useEffect(() => {
+        const container = held.current
+        /** The panel currently being watched for its rows arriving. */
+        const watched = { viewport: null, observer: null }
+
+        /** Stop following a panel that has gone. */
+        const unwatch = () => {
+          watched.observer?.disconnect()
+          watched.viewport = null
+          watched.observer = null
+        }
+
+        /** Find the launcher's panel and sit in it, or leave. */
+        const place = () => {
+          const launcher = document.querySelector('button[aria-haspopup="listbox"][aria-expanded="true"]')
+          const panel = launcher === null ? null : document.querySelector('[role="listbox"]')
+          // `data-source` is the shell's own marking, so this cannot pick up
+          // the heading rendered below — but the filter above is the rule, and
+          // this is the one place it is enforced by the selector instead.
+          const heading = panel?.querySelector('[role="presentation"][data-source]')
+          // The viewport is whatever holds the headings; naming it by class
+          // would be naming a hash.
+          const viewport = heading?.parentElement
+          if (viewport === undefined || viewport === null) {
+            unwatch()
+            container.remove()
+            setSeat(null)
+            return
+          }
+          // The rows arrive after the panel does — the source is asked for its
+          // candidates asynchronously, and the first frames hold a loading row
+          // instead. Measuring then yields nothing to copy, which is how the
+          // group rendered once as an unstyled button. Watching the viewport
+          // costs nothing while the menu is shut and ends when it closes.
+          if (watched.viewport !== viewport) {
+            unwatch()
+            watched.viewport = viewport
+            watched.observer = new MutationObserver(() => { place() })
+            watched.observer.observe(viewport, { childList: true })
+          }
+          if (container.parentElement !== viewport || container.previousSibling !== null) {
+            viewport.prepend(container)
+          }
+          // Everything measured has to come from the shell's own rows, never
+          // from ours: this runs again after the group is in place, and the
+          // intersection with a row of ours that has not been styled yet is
+          // empty — which is how the group rendered once as a bare button.
+          const theirs = (selector) => [...panel.querySelectorAll(selector)]
+            .filter((el) => !container.contains(el))
+          const next = {
+            heading: heading.className,
+            option: sharedClasses(theirs('[role="option"]')),
+            name: sharedClasses(theirs('[role="option"] > span:first-child')),
+            description: sharedClasses(theirs('[role="option"] > span:last-child')),
+          }
+          setSeat(container)
+          // Replaced only when it actually differs: placing the group is
+          // itself a mutation of the viewport, and a new object every time
+          // would re-render on the observation of our own work.
+          setLook((current) => (current !== null
+            && current.heading === next.heading
+            && current.option === next.option
+            && current.name === next.name
+            && current.description === next.description
+            ? current
+            : next))
+        }
+
+        // `aria-expanded` alone, not the subtree: watching childList over the
+        // document would re-run this on every token of a streaming reply, and
+        // the one signal that matters is the launcher opening or closing. The
+        // panel is built in the same gesture, sometimes a frame later, so each
+        // flip is handled now and again on the next frame.
+        const soon = () => { place(); requestAnimationFrame(place) }
+        soon()
+        const observer = new MutationObserver(soon)
+        observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['aria-expanded'] })
+        return () => {
+          observer.disconnect()
+          unwatch()
+          container.remove()
+        }
+      }, [])
+
+      // Nothing until there is something to copy: a row rendered before the
+      // shell's own have arrived is a row with no styling at all.
+      if (seat === null || look === null || look.option === '') return null
+
+      return ReactDom.createPortal(
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement('div', { className: look.heading, role: 'presentation' }, t('attach.group')),
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              role: 'option',
+              'aria-selected': false,
+              className: look.option,
+              // The composer keeps focus through its own chrome the same way.
+              onMouseDown: (event) => { event.preventDefault() },
+              onClick: () => {
+                // Closing is the launcher's own toggle: a click inside the
+                // composer area is not the outside-pointer gesture that
+                // dismisses the menu.
+                document.querySelector('button[aria-haspopup="listbox"][aria-expanded="true"]')?.click()
+                pickAndSend()
+              },
+            },
+            // The same name the `/` menu's candidate carries, because it is
+            // the same command — and because this panel is the shell's own,
+            // with the shell's commands listed under it: `compact`, `export`,
+            // `goal`. A Chinese label in that column read as a different kind
+            // of thing from its neighbours, and made the one command this
+            // deployment adds the only one nobody could type.
+            React.createElement('span', { className: look.name }, UPLOAD),
+            React.createElement('span', { className: look.description }, t('attach.item.about')),
+          ),
+        ),
+        seat,
+      )
+    }
+
+    // --------------------------------------------------------- sandbox bar --
+
+    /** How often the footer asks the sandbox how it is doing. */
+
+    /**
+     * Ring geometry matches the landing page's gauges — 32px across with a
+     * 2px band — so the status bar is glanced at rather than read.
+     */
+    const RING = { size: 32, r: 14, width: 2 }
+    const CIRCUMFERENCE = 2 * Math.PI * RING.r
+
+    /**
+     * One metric as a ring.
+     *
+     * Two circles: the track, and an arc drawn with `stroke-dasharray` — the
+     * usual way to draw a fraction of a circle without a path calculation. It
+     * starts at twelve o'clock because a gauge that starts at three reads as
+     * broken to everyone who has seen any other gauge.
+     *
+     * @param {object} props - label, fraction (0..1 or null), and the title.
+     * @returns {object} the ring.
+     */
+    const Ring = ({ label, value, title }) => {
+      const known = typeof value === 'number' && Number.isFinite(value)
+      const shown = known ? Math.min(1, Math.max(0, value)) : 0
+      // Green until it is worth noticing, then amber, then red. The thresholds
+      // are where a person would want to act, not evenly spaced.
+      const stroke = !known
+        ? 'var(--dsw-alias-border-l2, rgb(0 0 0 / 12%))'
+        : shown >= 0.9 ? 'var(--dsw-alias-state-error-primary, #ec1313)'
+          : shown >= 0.7 ? 'var(--dsw-alias-state-warn-label, #dd8629)'
+            : 'var(--dsw-alias-state-success-primary, #22c55e)'
+      return React.createElement(
+        'span',
+        { className: `${P}-ring`, title },
+        React.createElement(
+          'svg',
+          { width: RING.size, height: RING.size, viewBox: `0 0 ${String(RING.size)} ${String(RING.size)}`, 'aria-hidden': true },
+          React.createElement('circle', {
+            cx: RING.size / 2, cy: RING.size / 2, r: RING.r, fill: 'none',
+            stroke: 'var(--dsw-alias-border-l1, rgb(0 0 0 / 4%))', strokeWidth: RING.width,
+          }),
+          // Always in the tree, even before there is anything to show. An arc
+          // that appears when the first reading does appears already drawn —
+          // mounting is not a change, so there is nothing for the transition to
+          // run on. Present from the start at zero length, it grows into the
+          // first reading, which is what a gauge coming to life should look
+          // like. Hidden rather than absent while unknown, because a
+          // zero-length dash under a round cap still paints a dot.
+          React.createElement('circle', {
+            className: `${P}-ring-arc`,
+            cx: RING.size / 2, cy: RING.size / 2, r: RING.r, fill: 'none',
+            stroke, strokeWidth: RING.width, strokeLinecap: 'round',
+            strokeOpacity: known ? 1 : 0,
+            strokeDasharray: CIRCUMFERENCE,
+            strokeDashoffset: CIRCUMFERENCE * (1 - shown),
+            transform: `rotate(-90 ${String(RING.size / 2)} ${String(RING.size / 2)})`,
+          }),
+        ),
+        React.createElement('span', { className: `${P}-ring-label` }, label),
+        // Derived from the same fraction the arc is drawn from, so the number
+        // under the pointer cannot disagree with the ring around it.
+        known && React.createElement(
+          'span',
+          { className: `${P}-ring-value` },
+          `${String(Math.round(shown * 100))}%`,
+        ),
+      )
+    }
+
+    /**
+     * The sandbox's own account of itself, at the sidebar's foot.
+     *
+     * Running is not asked for and could not be answered from inside: a
+     * sandbox that is not running answers nothing, and the gateway says so
+     * with a 503. So the state is read from whether the call arrives at all —
+     * the only version of the question that is not a guess.
+     *
+     * Polled rather than pushed. A push would need a frame kind in the tunnel
+     * protocol and a gateway that holds per-tenant state; a poll costs one
+     * small round trip every few seconds and only while somebody is looking.
+     *
+     * @param {object} props - the sidebar's owner share (`wide`).
+     * @returns {object|null} the status row.
+     */
+    /**
+     * Subscribe to the sandbox's own numbers.
+     *
+     * An event stream from the gateway, which samples each sandbox once and
+     * hands the reading to everyone watching it. This replaced a poll from
+     * every open tab: the cost used to grow with tabs, which is the wrong
+     * thing for it to grow with, and it went on being paid by tabs sitting in
+     * the background with nobody looking at them.
+     *
+     * The numbers themselves now come from envd's own `/metrics` rather than
+     * from a reader inside the sandbox — the same plane the panel's files come
+     * over, and one implementation of "what is this machine doing" instead of
+     * two.
+     *
+     * `EventSource` reconnects by itself, which is what a status bar should do
+     * after the gateway restarts: come back, without anything here noticing.
+     *
+     * @returns {{status: string, stats: object|null}} the reading, as the bar draws it.
+     */
+    const useSandboxStats = () => {
+      // What is true before the first reading arrives, and it is not "unknown".
+      //
+      // Nothing is unknown here: this row is drawn by a page that has just
+      // been served to a signed-in tenant, and a tenant with a page has a
+      // sandbox being made for them — the gateway asks for one on the way in,
+      // and the first `/sandbox/stats` frame is a machine answering, not the
+      // question being put. Cold, that took a while, and the wait was spent
+      // showing a grey dot beside "Unknown": the deployment's own status bar
+      // saying it had no idea what was happening, on the one screen where
+      // somebody is waiting to find out.
+      //
+      // It is a third state rather than "starting" because they are not the
+      // same wait and the difference is the tenant's: `claiming` is nobody's
+      // machine yet, `starting` is theirs and coming up. `unknown` stays in
+      // the dictionary — the stats rows below still use it for a number that
+      // genuinely is not known.
+      const [state, setState] = React.useState({ status: 'claiming', stats: null })
+
+      React.useEffect(() => {
+        const source = new EventSource('/sandbox/stats')
+        const onMessage = (event) => {
+          let reading
+          try { reading = JSON.parse(event.data) } catch { return }
+          // Any failure means the same thing to a person: their sandbox is not
+          // answering. Which HTTP status it was is a detail for a log.
+          setState((current) => (reading.ok === true
+            ? { status: 'running', stats: reading.stats }
+            : { status: 'starting', stats: current.stats }))
+        }
+        const onError = () => {
+          setState((current) => ({ status: 'starting', stats: current.stats }))
+        }
+        source.addEventListener('message', onMessage)
+        source.addEventListener('error', onError)
+        return () => {
+          source.removeEventListener('message', onMessage)
+          source.removeEventListener('error', onError)
+          source.close()
+        }
+      }, [])
+
+      return state
+    }
+
+    /**
+     * The dot a state wears.
+     *
+     * Both waits are amber, because both are the same news to the person
+     * reading them: not yet, and nothing to do. Grey is kept for a state this
+     * bar can no longer reach — it says "no reading", and the two waits are
+     * readings.
+     *
+     * @param {string} status - the state.
+     * @returns {string} the colour.
+     */
+    const statusDot = (status) => (status === 'running'
+      ? 'var(--dsw-alias-state-success-primary, #22c55e)'
+      : status === 'starting' || status === 'claiming'
+        ? 'var(--dsw-alias-state-warn-label, #dd8629)'
+        : 'var(--dsw-alias-border-l2, rgb(0 0 0 / 25%))')
+
+    /**
+     * The dictionary key a state is said with.
+     *
+     * A table rather than a chain of conditionals, because there are two
+     * places that draw this state and a chain in each is how they came to
+     * disagree about a third one.
+     *
+     * @param {string} status - the state.
+     * @returns {string} the key.
+     */
+    const statusKey = (status) => (['running', 'starting', 'claiming'].includes(status)
+      ? `status.${status}`
+      : 'status.unknown')
+
+    const SandboxStatus = ({ wide }) => {
+      const t = useT()
+      const { status, stats } = useSandboxStats()
+      const dot = statusDot(status)
+      const text = t(statusKey(status))
+
+      const pct = (part) => (part && part.totalBytes > 0 ? part.usedBytes / part.totalBytes : null)
+      const gb = (bytes) => `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
+      const asText = (part) => (part ? `${gb(part.usedBytes)} / ${gb(part.totalBytes)}` : t('status.unknown'))
+
+      // Declared with the other hooks, above the early return below. Hooks
+      // after a conditional return are not hooks: on the render where the rail
+      // is narrow the component returns first, React counts fewer of them than
+      // last time, and the whole seat crashes with "rendered more hooks than
+      // during the previous render". That is exactly what folding the sidebar
+      // did.
+      const seat = React.useRef(null)
+
+      /**
+       * Land on the sandbox page when the panel is opened from this row.
+       *
+       * Listened for on the document in the CAPTURE phase, not with an
+       * `onClick` on the row. The shell's settings trigger — the button this
+       * seat sits inside — carries a capture listener that swallows the click
+       * before it reaches anything nested in it, so a handler on the row never
+       * ran at all. This project has met that button before: the account menu
+       * had to be moved out of it for the same reason. Capture from the
+       * document runs first, ahead of the trigger's own, so the click is seen
+       * without taking it away from the trigger that needs it.
+       */
+      React.useEffect(() => {
+        const onCapture = (event) => {
+          if (seat.current?.contains(event.target) !== true) return
+          selectSandboxPage()
+        }
+        document.addEventListener('click', onCapture, true)
+        return () => { document.removeEventListener('click', onCapture, true) }
+      }, [])
+
+      const selectSandboxPage = () => {
+        let tries = 0
+        const attempt = () => {
+          tries += 1
+          const dialog = document.querySelector('[role="dialog"]')
+          // By the marker the row renders, not by what it says: matching the
+          // visible text worked only while there was one language for it to be
+          // in.
+          const row = dialog?.querySelector('[data-dsh-section="sandbox"]')?.closest('button') ?? undefined
+          // Stop when the row is the one selected, not when it has been
+          // clicked once. A single click was the first version and it landed
+          // before the shell had settled its own initial section, which then
+          // overwrote it — the panel opened on the general page as if nothing
+          // had been asked for.
+          if (row?.getAttribute('aria-current') === 'true') return
+          row?.click()
+          if (tries < 40) window.setTimeout(attempt, 50)
+        }
+        window.setTimeout(attempt, 0)
+      }
+
+      // Nothing at all on the 56px rail. A lone dot there was the first cut,
+      // and it read as a stray mark: with no label beside it, nothing says the
+      // colour is about a sandbox, and the three rings it stood in for cannot
+      // fit at that width either. The row returns when the column does — which
+      // is also what the shell's own chrome does with everything it cannot
+      // render narrow.
+      if (!wide) return null
+
+
+      return React.createElement(
+        'div',
+        // The row is not the button — the shell's settings trigger wraps this
+        // seat, so the click that opens the panel is already on its way. All
+        // this decides is which page it lands on; see the capture listener.
+        { className: `${P}-sandbox`, ref: seat },
+        React.createElement(Style),
+        React.createElement(
+          'span',
+          { className: `${P}-sandbox-text` },
+          React.createElement('span', { className: `${P}-sandbox-title` }, t('sandbox')),
+          React.createElement(
+            'span',
+            { className: `${P}-sandbox-state` },
+            React.createElement('span', { className: `${P}-dot`, style: { background: dot } }),
+            text,
+          ),
+        ),
+        React.createElement(
+          'span',
+          { className: `${P}-rings` },
+          React.createElement(Ring, {
+            label: 'CPU',
+            value: stats?.cpu ?? null,
+            title: stats?.cpu === null || stats?.cpu === undefined
+              ? t('cpu.measuring')
+              : t(stats.cores ? 'cpu.title.cores' : 'cpu.title', {
+                percent: String(Math.round(stats.cpu * 100)),
+                cores: String(stats.cores ?? ''),
+              }),
+          }),
+          React.createElement(Ring, {
+            label: t('ring.memory'), value: pct(stats?.memory), title: t('memory.title', { value: asText(stats?.memory) }),
+          }),
+          React.createElement(Ring, {
+            label: t('ring.disk'), value: pct(stats?.disk), title: t('disk.title', { value: asText(stats?.disk) }),
+          }),
+        ),
+      )
+    }
+
+    // ------------------------------------------------------------- settings --
+
+    /**
+     * The configuration document, read rather than opened.
+     *
+     * A page rather than a header button, because the gesture changed. The
+     * shipped control hands a path to the host desktop; there is no desktop
+     * here, so what a person can actually be given is the document itself —
+     * and a document does not fit in the header's action row.
+     *
+     * Read-only on purpose. Everything the file holds is editable in the
+     * sections beside this one, and an editor here would be a second, weaker
+     * way to write the same values — one with no schema behind it.
+     *
+     * @returns {object} the page.
+     */
+    /**
+     * The sandbox, in the settings panel.
+     *
+     * The sidebar row says whether the machine is alive in the corner of a
+     * person's eye; this says what it actually is, at a size where the figures
+     * can be read rather than inferred from the fill of a 16px ring. Pressing
+     * that row is what opens this panel.
+     *
+     * Belongs to this plugin rather than to `dsh-tenant-account` by the same
+     * test as everything else here: take the gateway away and a person running
+     * dsh remotely still has a sandbox, still fills its disk, and still wants
+     * to know which of the two it is.
+     *
+     * @returns {object} the section.
+     */
+    const SandboxSection = () => {
+      const t = useT()
+      // The same subscription the sidebar row uses. Two watchers of one
+      // sandbox now cost one sample rather than two polls.
+      const state = useSandboxStats()
+
+      const { status, stats } = state
+      const secondary = { color: 'var(--dsw-alias-label-tertiary, #81858c)', fontSize: '13px' }
+      const heading = { margin: '0 0 2px', fontSize: '13px', fontWeight: 500, color: 'var(--dsw-alias-label-secondary, #4c5157)' }
+
+      const gb = (bytes) => `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
+      const ratio = (part) => (part && part.totalBytes > 0 ? part.usedBytes / part.totalBytes : null)
+
+      /**
+       * One measured figure: what it is, how much of it, and a bar.
+       *
+       * The bar is the same fact as the number beside it, not extra
+       * information — it exists so that "nearly full" is legible without
+       * reading two numbers and dividing them.
+       *
+       * @param {object} props - `label`, `value` text, and `fill` in 0..1 or null.
+       * @returns {object} the row.
+       */
+      const Meter = ({ label, value, fill }) => React.createElement(
+        'div',
+        { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+        React.createElement(
+          'div',
+          { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px' } },
+          React.createElement('span', { style: { fontSize: '13px' } }, label),
+          React.createElement(
+            'span',
+            { style: { ...secondary, fontVariantNumeric: 'tabular-nums' } },
+            value,
+          ),
+        ),
+        React.createElement(
+          'div',
+          {
+            style: {
+              height: '4px', borderRadius: '999px', overflow: 'hidden',
+              background: 'var(--dsw-alias-border-l1, rgb(0 0 0 / 6%))',
+            },
+          },
+          React.createElement('div', {
+            style: {
+              // Null reads as an empty track rather than a zero-width fill,
+              // which is the same pixels and a different claim; the figure
+              // beside it already says the measurement is not in yet.
+              width: `${String(Math.round((fill ?? 0) * 100))}%`,
+              height: '100%',
+              borderRadius: '999px',
+              background: 'var(--dsw-alias-label-primary, #1a1a1a)',
+              transition: 'width .4s ease',
+            },
+          }),
+        ),
+      )
+
+      const row = (title, body) => React.createElement(
+        'div',
+        { style: { display: 'flex', flexDirection: 'column' } },
+        React.createElement('div', { style: heading }, title),
+        body,
+      )
+
+      return React.createElement(
+        'div',
+        { style: { display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '32rem' } },
+        row(t('row.id'), React.createElement(
+          'code',
+          { style: { ...secondary, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' } },
+          stats?.id ?? t('status.unknown'),
+        )),
+        row(t('row.status'), React.createElement(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' } },
+          React.createElement('span', {
+            style: {
+              width: '6px', height: '6px', borderRadius: '50%',
+              background: statusDot(status),
+            },
+          }),
+          t(statusKey(status)),
+          // Beside the state, because anything that acts on the machine is
+          // answering the state. Empty here: ending a sandbox is the gateway's
+          // to offer, and this plugin has no gateway to ask.
+          React.createElement('span', { className: `${P}-status-extra`, style: { marginLeft: 'auto' } }),
+        )),
+        row(t('row.usage'), React.createElement(
+          'div',
+          { style: { display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '6px' } },
+          React.createElement(Meter, {
+            label: 'CPU',
+            value: stats?.cpu === null || stats?.cpu === undefined
+              ? t('measuring')
+              : t(stats.cores ? 'cpu.value.cores' : 'cpu.value', {
+                percent: String(Math.round(stats.cpu * 100)),
+                cores: String(stats.cores ?? ''),
+              }),
+            fill: stats?.cpu ?? null,
+          }),
+          React.createElement(Meter, {
+            label: t('memory'),
+            value: stats?.memory ? `${gb(stats.memory.usedBytes)} / ${gb(stats.memory.totalBytes)}` : t('status.unknown'),
+            fill: ratio(stats?.memory),
+          }),
+          React.createElement(Meter, {
+            label: t('disk'),
+            value: stats?.disk ? `${gb(stats.disk.usedBytes)} / ${gb(stats.disk.totalBytes)}` : t('status.unknown'),
+            fill: ratio(stats?.disk),
+          }),
+        )),
+        React.createElement(
+          'p',
+          { style: { ...secondary, margin: 0 } },
+          t('yours'),
+        ),
+        // A seat for whatever else a deployment has to say about this machine.
+        //
+        // Empty here, and this plugin never fills it: what goes in is the
+        // tenant's own environment, which needs a gateway, an account and a
+        // database — none of which exist when this plugin is used on its own.
+        // A deployment that has them portals into this; one that does not gets
+        // an empty div and a page that still reads correctly.
+        React.createElement('div', { className: `${P}-page-extra` }),
+      )
+    }
+
+    const ConfigurationSection = () => {
+      const t = useT()
+      const [state, setState] = React.useState({ status: 'loading' })
+
+      React.useEffect(() => {
+        let live = true
+        void call('document.read', {})
+          .then((value) => { if (live) setState({ status: 'ready', ...value }) })
+          .catch((error) => { if (live) setState({ status: 'failed', message: error.message }) })
+        return () => { live = false }
+      }, [])
+
+      const secondary = { color: 'var(--dsw-alias-label-tertiary, #81858c)', fontSize: '13px' }
+
+      if (state.status === 'loading') {
+        return React.createElement('p', { style: secondary }, t('config.reading'))
+      }
+      if (state.status === 'failed') {
+        return React.createElement('p', { style: { ...secondary, color: 'var(--dsw-alias-state-error-primary, #ec1313)' } },
+          t('config.unreadable', { message: state.message }))
+      }
+
+      return React.createElement(
+        'div',
+        { style: { display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '46rem' } },
+        React.createElement(Style),
+        React.createElement(
+          'p',
+          { style: { ...secondary, margin: 0 } },
+          t('config.where'),
+        ),
+        React.createElement(
+          'code',
+          { style: { ...secondary, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' } },
+          state.path,
+        ),
+        React.createElement('pre', { className: `${P}-document` }, state.text === '' ? t('config.empty') : state.text),
+        React.createElement(
+          'div',
+          { style: { display: 'flex', gap: '8px' } },
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              className: `${P}-button`,
+              onClick: () => { void navigator.clipboard?.writeText(state.text) },
+            },
+            t('copy'),
+          ),
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              className: `${P}-button`,
+              onClick: () => {
+                // Saved from a Blob rather than fetched from a URL: the bytes
+                // are already here, and a URL for them would be a second
+                // surface for the gateway to authenticate.
+                const url = URL.createObjectURL(new Blob([state.text], { type: 'text/plain' }))
+                const anchor = document.createElement('a')
+                anchor.href = url
+                anchor.download = state.path.split('/').pop() ?? 'settings'
+                anchor.click()
+                URL.revokeObjectURL(url)
+              },
+            },
+            t('download'),
+          ),
+        ),
+      )
+    }
+
+    // --------------------------------------------------------------- mount --
+
+    return {
+      inject: ['slots', 'connection', 'locale'],
+      /**
+       * Register the seats.
+       * @param {object} ctx - client root context.
+       */
+      apply(ctx) {
+        plugin = ctx
+
+        // Registered before any seat, because a seat may render before the
+        // effect below it has run and would then show its keys.
+        ctx.effect(
+          () => ctx.locale.register(NS, DICTIONARY),
+          'sandbox-host: dictionaries',
+        )
+
+        ctx.effect(
+          () => ctx.slots.inject('conversation.input.dock', () => ctx.slots.register(
+            { name: 'conversation.input.dock', id: 'sandbox-attachments', order: 100 },
+            AttachmentCards,
+          )),
+          'sandbox-host: attachment cards',
+        )
+
+        ctx.effect(
+          () => ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register(
+            { name: 'conversation.input.overlay', id: 'sandbox-attach-group', order: 100 },
+            PlusAttachmentGroup,
+          )),
+          'sandbox-host: attachment group spliced onto the + menu',
+        )
+
+        // The honest entry: a trigger source, so "附件" is a group beside
+        // "命令" whenever the person types `/`. Optional rather than injected
+        // at the plugin level — a composition without ui-input-trigger should
+        // lose this entry, not the uploads.
+        ctx.inject(['inputTriggers'], (triggerCtx) => {
+          triggerCtx.effect(
+            () => triggerCtx.inputTriggers.registerSource({
+              trigger: '/',
+              // The menu titles a group by looking its source name up in the
+              // shell's dictionary and returning an unknown key verbatim, so
+              // the name IS the heading.
+              name: say()('attach.group'),
+              order: 50,
+              /**
+               * The command, when the query still names it.
+               *
+               * Filtering here is not an optimisation — it is the contract.
+               * The menu asks every source for candidates and renders what
+               * comes back; nothing downstream drops a row. A source that
+               * ignores `req.query` therefore sits in the menu through every
+               * keystroke, which is what this one did: typing `/goal` left the
+               * upload row below the goal command, under a heading of its own,
+               * as though it were something `/goal` could still become.
+               *
+               * @param {object} _session - the session projection, unused.
+               * @param {{query: string}} req - the request, for its query.
+               * @returns {Promise<Array<object>>} the command, or nothing.
+               */
+              candidates: (_session, req) => Promise.resolve(named(req.query)
+                ? [{ name: UPLOAD, description: say()('attach.item.about') }]
+                : []),
+              /**
+               * Open the picker, and clear the trigger token.
+               * @returns {{text: string}} the token's replacement.
+               */
+              onPick: () => {
+                pickAndSend()
+                // Not 'handled': that outcome leaves the `/` the person typed
+                // sitting in the draft, because nothing consumes the span.
+                return { text: '' }
+              },
+            }),
+            'sandbox-host: attachment trigger source',
+          )
+        })
+
+        // Beside the settings control at the sidebar's foot. A list slot, so
+        // this adds a row rather than replacing anything.
+        ctx.effect(
+          () => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register(
+            { name: 'sidebar.footer.action', id: 'sandbox-status', order: 100 },
+            SandboxStatus,
+          )),
+          'sandbox-host: sandbox status row',
+        )
+
+        ctx.effect(
+          () => ctx.slots.inject('settings.section', () => ctx.slots.register(
+            {
+              name: 'settings.section',
+              id: 'configuration',
+              order: 890,
+              label: navLabel('configuration', 'configuration'),
+            },
+            ConfigurationSection,
+          )),
+          'sandbox-host: settings configuration section',
+        )
+
+        // Before the configuration page and before the account: what the
+        // machine IS comes ahead of what is written on it.
+        ctx.effect(
+          () => ctx.slots.inject('settings.section', () => ctx.slots.register(
+            {
+              name: 'settings.section',
+              id: 'sandbox',
+              order: 880,
+              // A cube: an isolated unit that is one tenant's, which is what a sandbox
+              // is here. The box it replaced read as a storage tray — it said
+              // "things are kept in this" where the page says "this is a machine",
+              // and every other glyph in that column is a rounded rectangle, so the
+              // one shape that is not is also the easiest to pick out.
+              label: navLabel('sandbox', 'sandbox'),
+            },
+            SandboxSection,
+          )),
+          'sandbox-host: settings sandbox section',
+        )
+
+        // The header action seat, left empty because its capability moved to
+        // the page above — not because the control was inconvenient.
+        //
+        // `settings.openDocument` prepares the document and hands the path to
+        // the host desktop. dsh knows there is no desktop here (`host.describe`
+        // reports `canOpenPath: false`), but this control does not consult that
+        // — it gates on `settings.describe().hasDocument`, which reports
+        // whether the file EXISTS. It always does, so the button always shows,
+        // and every click ends in "Could not open configuration file".
+        //
+        // That mismatch is upstream's; see the limitation in
+        // docs/sandbox-pitfalls.md. What belongs here is a deployment that does
+        // not offer a gesture it cannot perform, and does offer the one it can.
+        //
+        // `priority`, not `order`: order is nav position within a cell, while
+        // priority is the cell's shadowing rank — ascending, lowest renders,
+        // and a second registration at the same id and priority throws rather
+        // than silently winning.
+        ctx.effect(
+          () => ctx.slots.inject('settings.action', () => ctx.slots.register(
+            { name: 'settings.action', id: 'open-document', priority: -1 },
+            // Nothing to see, and one thing to say: this seat renders exactly
+            // when the settings panel is open, which is when the nav rule has
+            // to be in force. It cannot ride in the label — a style tag there
+            // lands in the nav cell's accessible name.
+            () => React.createElement('style', null, NAV_GLYPH_CSS),
+          )),
+          'sandbox-host: relocate the open-document action, and carry the nav rule',
+        )
+      },
+    }
+  },
+})

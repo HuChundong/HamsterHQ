@@ -1,0 +1,18 @@
+{
+  "name": "dsh-sandbox-host",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Adapts dsh to a host the person using it cannot reach: the file plane, and the surfaces that assume the browser and the backend share a machine.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": ["slots", "connection"],
+      "platform": "web"
+    }
+  }
+}
