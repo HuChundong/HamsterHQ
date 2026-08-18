@@ -1,0 +1,97 @@
+# The model this deployment serves, as the sandbox's own default.
+#
+# A SECOND patch layer, applied only when the deployment has named a model —
+# the entrypoint adds it to the `--patch` list when `MODEL_PROVIDER_ID` is set,
+# and leaves it out otherwise. That is not a style choice. A patch entry
+# REPLACES the config it names rather than merging into it, so this layer
+# applied with nothing configured would overwrite the harness's own default
+# provider and model with nothing, and the entry it overwrote requires a
+# provider: the backend fails to boot, on a checkout whose only mistake was not
+# having a model yet. It did, and the message named a validation error inside
+# a plugin nobody here had heard of.
+#
+# So there is no "empty" form of this file. It says what a configured
+# deployment wants, and a deployment that has configured nothing never applies
+# it and comes up on whatever the harness would have come up on.
+
+# Which provider the models actually come from.
+#
+# The harness composes two LLM adapters and mounts the multi-provider one
+# DORMANT: `llm-pi-ai` registers no routes at all until something supplies
+# provider profiles, and the shipped default therefore falls through to
+# `llm-deepseek`, which speaks DeepSeek's own wire protocol. That is the wrong
+# protocol for this deployment's endpoint, and the symptom was not a connection
+# error but a stream whose tool calls arrived without ids or names — the agent
+# answering `unknown tool ""` to a tool it had just been told about.
+#
+# So the profile is supplied here, built from what the deployment says its
+# model is. Every field comes from the environment and none of it is written
+# down: this project ships the shape, and which endpoint, which model and which
+# compatibility switches fill it are one deployment's answer that another
+# deployment must be able to give differently.
+#
+# `MODEL_API_KEY` is a reference and not the secret. Under CubeSandbox the
+# sandbox holds `injected-by-egress-policy` under that name and CubeEgress puts
+# the real key on the request as it leaves, so the credential never enters a
+# machine the tenant is root on.
+#
+# The name is the deployment's own and deliberately not a provider's. When this
+# was `DEEPSEEK_*`, the deployment's endpoint and key sat on the names DeepSeek's
+# own adapter reads — so a tenant who wanted to spend their own DeepSeek key on
+# DeepSeek's own endpoint had nowhere to put it. These names collide with
+# nobody, which leaves every provider free for the tenant, including that one.
+#
+# A tenant's own settings document still wins. This is the default a sandbox
+# starts with, not a ceiling: the Models page writes `llm-pi-ai:` into
+# `$DSH_HOME/settings.yaml`, which is on their volume and overrides this
+# without a restart.
+- id: llm-pi-ai
+  config:
+    # One route, described by the deployment. `MODEL_API` is the wire protocol
+    # — the thing that cannot be guessed from a URL, and guessing it wrong is
+    # not a connection error but a stream whose tool calls arrive with no id
+    # and no name, and an agent answering `unknown tool ""` to a tool it was
+    # just told about.
+    #
+    # The parentheses around the object are load-bearing. The value is
+    # evaluated as a statement, so a leading `{` opens a BLOCK rather than an
+    # object literal, and the first key's colon is then a syntax error — which
+    # is a sandbox whose backend does not boot at all. The expression this
+    # replaced was a ternary, so it happened to start with an identifier and
+    # never met the problem.
+    #
+    # `MODEL_COMPAT` carries the switches an OpenAI-compatible endpoint needs
+    # and pi-ai cannot infer: which field the output cap is read from, whether
+    # the system prompt may travel as `developer`, how a thinking level is
+    # dispatched. It is JSON because it is a set that grows, and a variable per
+    # switch would be a new variable in three files every time it does.
+    #
+    providers: !!js >-
+      ({ [process.env.MODEL_PROVIDER_ID]: {
+          api: process.env.MODEL_API || 'openai-completions',
+          displayName: process.env.MODEL_PROVIDER_NAME || process.env.MODEL_PROVIDER_ID,
+          baseURL: process.env.MODEL_BASE_URL,
+          apiKeyEnv: 'MODEL_API_KEY',
+          ...(process.env.MODEL_COMPAT ? { compat: JSON.parse(process.env.MODEL_COMPAT) } : {}),
+          models: [{
+            id: process.env.MODEL_ID,
+            name: process.env.MODEL_NAME || process.env.MODEL_ID,
+            ...(process.env.MODEL_REASONING_EFFORTS
+              ? { reasoningEfforts: Object.fromEntries(
+                    process.env.MODEL_REASONING_EFFORTS.split(",")
+                      .map((level) => level.trim()).filter(Boolean)
+                      .map((level) => [level, level])) }
+              : {})
+          }]
+        } })
+
+# The model a new session starts on: this deployment's own.
+- id: agent-default-model
+  config:
+    provider: !!js "process.env.MODEL_PROVIDER_ID"
+    model: !!js "process.env.MODEL_ID"
+    # Stated, because leaving it out is not "the model's own default" — the
+    # setting simply goes missing, and a session starts at whatever the route
+    # falls back to. The picker still moves it per session; this is only where
+    # a new one begins.
+    reasoningEffort: !!js "process.env.MODEL_DEFAULT_EFFORT || undefined"
