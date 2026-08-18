@@ -1,0 +1,307 @@
+# Local multi-tenant deployment, built from this checkout.
+#
+# Every image is a target of Dockerfile with the repository root as its
+# build context, so the harness these containers run is the one in the working
+# tree rather than a published release.
+#
+# Only the gateway publishes a port. The web container is reached by proxy and
+# sandboxes are reached only by the tunnels they dial, so neither is addressable
+# from the host — the same reachability the real deployment will have.
+
+name: hamsterhq
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+      # Every argument the *sandbox* stage takes, not only the ones this target
+      # names: `shell` is `FROM sandbox`, so building web builds that stage too.
+      # PyPI's was missing here, and the result was a web build that reached the
+      # public index while the sandbox build beside it used the mirror — one of
+      # them timing out on files.pythonhosted.org for no visible reason.
+      args:
+        DSH_VERSION:
+        APT_MIRROR: ${APT_MIRROR:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        # Valueless on purpose: unset, the Dockerfile's own full list stands.
+        AGENT_PYTHON_PACKAGES:
+        TZ: ${DEPLOYMENT_TZ:-UTC}
+    image: hamsterhq-web:latest
+    # The user-facing entry: static bytes are answered here from disk, and only
+    # the session-bearing surface is proxied to the gateway.
+    #
+    # Two ports for one site. Browsers must use the TLS one: the client plugins
+    # call `crypto.randomUUID`, which a page served over plain HTTP to anything
+    # but localhost does not have. The plain port stays for tooling that has no
+    # reason to care.
+    #
+    # `TLS_BIND` names the interface to publish on. It exists because a host
+    # already running something on the TLS port — CubeSandbox's own proxy binds
+    # 8443 on its sandbox network — leaves that port free on every other
+    # interface, and binding the one that is actually used is better than
+    # moving to a port nobody expects.
+    ports:
+      - "${GATEWAY_PORT:-8080}:80"
+      - "${TLS_BIND:-0.0.0.0}:${GATEWAY_TLS_PORT:-8443}:443"
+    environment:
+      # Every address this deployment is reached by. A browser rejects outright
+      # — with no warning to click through — a certificate that does not name
+      # the address in the URL bar.
+      TLS_SAN: ${TLS_SAN:-DNS:localhost,IP:127.0.0.1}
+      # The HTTPS port visitors type, which is the published one and not the
+      # 443 nginx listens on inside the container. Setting it makes the plain
+      # port redirect there; leaving it unset keeps the plain port serving the
+      # site, which is what a localhost deployment wants — `crypto.randomUUID`
+      # is available over plain HTTP to localhost, so there is nothing to
+      # redirect for, and a self-signed certificate would only add a warning.
+      HTTPS_PORT: ${PUBLIC_HTTPS_PORT:-}
+      # The name the operator's console answers on. Unset means it is not
+      # published at all — the vhost is not written and nginx serves no such
+      # server, which is the right default for a deployment that has not
+      # decided to put a console on the internet.
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-}
+      ADMIN_TLS_CERT: ${ADMIN_TLS_CERT:-}
+      ADMIN_TLS_KEY: ${ADMIN_TLS_KEY:-}
+    volumes:
+      # Keeps the generated certificate across a recreate, so returning
+      # browsers do not meet a new one every time. Mount a real certificate
+      # here to replace it.
+      - web-tls:/etc/nginx/tls
+    depends_on: [gateway]
+    networks: [hamsterhq-net]
+    restart: unless-stopped
+
+  # The deployment's one store: accounts, invites, refresh tokens, and the
+  # sign-in codes that are outstanding right now. The gateway keeps no disk state
+  # of its own, and none of this may be lost — losing an account is losing a
+  # tenant's workspace with it, since the workspace is named by the account's id.
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dsh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set a database password}
+      POSTGRES_DB: ${POSTGRES_DB:-dsh}
+    # Published on loopback only. The JuiceFS clients that hold tenant volumes
+    # run on the host rather than in this network, and their metadata is here —
+    # a filesystem whose metadata it cannot reach answers EIO to everything.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # The gateway applies its schema on boot and fails if it cannot, so waiting
+    # for the database to accept connections turns a restart race into a slower
+    # start rather than a crash loop.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dsh} -d ${POSTGRES_DB:-dsh}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [hamsterhq-net]
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gateway
+      args:
+        DSH_VERSION:
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+    image: hamsterhq-gateway:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Which runtime provides a tenant's machine. `cube` is CubeSandbox, the
+      # real one; `docker` is the simulation a laptop can run.
+      # The clock the console renders times in. Server-rendered, so without it
+      # an administrator reads every timestamp in UTC while the sandboxes it
+      # lists run on the deployment's own time.
+      TZ: ${DEPLOYMENT_TZ:-UTC}
+      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-docker}
+      SANDBOX_IMAGE: hamsterhq-sandbox:latest
+      SANDBOX_NETWORK: ${COMPOSE_NETWORK:-hamsterhq_hamsterhq-net}
+      CUBE_API_URL: ${CUBE_API_URL:-http://127.0.0.1:3000}
+      CUBE_API_KEY: ${CUBE_API_KEY:-e2b_000000}
+      CUBE_TEMPLATE_ID: ${CUBE_TEMPLATE_ID:-hamsterhq-sandbox}
+      GATEWAY_TUNNEL_URL: ws://gateway:8080/_tunnel
+      # Signs the access tokens. Changing it invalidates every one in
+      # circulation, which signs everyone out until their browser refreshes.
+      SESSION_SECRET: ${SESSION_SECRET}
+      # The addresses that reach the user console — named by the operator,
+      # because "whoever registers first is in charge" is a race the sign-up
+      # page cannot arbitrate.
+      GATEWAY_ADMINS: ${GATEWAY_ADMINS:-}
+      # Mailing the sign-in code is the whole of authentication here, so a
+      # deployment without a credential refuses to start.
+      RESEND_API_KEY: ${RESEND_API_KEY:?set to a Resend API key; without it nobody can sign in}
+      # Must be at a domain verified with Resend. Its shared sender works
+      # without verification but only delivers to the Resend account's owner.
+      EMAIL_FROM: ${EMAIL_FROM:-onboarding@resend.dev}
+      EMAIL_PRODUCT_NAME: ${EMAIL_PRODUCT_NAME:-DSH}
+      # Where a message is handed over. Empty everywhere that serves real
+      # people, which is what makes the default — Resend — the only postman
+      # they have. Set it to the development mailbox below and mail arrives on
+      # this machine instead; nothing else about signing in changes.
+      EMAIL_API_URL: ${EMAIL_API_URL:-}
+      # What the operator's console presents when it reports an account change.
+      # Unset means every such call is refused, which is the safe default for a
+      # deployment that has not deployed a console.
+      INTERNAL_SHARED_SECRET: ${INTERNAL_SHARED_SECRET:-}
+      REFRESH_TTL_SECONDS: ${REFRESH_TTL_SECONDS:-2592000}
+      # Whether an invite is needed to register. `open` lets anyone who can
+      # receive mail in, which is what a deployment on a reachable address
+      # should not be. Both this and the ceiling below are what the deployment
+      # starts from: the administrator's console stores its own answer, and
+      # that one wins.
+      REGISTRATION: ${REGISTRATION:-invite}
+      # The most sandboxes that may run at once; 0 is no ceiling. Every live
+      # sandbox is memory and a volume on this host, so this is the number that
+      # host can carry — a sign-in that would exceed it is refused rather than
+      # discovered as an out-of-memory kill.
+      SANDBOX_LIMIT: ${SANDBOX_LIMIT:-0}
+      # The address the deployment's own policy pages tell tenants to write to.
+      # Empty falls back to the first GATEWAY_ADMINS entry, and the contact
+      # section is simply omitted when there is neither.
+      POLICY_CONTACT: ${POLICY_CONTACT:-}
+      DATABASE_URL: postgres://${POSTGRES_USER:-dsh}:${POSTGRES_PASSWORD:?set a database password}@postgres:5432/${POSTGRES_DB:-dsh}
+      # This deployment's own model route. Named for what it is to this
+      # deployment rather than for whoever serves it: a provider's own names
+      # belong to the tenant, who may want to spend their own key with that
+      # provider, and two things on one name is one thing nobody can set.
+      #
+      # `MODEL_BASE_URL` is also the egress anchor — the host the credential
+      # injection rule is scoped to — so it is the deployment's endpoint and
+      # never a tenant's.
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      # What the sandbox declares as its default provider and model. Shape
+      # here, answers in the deployment's own .env: another deployment says
+      # something else and nothing in this file changes.
+      MODEL_PROVIDER_ID: ${MODEL_PROVIDER_ID:-}
+      MODEL_PROVIDER_NAME: ${MODEL_PROVIDER_NAME:-}
+      MODEL_API: ${MODEL_API:-}
+      MODEL_ID: ${MODEL_ID:-}
+      MODEL_NAME: ${MODEL_NAME:-}
+      MODEL_COMPAT: ${MODEL_COMPAT:-}
+      MODEL_REASONING_EFFORTS: ${MODEL_REASONING_EFFORTS:-}
+      MODEL_DEFAULT_EFFORT: ${MODEL_DEFAULT_EFFORT:-}
+      SANDBOX_IDLE_TTL_MS: ${SANDBOX_IDLE_TTL_MS:-1800000}
+    volumes:
+      # The gateway starts one container per tenant, so it needs the Engine
+      # socket. This is host-root-equivalent access: it is why the gateway holds
+      # no tenant code and does nothing an authenticated request can steer
+      # beyond starting that tenant's own sandbox.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [hamsterhq-net]
+    restart: unless-stopped
+
+  # Built, never run by compose: the gateway starts one of these per tenant
+  # through the Engine API. The `build` profile keeps `compose up` from
+  # launching an ownerless sandbox.
+  sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: sandbox
+      args:
+        DSH_VERSION:
+        APT_MIRROR: ${APT_MIRROR:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        AGENT_PYTHON_PACKAGES:
+        TZ: ${DEPLOYMENT_TZ:-UTC}
+    image: hamsterhq-sandbox:latest
+    profiles: [build]
+    networks: [hamsterhq-net]
+
+  # The operator's console, deployed apart from everything a tenant reaches.
+  #
+  # Bound to loopback, and that is the point rather than a default to relax: one
+  # credential here opens every account and rotates the model key every tenant's
+  # agent calls with. A password is a lock on a door; this door should not be on
+  # a public street. Publish it through whatever reaches the office — a VPN, an
+  # SSH tunnel, a reverse proxy on an internal name — and never by widening this
+  # line.
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: admin
+      args:
+        DSH_VERSION:
+    image: hamsterhq-admin:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-dsh}:${POSTGRES_PASSWORD:?set a database password}@postgres:5432/${POSTGRES_DB:-dsh}
+      # The same values the gateway is given, defaults included, and that is
+      # the requirement rather than a tidiness: these two services interpret
+      # the same variables, and one that saw a different value would report a
+      # setting the other does not enforce.
+      #
+      # The console reports what is in force, and the deployment's own
+      # variables are half of that.
+      # A settings row wins over these; with no row, this is what a sandbox
+      # actually gets — and a console that could not see them reported "not
+      # set" for a credential that was working.
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      REGISTRATION: ${REGISTRATION:-invite}
+      SANDBOX_LIMIT: ${SANDBOX_LIMIT:-0}
+      # Read to mark which accounts the deployment names. It grants nothing
+      # here — this console is reached with the credential below and not by
+      # being on that list.
+      GATEWAY_ADMINS: ${GATEWAY_ADMINS:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      # Produced by `node admin/hash-password.mjs`. Without it the service
+      # refuses to start, rather than starting with a default — which is a
+      # published password.
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:-}
+      # How it tells the gateway about an account it changed. Both halves empty
+      # means it tells nothing and the gateway reaches the same state on its
+      # own, more slowly.
+      GATEWAY_INTERNAL_URL: ${GATEWAY_INTERNAL_URL:-http://gateway:8080}
+      INTERNAL_SHARED_SECRET: ${INTERNAL_SHARED_SECRET:-}
+    ports:
+      - "127.0.0.1:8091:8091"
+    restart: unless-stopped
+    networks: [hamsterhq-net]
+
+  # A place for a sign-in code to land while developing.
+  #
+  # Behind a profile, so it takes `--profile dev` to exist at all: a mailbox
+  # that prints verification codes has to be something an operator started on
+  # purpose, never something that comes up with the deployment.
+  #
+  # No build and no image of its own — the file is mounted into a stock node.
+  # It has no dependencies, and keeping it out of the built images is what
+  # makes it impossible to ship one by accident.
+  mailbox:
+    image: node:24-alpine
+    command: node /srv/mailbox.mjs
+    volumes:
+      - ./dev/mailbox.mjs:/srv/mailbox.mjs:ro
+    environment:
+      PORT: 8025
+    ports:
+      # Loopback, not every interface. The rest of this file publishes broadly
+      # because a deployment is meant to be reached; this one is meant to be
+      # reached by the person sitting at the machine.
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+    profiles: [dev]
+    networks: [hamsterhq-net]
+
+volumes:
+  postgres-data:
+  web-tls:
+
+networks:
+  hamsterhq-net:
+    name: ${COMPOSE_NETWORK:-hamsterhq_hamsterhq-net}
