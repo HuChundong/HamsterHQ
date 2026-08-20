@@ -1,0 +1,535 @@
+<!doctype html>
+<!--
+  The public face of a deployment, and the project's own page.
+
+  Three files, built by vite: this document, `styles.css`, and `main.js`, which
+  carries both languages. `npm run dev` in this directory serves it with the
+  marks and fonts resolved; `scripts/landing-preview.sh` is the same thing from
+  the repository root.
+
+  The page opens as the product rather than as an argument about it: the first
+  screen is the workspace a visitor gets after signing in, rendered here as a
+  still. The headline over it names the category — a computer built for an
+  agent — rather than the deployment fact it used to name, because "DSH, hosted
+  in the cloud" answers a question only someone who already knows DSH is asking.
+  Which harness runs on it is the line underneath. Everything in that still is a link to /login — there is nothing to type
+  into and nothing that pretends to answer, because a composer that swallows a
+  sentence and then asks you to sign in has wasted the sentence.
+
+  Below it, the order a reader needs: what they can ship, what the machine
+  behind it is, what it costs, and how to get one. One word for that machine,
+  and it is "sandbox": the headline names it, the section is called it, and the
+  only thing still called a computer is the reader's own — which is the
+  contrast the page is making. Technology stays in docs/design.md. The header
+  is ours and stays ours: this project is open source and that is the
+  difference worth leading with, so the repository sits in the top bar rather
+  than in a footer column.
+
+  Every line of copy on this page is this project's own. Section order is a
+  layout decision and nobody owns one; a sentence is not, so none is borrowed
+  from anywhere — see the note above the T table in main.js.
+
+  NOTHING ON THIS PAGE MAY MOVE AFTER IT IS PAINTED:
+    - the workspace still has a fixed height, so it cannot settle as it loads;
+    - the two install blocks are stacked in one grid cell, so switching tabs
+      cannot change the card's height;
+    - every image declares width and height;
+    - `font-display: optional` — the faces are preloaded and normally arrive in
+      time, and on a slow first load the page keeps the fallback rather than
+      reflowing halfway through being read;
+    - `scrollbar-gutter: stable`.
+
+  Two constraints shaped the rest.
+
+  It is served twice from the same bytes: as the project page on GitHub Pages,
+  where it sits at the site root, and inside the web image at `/`, where an
+  anonymous visitor is shown it rather than redirected to it. So every asset
+  reference is relative — `base: './'` — and every link into the application is
+  absolute. The marks are the gateway's, named here at their real path, so
+  there is one copy of each in the tree rather than one per page that shows
+  them.
+
+  And it reaches no other host. The three faces are in `fonts/`, latin subsets,
+  72 KB together: this deployment runs on laptops and on private networks,
+  where a request to a font CDN is not slow but unanswered.
+
+  Both languages live in the `T` table in `main.js`, one line per string.
+  `scripts/check-landing.mjs` asserts all of the above.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HamsterHQ — Everything is a plugin</title>
+<meta name="description" content="DeepSeek Harness, hosted: an account, a machine of its own, and the model already configured. Run it in our cloud or inside your own network. Open source, free to start.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="../../gateway/assets/favicon.svg">
+<link rel="preload" href="fonts/host-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/fragment-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+<script>
+  // Before the stylesheet, and not a module: a deferred script runs after first
+  // paint, which on a page someone chose to read dark is a white flash. The
+  // attribute is set only when a choice exists, so a visitor who has made none
+  // keeps following their system. Same key as the sign-in page, so the choice
+  // carries across the two.
+  (function () {
+    try {
+      var saved = localStorage.getItem('dsh-theme')
+      if (saved === 'dark' || saved === 'light') document.documentElement.dataset.theme = saved
+    } catch (error) { /* storage can be denied outright; a theme is not worth failing the page over */ }
+  })()
+</script>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<canvas class="field" data-ground aria-hidden="true"></canvas>
+
+<header class="top">
+  <div class="rail">
+    <div class="capsule">
+      <a class="brand" href="./"><img src="../../gateway/assets/hamster.svg" alt="" width="33" height="22"><span class="word">Hamster<span class="word-hq">HQ</span></span></a>
+      <span class="chip" data-t="nav.chip">Open source · MIT</span>
+      <span class="spacer"></span>
+      <nav>
+        <a href="#work" data-t="nav.work">Work</a>
+        <a href="#sandbox" data-t="nav.sandbox">The sandbox</a>
+        <a href="#plans" data-t="nav.plans">Plans</a>
+        <a href="#run" data-t="nav.run">Get started</a>
+      </nav>
+      <a class="btn btn-ghost btn-sm" href="https://github.com/HuChundong/HamsterHQ">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38l-.01-1.49c-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48l-.01 2.19c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
+        <span class="gh-label">GitHub</span>
+      </a>
+      <div class="lang">
+        <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      </div>
+      <button type="button" class="theme" id="theme" data-ta="nav.theme" aria-label="Switch between light and dark">
+        <i data-icon="light" class="sun"></i>
+        <i data-icon="dark" class="moon"></i>
+      </button>
+      <a class="btn btn-primary btn-sm" href="/login" data-t="nav.cta">Start free</a>
+    </div>
+  </div>
+</header>
+
+<section class="stage">
+  <div class="glow" aria-hidden="true"></div>
+  <div class="rail">
+
+    <div class="headline">
+      <h1 data-t="hero.h1">Everything is a plugin, build your agent</h1>
+      <!--
+        Attribution, not co-branding. It names the harness this runs on, links
+        to it, and is set small enough that nobody could read it as a joint
+        product: DeepSeek's guidelines allow describing the relationship
+        truthfully and ask projects not to present their materials as their
+        own, and the difference between those two is entirely one of size and
+        placement.
+      -->
+      <a class="built" href="https://github.com/deepseek-ai/deepseek-harness">
+        <img class="mark" src="../../gateway/assets/mark.svg" alt="" width="17" height="17">
+        <span data-t="hero.built">Built on DeepSeek Harness</span>
+      </a>
+    </div>
+
+    <div class="app">
+      <aside class="app-side" aria-hidden="true">
+        <div class="top"><img src="../../gateway/assets/hamster.svg" alt="" width="27" height="18"><span class="word">Hamster<span class="word-hq">HQ</span></span></div>
+        <div class="app-new">
+          <i data-icon="new-chat" data-size="14"></i>
+          <span data-t="app.new">New session</span>
+        </div>
+        <div class="app-label"><span data-t="app.workspace">Workspace</span></div>
+        <div class="app-item">
+          <i data-icon="folder-open" data-size="14"></i>
+          DSH
+        </div>
+        <div class="app-item nested on" data-t="app.session">New session</div>
+        <div class="fill"></div>
+        <div class="app-foot">
+          <div class="app-sandbox">
+            <div class="state">
+              <b data-t="app.sandbox">Sandbox</b>
+              <span><i class="dot"></i><span data-t="app.running">Running</span></span>
+            </div>
+            <div class="gauges">
+              <span class="gauge" style="--v:.17"><span>CPU</span></span>
+              <span class="gauge" style="--v:.31"><span data-t="app.mem">MEM</span></span>
+              <span class="gauge" style="--v:.12"><span data-t="app.disk">DISK</span></span>
+            </div>
+          </div>
+          <div class="app-user">
+            <img class="face" src="avatar.webp" alt="" width="26" height="26">
+            <span class="who"><b data-t="app.name">hammy</b><span data-t="app.plan">Free plan</span></span>
+          </div>
+        </div>
+      </aside>
+
+      <div class="app-main">
+        <div class="app-centre">
+          <div class="app-greet">
+            <img src="../../gateway/assets/hamster.svg" alt="" width="36" height="24">
+            <span class="said" data-t="app.greet">What are we building today?</span>
+          </div>
+
+          <form class="composer" action="/login" method="get">
+            <textarea class="ask" rows="2" data-tp="app.ask" placeholder="Describe what you want to build" aria-label="Describe what you want to build"></textarea>
+            <div class="row">
+              <i data-icon="plus"></i>
+              <i data-icon="shield"></i>
+              <span class="meta" data-t="app.access">Full access</span>
+              <span class="push meta" data-t="app.model">DeepSeek-V4-Pro · High</span>
+              <button class="send" type="submit" data-ta="app.send" aria-label="Send"><i data-icon="send"></i></button>
+            </div>
+          </form>
+
+          <div class="suggestions">
+            <a href="/login" data-t="app.s1">Build a website</a>
+            <a href="/login" data-t="app.s2">Research a topic</a>
+            <a href="/login" data-t="app.s3">Clean up a dataset</a>
+            <a href="/login" data-t="app.s4">Ship a script</a>
+            <a href="/login" data-t="app.s5">Read a repository</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="under">
+      <div class="cta">
+        <a class="btn btn-primary" href="/login" data-t="hero.cta1">Start free</a>
+        <a class="btn btn-ghost" href="https://github.com/HuChundong/HamsterHQ" data-t="hero.cta2">Read the source</a>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section class="band" id="work">
+  <div class="rail">
+    <h2 data-t="work.h2">The DSH you already know</h2>
+    <p class="lede" data-t="work.lede">The experience does not change — only where it runs.</p>
+
+    <div class="works">
+      <a class="work" href="/login">
+        <div class="work-preview" aria-hidden="true">
+          <img src="images/work-build.webp" alt="" width="1280" height="853" loading="lazy" decoding="async" style="--focal: 50% 48%">
+        </div>
+        <div class="work-meta">
+          <p class="en">Build</p>
+          <h3 data-t="work.w1h">Product launch landing page</h3>
+          <p data-t="work.w1b">From a sentence to pages you can open.</p>
+        </div>
+      </a>
+      <a class="work" href="/login">
+        <div class="work-preview" aria-hidden="true">
+          <img src="images/work-research.webp" alt="" width="1280" height="853" loading="lazy" decoding="async" style="--focal: 50% 50%">
+        </div>
+        <div class="work-meta">
+          <p class="en">Research</p>
+          <h3 data-t="work.w2h">Competitive research brief</h3>
+          <p data-t="work.w2b">Sources, notes, and a write-up you can send.</p>
+        </div>
+      </a>
+      <a class="work" href="/login">
+        <div class="work-preview" aria-hidden="true">
+          <img src="images/work-data.webp" alt="" width="1280" height="720" loading="lazy" decoding="async" style="--focal: 50% 51%">
+        </div>
+        <div class="work-meta">
+          <p class="en">Data</p>
+          <h3 data-t="work.w3h">Weekly sales table, cleaned</h3>
+          <p data-t="work.w3b">Clean, join, export. The files stay in the sandbox.</p>
+        </div>
+      </a>
+      <a class="work" href="/login">
+        <div class="work-preview" aria-hidden="true">
+          <img src="images/work-scripts.webp" alt="" width="1280" height="853" loading="lazy" decoding="async" style="--focal: 50% 53%">
+        </div>
+        <div class="work-meta">
+          <p class="en">Scripts</p>
+          <h3 data-t="work.w4h">A nightly report that runs</h3>
+          <p data-t="work.w4b">Install, build, run — on the same machine.</p>
+        </div>
+      </a>
+      <a class="work" href="/login">
+        <div class="work-preview" aria-hidden="true">
+          <img src="images/work-repo.webp" alt="" width="1280" height="698" loading="lazy" decoding="async" style="--focal: 50% 49%">
+        </div>
+        <div class="work-meta">
+          <p class="en">Repos</p>
+          <h3 data-t="work.w5h">Read a repository</h3>
+          <p data-t="work.w5b">Clone, search, patch.</p>
+        </div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="sandbox">
+  <div class="rail">
+    <h2 data-t="value.h2">Everyone gets a sandbox.</h2>
+    <p class="lede" data-t="value.lede">One per account: a shell, a filesystem, a network. Close your laptop — it keeps working.</p>
+
+    <div class="quad">
+      <div class="card">
+        <p class="en">Same DSH</p>
+        <h3 data-t="value.c1h">Same DSH</h3>
+        <p class="body" data-t="value.c1b">The interface you already know.</p>
+      </div>
+      <div class="card">
+        <p class="en">Pluggable runtime</p>
+        <h3 data-t="value.c2h">Swap what it runs on</h3>
+        <p class="body" data-t="value.c2b">Docker or CubeSandbox, over an E2B-compatible API.</p>
+      </div>
+      <div class="card">
+        <p class="en">Not your own machine</p>
+        <h3 data-t="value.c3h">Not your laptop</h3>
+        <p class="body" data-t="value.c3b">Keeps working even when your computer is off.</p>
+      </div>
+      <div class="card">
+        <p class="en">Models included</p>
+        <h3 data-t="value.c4h">Models, ready to go</h3>
+        <p class="body" data-t="value.c4b">Configured already. Or bring your own key.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!--
+  The trust section, which carries no numbers.
+
+  Every page in this category puts a row of counts here — models, users,
+  countries. This deployment has none it could state truthfully: it runs on
+  whatever hardware an operator gave it, so any figure would be either
+  someone else's or invented. What it has instead is that each line below
+  names something the reader can go and read, which is a kind of proof a
+  closed product cannot offer at all.
+
+  Not cards. The four bands above are cards already, and a fifth set of them
+  would read as more of the same rather than as a different KIND of claim —
+  so these are ruled columns, lighter than what is above them.
+-->
+<section class="band" id="proof">
+  <div class="rail">
+    <h2 data-t="proof.h2">Every claim here can be checked</h2>
+    <p class="lede" data-t="proof.lede">This project is open source, so each of the following can be traced to the code that makes it true.</p>
+
+    <div class="proof">
+      <div class="claim">
+        <p class="en">MIT</p>
+        <h3 data-t="proof.c1h">Open source, in full</h3>
+        <p class="body" data-t="proof.c1b">Authentication, isolation, reclamation — every line of it is public. Nothing is described only in the documentation.</p>
+      </div>
+      <div class="claim">
+        <p class="en">Isolation</p>
+        <h3 data-t="proof.c2h">Isolation is machine isolation</h3>
+        <p class="body" data-t="proof.c2b">One machine per account: a microVM under CubeSandbox, a container under Docker. Never two tenants inside one process.</p>
+      </div>
+      <div class="claim">
+        <p class="en">Credentials</p>
+        <h3 data-t="proof.c3h">The model credential stays out</h3>
+        <p class="body" data-t="proof.c3b">On runtimes that support it, the sandbox holds a placeholder and the real key is substituted as the request leaves. Prompt injection cannot reach what was never there.</p>
+      </div>
+      <div class="claim">
+        <p class="en">Network</p>
+        <h3 data-t="proof.c4h">No third parties</h3>
+        <p class="body" data-t="proof.c4b">No CDN, no analytics, no tracking script. This page is not an exception — open the network panel and see.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!--
+  The tiers. Four columns, and the fourth is not one: self-hosting is a way to
+  run this rather than something an account can be on, so its column hands off
+  to the section below rather than repeating it. That is also why this band sits
+  immediately above `#run` — the two are one argument, read in order.
+
+  No prices. Nothing here takes money yet, and a number under a tier nobody can
+  buy is a claim the deployment cannot keep. The slot is drawn at its full size
+  so the layout is final; what goes in it is a decision, not a placeholder to
+  forget.
+
+  Same for what each tier includes: `plans.tbd` marks the space visibly rather
+  than filling it with features nothing enforces.
+-->
+<section class="band" id="plans">
+  <div class="rail">
+    <h2 data-t="plans.h2">Choose a plan</h2>
+    <p class="lede" data-t="plans.lede">Every account starts on the free plan. The paid tiers are opening; running it yourself is free forever.</p>
+
+    <div class="quad plans">
+      <div class="card plan">
+        <p class="en">Free</p>
+        <h3 data-t="plans.free.h">Free</h3>
+        <p class="body" data-t="plans.free.b">Registering is all it takes.</p>
+        <div class="price">
+          <b data-t="plans.free.price">¥0</b>
+          <span data-t="plans.free.note">Free, always</span>
+        </div>
+        <div class="tbd">
+          <p class="en">Entitlements — TBD</p>
+          <p data-t="plans.tbd">What each tier includes is still being decided. This is where it goes.</p>
+        </div>
+        <div class="tail"><a class="btn btn-primary" href="/login" data-t="plans.free.cta">Get started</a></div>
+      </div>
+
+      <div class="card plan featured">
+        <span class="pick" data-t="plans.pick">Recommended</span>
+        <p class="en">Pro</p>
+        <h3 data-t="plans.pro.h">Pro</h3>
+        <p class="body" data-t="plans.pro.b">For the people who are in here every day.</p>
+        <div class="price">
+          <b data-t="plans.pro.price">Coming soon</b>
+          <span data-t="plans.pro.note">Price to be announced</span>
+        </div>
+        <div class="tbd">
+          <p class="en">Entitlements — TBD</p>
+          <p data-t="plans.tbd">What each tier includes is still being decided. This is where it goes.</p>
+        </div>
+        <div class="tail"><span class="btn btn-ghost" aria-disabled="true" data-t="plans.soon">Not open yet</span></div>
+      </div>
+
+      <div class="card plan">
+        <p class="en">Team</p>
+        <h3 data-t="plans.team.h">Team</h3>
+        <p class="body" data-t="plans.team.b">A group of people, a sandbox each.</p>
+        <div class="price">
+          <b data-t="plans.team.price">Coming soon</b>
+          <span data-t="plans.team.note">Per seat</span>
+        </div>
+        <div class="tbd">
+          <p class="en">Entitlements — TBD</p>
+          <p data-t="plans.tbd">What each tier includes is still being decided. This is where it goes.</p>
+        </div>
+        <div class="tail"><span class="btn btn-ghost" aria-disabled="true" data-t="plans.soon">Not open yet</span></div>
+      </div>
+
+      <div class="card plan">
+        <p class="en">Self-hosted · MIT</p>
+        <h3 data-t="plans.self.h">Run it yourself</h3>
+        <p class="body" data-t="plans.self.b">On your own cloud, on your own terms.</p>
+        <div class="price">
+          <b data-t="plans.self.price">Free and open</b>
+          <span data-t="plans.self.note">MIT licence</span>
+        </div>
+        <ul>
+          <li data-t="plans.self.a">No account here, and no bill.</li>
+          <li data-t="plans.self.b2">As many sandboxes as your hardware holds.</li>
+          <li data-t="plans.self.c">Yours to run, and yours to keep running.</li>
+        </ul>
+        <div class="tail"><a class="btn btn-ghost" href="#run" data-t="plans.self.cta">How to deploy</a></div>
+      </div>
+    </div>
+
+    <p class="fine" data-t="plans.foot">The paid tiers are not on sale yet: nothing on this page takes payment. An administrator grants and changes them, and the WeChat account in the footer is where to ask.</p>
+  </div>
+</section>
+
+<section class="band" id="run">
+  <div class="rail">
+    <h2 data-t="run.h2">Choose how to run DSH</h2>
+    <p class="lede" data-t="run.lede">Use the hosted service, or deploy it to your own cloud.</p>
+
+    <div class="pair">
+      <div class="card">
+        <p class="en">Hosted · Free</p>
+        <h3 data-t="run.ah">Start on ours</h3>
+        <ul>
+          <li data-t="run.a1">Open a browser. Nothing to install.</li>
+          <li data-t="run.a2">Your own computer can be off. The sandbox keeps running.</li>
+          <li data-t="run.a3">Files and sessions are there next time.</li>
+        </ul>
+        <div class="tail"><a class="btn btn-primary" href="/login" data-t="run.acta">Start free</a></div>
+      </div>
+
+      <div class="card">
+        <p class="en">Self-hosted · MIT</p>
+        <h3 data-t="run.bh">Or run it on your own cloud</h3>
+        <ul>
+          <li data-t="run.b1">Every line is public.</li>
+          <li data-t="run.b2">Docker to try it, CubeSandbox microVMs in production.</li>
+          <li data-t="run.b3">Your credentials, your data, your perimeter.</li>
+        </ul>
+        <div class="tail">
+          <div class="tabs" role="tablist">
+            <button type="button" role="tab" data-tab="docker" aria-selected="true" data-t="term.tab1">Docker</button>
+            <button type="button" role="tab" data-tab="cube" aria-selected="false" data-t="term.tab2">CubeSandbox</button>
+          </div>
+          <div class="term">
+            <div class="term-bar">
+              <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+              <button class="copy" type="button">
+                <i data-icon="copy"></i>
+                <span data-t="copy.idle">Copy</span>
+              </button>
+            </div>
+            <div class="term-body">
+              <pre id="t-docker" class="on"><span class="c" data-t="term.c1"># containers on one host — for a trial run</span>
+<span class="p">$</span> git clone https://github.com/HuChundong/HamsterHQ
+<span class="p">$</span> docker compose --profile build build
+<span class="p">$</span> docker compose up -d</pre>
+              <pre id="t-cube"><span class="c" data-t="term.c2"># a microVM per person — what production runs</span>
+<span class="p">$</span> docker compose -f compose.yml -f compose.cube.yml \
+    --profile build build
+<span class="p">$</span> docker compose -f compose.yml -f compose.cube.yml up -d</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band close">
+  <div class="rail">
+    <h2 data-t="close.h2">Ready to run DSH in the cloud?</h2>
+    <div class="cta">
+      <a class="btn btn-primary" href="/login" data-t="close.cta1">Start free</a>
+      <a class="btn btn-ghost" href="https://github.com/HuChundong/HamsterHQ" data-t="close.cta2">Star on GitHub</a>
+    </div>
+  </div>
+</section>
+
+<aside class="notice">
+  <div class="rail">
+    <p data-th="notice.body"><strong>HamsterHQ is an independently developed, unofficial project. HamsterHQ and DSH are not products of the same company or organization.</strong> This project is not affiliated with, sponsored by, endorsed by, or maintained by DeepSeek AI, the <code>deepseek-ai</code> organization, Tencent Cloud, or the maintainers of DSH or CubeSandbox. Their names and marks are used only to identify interoperability and upstream dependencies; this project claims no ownership of them.</p>
+  </div>
+</aside>
+
+<footer class="foot">
+  <div class="rail">
+    <span class="lic">MIT</span>
+    <a href="https://github.com/HuChundong/HamsterHQ">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38l-.01-1.49c-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48l-.01 2.19c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
+      GitHub
+    </a>
+    <a href="https://github.com/deepseek-ai/deepseek-harness">
+      <img class="mark" src="../../gateway/assets/mark.svg" alt="" width="15" height="15">
+      <span data-t="foot.dsh">DeepSeek Harness</span>
+    </a>
+    <a href="https://github.com/TencentCloud/CubeSandbox">
+      <img class="cube" src="cubesandbox.svg" alt="" width="13" height="16">
+      CubeSandbox
+    </a>
+    <span class="gap"></span>
+    <button type="button" class="wechat">
+      <span data-t="foot.wechat">WeChat</span>
+      <span class="qr">
+        <img src="../../gateway/assets/wechat-qr.webp" alt="" width="176" height="176">
+        <em data-t="foot.scan">Scan to follow</em>
+      </span>
+    </button>
+    <a href="/policy/terms" target="_blank" rel="noopener" data-t="foot.terms">Terms</a>
+    <a href="/policy/privacy" target="_blank" rel="noopener" data-t="foot.privacy">Data notice</a>
+    <a href="/policy/security" target="_blank" rel="noopener" data-t="foot.security">Safe use</a>
+  </div>
+</footer>
+
+<script type="module" src="./main.js"></script>
+</body>
+</html>
