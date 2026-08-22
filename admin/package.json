@@ -1,0 +1,13 @@
+{
+  "name": "hamsterhq-admin",
+  "private": true,
+  "type": "module",
+  "description": "The operator's console, deployed apart from the surface tenants reach.",
+  "dependencies": {
+    "dsh-ground": "file:../packages/dsh-ground",
+    "dsh-icons": "file:../packages/dsh-icons",
+    "jose": "^6.1.0",
+    "pg": "^8.16.0",
+    "qrcode": "^1.5.4"
+  }
+}
