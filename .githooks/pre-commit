@@ -1,0 +1,19 @@
+#!/bin/sh
+# The gates, before every commit.
+#
+# It exists because of one mistake made five times: prose written into a
+# template literal with a backtick in it, which ends the string and breaks the
+# file. Every time, something in `scripts/check.sh` would have said so in under
+# a second — and twice it was committed and pushed anyway, because the output
+# scrolled past.
+#
+# So it is not read any more, it is enforced. Enable with:
+#   git config core.hooksPath .githooks
+#
+# The list is not here. It is `scripts/check.sh`, which CI runs too: a hook
+# with its own list is a list that drifts from the one a pull request is held
+# to. The slower gates — shellcheck, the image builds, the acceptance suite —
+# stay in CI and in `verify/`, where waiting is free.
+set -e
+
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh"
