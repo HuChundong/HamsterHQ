@@ -89,6 +89,58 @@ not this one, and a history with two conventions in it reads as neither.
 Commits on the branch itself are working notes and are squashed away, so they
 can be as untidy as the work was. Nothing checks their format.
 
+## A stack, when the second change needs the first
+
+Sometimes a change is honestly two changes and the second cannot be reviewed
+without the first. Then the second pull request's base is the first's branch
+rather than `main`, and the pair is a stack.
+
+**A chain of base branches is not a stack until GitHub says it is.** The order
+lives in GitHub's own stack object, which is what applies the branch rules and
+the checks to every layer and what merges them bottom-up. It is reached through
+the official CLI extension:
+
+```sh
+gh extension install github/gh-stack
+gh stack link            # make an existing chain official, bottom to top
+gh stack view
+```
+
+Land the whole thing at once, squashed, so `main` gets one commit per layer in
+order:
+
+```sh
+gh stack merge --yes --squash
+```
+
+Nothing about a stack loosens the rules. `gh stack` does not bypass required
+checks or the pull-request rule — bypassing merge requirements is unsupported
+for stacked merges specifically — so every layer is held to what a standalone
+pull request is held to.
+
+Three rules that are about the work rather than the tooling, and the first is
+the one that gets it wrong:
+
+- **A fix belongs on the layer that introduced the problem**, and then flows
+  upward into its children. Fixing it on the top layer instead leaves the lower
+  pull request shipping the unfixed code and hides the fix from the person
+  reviewing it.
+- **Keep the layers current by rebasing the stack**, with `gh stack rebase` and
+  then `gh stack push`, or `gh stack sync`. A rewritten push must be
+  lease-protected and must abort rather than overwrite a remote that moved;
+  raw `--force` is forbidden.
+- **A rewritten push invalidates its own evidence.** Rebasing changes commit
+  identities, so review threads anchored to the old ones no longer prove that a
+  finding is resolved. Re-read the unresolved threads, and the checks, after
+  every rewrite.
+
+Work each layer in its own worktree. Parallel fixes that share one checkout
+land in the wrong layer, which is the first rule above broken by accident.
+
+Because merges here are squashed, a layer's own commits are working notes like
+any other branch's — what lands in `main` is each pull request's title and
+description, one per layer.
+
 ## What to run before you open it
 
 The tree-side gates, which the pre-commit hook already runs for you:
