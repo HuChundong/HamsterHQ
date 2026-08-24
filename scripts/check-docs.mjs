@@ -22,10 +22,14 @@ import process from 'node:process'
 
 const root = resolve(import.meta.dirname, '..')
 
-/** Pages that are deliberately English-only, with the reason. */
+/** Pages that deliberately have no pair, with the reason. */
 const UNPAIRED = new Set([
   // Upstream's own file, kept as they publish it.
   'LICENSE.md',
+  // GitHub opens exactly one pull request template, and it is chosen by
+  // filename. A `.zh.md` beside it would be a file nothing ever reads, so this
+  // one says both languages in the same comment.
+  '.github/pull_request_template.md',
 ])
 
 /**
