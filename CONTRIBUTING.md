@@ -33,6 +33,16 @@ git config core.hooksPath .githooks
 The hook is a convenience and the ruleset is the rule. Pushing past the hook
 with `--no-verify` does not work; it only fails later and less clearly.
 
+**Merging is an act, not an event.** Auto-merge is turned off for the
+repository, so a pull request whose checks went green waits until somebody
+merges it. It is off for the same reason a stack lands in one operation: on the
+bottom layer of a stack, auto-merge lands it at whatever moment its checks
+happen to finish, in the middle of a review of the layer above; and on a layer
+whose base is another branch, it merges into that branch rather than into
+`main`, which collapses the stack instead of landing it. A standalone pull
+request costs one command to merge, so there was nothing for auto-merge to buy
+that was worth those two.
+
 ## Branches are named for what they carry
 
 `<type>/<subject>`, where the type is one of `feat`, `fix`, `docs`, `chore`, or

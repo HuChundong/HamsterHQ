@@ -31,6 +31,12 @@ git config core.hooksPath .githooks
 钩子是便利，ruleset 才是规则。用 `--no-verify` 绕过钩子推不上去，那只会让失败来得
 更晚、更难看懂。
 
+**合并是一个动作，不是一件自己发生的事。** 仓库关掉了 auto-merge，所以一个检查已经变绿的
+pull request 会等着，直到有人去合它。关掉它的理由和整栈一次落地是同一个：开在一个栈的最下
+层，auto-merge 会在它的检查恰好跑完的那一刻把它落地，而那时上面一层还在评审中；开在 base
+是另一个分支的那一层上，它合进的是那个分支而不是 `main`，那是把栈塌掉而不是落地。一个独立
+的 pull request 只需要一条命令去合，所以 auto-merge 能买到的东西，不值这两样代价。
+
 ## 分支按它承载的东西命名
 
 `<type>/<subject>`，type 取 `feat`、`fix`、`docs`、`chore`、`ci` 之一，subject 是几个
