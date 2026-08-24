@@ -308,6 +308,10 @@ docker exec <postgres> psql -U <user> -d postgres -tAc \
 每一页都是一对：英文 `X.md` 与中文 `X.zh.md`，互相链接，`##` 章节相同且顺序一致。英文是默认
 入口，也是读者首先落地的那一份。以上全部由 `scripts/check-docs.mjs` 强制执行。
 
+每一份 `AGENTS.md` 旁边都有一个指向它的 `CLAUDE.md` 软链，给那些去找这个名字的工具用——
+**要改的是真文件。** `check-docs` 跳过软链而不是给它们配对，因为它们是同一份字节的第二个
+名字。
+
 写当下为真的东西。比代码活得更久的推理放
 [docs/design.zh.md](docs/design.zh.md)；花掉过排查时间的故障放
 [docs/sandbox-pitfalls.zh.md](docs/sandbox-pitfalls.zh.md)，**并且连同正确结论之前那个错误

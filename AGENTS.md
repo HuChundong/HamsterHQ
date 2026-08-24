@@ -397,6 +397,10 @@ to the other, with the same `##` sections in the same order. English is the
 default and the one a reader lands on. `scripts/check-docs.mjs` enforces all of
 it.
 
+`CLAUDE.md` is a symlink to `AGENTS.md` beside every one of them, for the tools
+that look for that name — **edit the real file.** `check-docs` skips symlinks
+rather than pairing them, since they are the same bytes under a second name.
+
 Write what is true now. Rationale that outlives the code goes in
 [docs/design.md](docs/design.md); a failure that cost debugging time goes in
 [docs/sandbox-pitfalls.md](docs/sandbox-pitfalls.md), **including the wrong
