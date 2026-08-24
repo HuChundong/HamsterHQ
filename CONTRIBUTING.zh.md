@@ -64,6 +64,14 @@ legible: a rejected push comes back as a protocol error after the objects
 have been sent and names a rule rather than a way forward.
 ```
 
+**描述要折到 72 列。** GitHub 在构造 squash 信息时会折掉更宽的行，而且它是逐行折而不是重排
+整段——于是一行 78 列会变成一行 69 列，加上底下孤零零的一个词。加进这一页的那条提交就是证据：
+它的描述里有 36 行超过 72 列，而现在它们在 `main` 上每一行都是两行。没有东西检查这件事，因为
+代码树看不见一个 pull request 的描述。
+
+GitHub 还会把它 squash 掉的那些提交的 co-author 追加在一条虚线下面。那个尾注不是你写的，也
+不是要去删掉的东西。
+
 这份历史不用 Conventional Commits。`fix(web): …` 是上游 harness 写提交的方式，那是个
 讲得通的约定；但它不是这里的约定，而一份历史里混了两种约定，读起来就等于没有约定。
 

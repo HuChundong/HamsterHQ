@@ -71,6 +71,17 @@ legible: a rejected push comes back as a protocol error after the objects
 have been sent and names a rule rather than a way forward.
 ```
 
+**Wrap the description at 72 columns.** GitHub wraps anything wider when it
+builds the squash message, and it wraps each line on its own rather than
+reflowing the paragraph — so a 78-column line becomes a 69-column line with one
+orphaned word beneath it. The commit that added this page is the evidence: its
+description carried 36 lines over 72 columns, and every one of them is two lines
+in `main` now. Nothing checks this, because the tree cannot see a pull request's
+description.
+
+GitHub also appends the co-authors of the commits it squashed, under a rule of
+dashes. That trailer is not something you wrote and not something to remove.
+
 This history does not use Conventional Commits. `fix(web): …` is how the
 upstream harness writes its commits and it is a reasonable convention; it is
 not this one, and a history with two conventions in it reads as neither.
