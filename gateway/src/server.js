@@ -311,9 +311,12 @@ async function callerOf(req, res, renewedAsHeaders = false) {
 /**
  * Read a request body with a hard cap.
  *
- * The cap sits above dsh's own 160 MiB `maxRequestBodyBytes` default so the
- * gateway never becomes the component that truncates an upload dsh would have
- * accepted; a request beyond it is refused rather than buffered.
+ * Every caller names its own cap, and they are small — a form, a report, a
+ * secret — because the one body that is genuinely large never comes through
+ * here: `/api` and `/files` are handed to `serveFromSandbox`, which streams
+ * them down the tunnel in frames rather than buffering. Nothing on this path
+ * needs to sit above dsh's `maxRequestBodyBytes`; what does is nginx, in
+ * `web/site.inc`.
  *
  * @param {import('node:http').IncomingMessage} req - the request.
  * @param {number} limit - maximum bytes to accept.
