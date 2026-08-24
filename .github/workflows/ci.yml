@@ -29,10 +29,19 @@ jobs:
       # load, the language, asset and icon checks, and every invariant that can
       # be decided from the tree. `scripts/check.sh` holds it, so a gate cannot
       # be added to one of the two places and forgotten in the other.
+      # `gateway/` and `admin/` are installed because `check-pages.mjs` renders
+      # their pages, and both declare the local packages the pages import
+      # (`dsh-ground`, `dsh-icons`) as their own dependencies — which Node
+      # resolves from beside the importing file, never from the root tree. A
+      # working copy that has ever run install in those directories keeps an
+      # untracked `node_modules` and passes without them, so this is a gate that
+      # only a clean checkout can fail.
       - name: Install
         run: |
           npm ci --no-audit --no-fund
           npm --prefix packages/dsh-artifact-panel ci --no-audit --no-fund
+          npm --prefix gateway ci --no-audit --no-fund
+          npm --prefix admin ci --no-audit --no-fund
 
       - name: Checks
         run: npm run check
