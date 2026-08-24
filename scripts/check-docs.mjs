@@ -16,26 +16,37 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 
 const root = resolve(import.meta.dirname, '..')
 
-/** Pages that are deliberately English-only, with the reason. */
+/** Pages that deliberately have no pair, with the reason. */
 const UNPAIRED = new Set([
   // Upstream's own file, kept as they publish it.
   'LICENSE.md',
+  // GitHub opens exactly one pull request template, and it is chosen by
+  // filename. A `.zh.md` beside it would be a file nothing ever reads, so this
+  // one says both languages in the same comment.
+  '.github/pull_request_template.md',
 ])
 
 /**
  * Tracked markdown, so an untracked scratch file is not a failure.
+ *
+ * Symlinks are left out: `CLAUDE.md` is one beside every `AGENTS.md`, for the
+ * tools that look for that name. Following one would ask a pairing question of
+ * a name that has no pair — the bytes it reads link to `AGENTS.zh.md`, not to
+ * `CLAUDE.zh.md` — and would count one page under two names.
+ *
  * @returns {string[]} repository-relative paths.
  */
 function markdownFiles() {
   return execFileSync('git', ['ls-files', '*.md'], { cwd: root, encoding: 'utf8' })
     .split('\n')
     .filter((line) => line !== '')
+    .filter((file) => !lstatSync(join(root, file)).isSymbolicLink())
 }
 
 /**

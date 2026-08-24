@@ -6,7 +6,7 @@
 # configuration methods survive the tunnel's header rewriting.
 #
 # Runs against either sandbox runtime. Everything about a tenant's sandbox goes
-# through the four functions below, because the two runtimes offer nothing in
+# through the sandbox helpers below, because the two runtimes offer nothing in
 # common to inspect: under `docker` a sandbox is a container on this host, and
 # under `cube` it is a machine on Cube's network that only the gateway container
 # has the credentials and the route to reach.

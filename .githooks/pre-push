@@ -1,0 +1,56 @@
+#!/bin/sh
+# The default branch is not a place anything is pushed to.
+#
+# Every change to main arrives as a pull request that CI has passed and that was
+# squashed on merge. That is enforced on the server by a ruleset with no bypass
+# list, so this hook is not what makes it true — the server refuses the push
+# whoever is pushing, including whoever owns the repository.
+#
+# What the hook adds is the reason. A push the server refuses comes back as a
+# protocol error after the objects have been counted, compressed and sent, and
+# it names a rule rather than a way forward; the same mistake caught here costs
+# no round trip and says what to do instead. It also catches the push that would
+# have been refused for a second reason nobody wants to discover from a remote:
+# a rewrite of a branch other people have already pulled.
+#
+# Enabled with the rest of them:
+#   git config core.hooksPath .githooks
+#
+# Git hands this hook one line per ref being pushed, on stdin:
+#   <local ref> <local sha> <remote ref> <remote sha>
+set -eu
+
+protected=refs/heads/main
+blocked=
+
+while read -r _local_ref _local_sha remote_ref _remote_sha
+do
+  # A ref that is empty means git had nothing to say about this line; a push
+  # with no refs at all (`git push` with no upstream) never reaches here.
+  [ -n "${remote_ref:-}" ] || continue
+  [ "$remote_ref" = "$protected" ] || continue
+  blocked=$remote_ref
+done
+
+if [ -n "$blocked" ]; then
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  cat >&2 <<EOF
+
+pre-push: refusing to push to ${blocked#refs/heads/}.
+
+  main only moves through a squashed pull request whose checks passed. The
+  server enforces this too, so pushing past this hook does not work — it only
+  fails later and less clearly.
+
+  From here:
+
+    git switch -c <type>/<subject>     # if you are on ${branch}
+    git push -u origin HEAD
+    gh pr create
+
+  CONTRIBUTING.md has the branch names and what a pull request is expected to
+  say.
+
+EOF
+  exit 1
+fi

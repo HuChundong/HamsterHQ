@@ -227,7 +227,14 @@ The rules that are not obvious from the listing:
   CI. A check that needs a live deployment, a CubeSandbox installation, or real
   model tokens belongs in `verify/` and runs against a deployment.
 
-## What to run before pushing
+## What to run before a pull request
+
+**Nothing is pushed to `main`.** Every change arrives as a pull request whose
+checks passed and is squashed on merge; the server refuses the push for
+everyone, including whoever owns the repository.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the route, the branch names, and why the
+pull request's own title and description are the commit message `main` ends up
+carrying.
 
 One command holds every invariant the tree can decide — the lint, the plugin
 load, the language, asset and icon checks:
@@ -347,12 +354,52 @@ docker exec <postgres> psql -U <user> -d postgres -tAc \
 Anything there that the deployment did not create is somebody else's, and this
 project's own `db.js` creates exactly one.
 
+## Where a rule belongs
+
+There is more than one place to write something down, and a rule in the wrong
+one is a rule that gets read too late or not at all. Four homes, decided by what
+the writing is rather than what it is about:
+
+- **This file** carries what a change needs in context before it is written: the
+  rule, and the name of the check that fails when it is broken. It is read every
+  session, so length here is a cost everything else pays.
+- **A directory's `AGENTS.md`** carries what is true of that directory and is
+  not already true here. `gateway/AGENTS.md` says how a page and a route are
+  built in `gateway/`; it does not restate that the gateway carries no harness
+  code, because this file already does.
+- **[docs/design.md](docs/design.md)** carries reasoning that outlives the code
+  — why the shape is this shape, what the alternative cost.
+  **[docs/sandbox-pitfalls.md](docs/sandbox-pitfalls.md)** carries a failure
+  that cost debugging time, including the wrong conclusion that preceded the
+  right one.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** carries the route a change travels, not
+  what makes it correct.
+
+Two rules about the writing itself, and they are the ones that decay:
+
+**One home per fact.** A fact restated in a second file does not stay a copy; it
+becomes two statements that disagree, and the reader cannot tell which is
+current. Link the home instead of repeating it — a directory file that opens by
+summarising this one has already started.
+
+**A rule names what enforces it.** Most of the rules here end by naming a script
+in `scripts/` because that is what makes them survive being forgotten: the
+prose says what is true, and the check says so again the moment it stops being
+true. A new invariant with nothing behind it is a preference, and it will drift
+like one. If it can be decided from the tree, it goes in `scripts/` and into the
+one list in `scripts/check.sh`; if it cannot, say in the prose that nothing
+enforces it, so the next reader knows to look with their own eyes.
+
 ## Documentation
 
 Every page is a pair: `X.md` in English and `X.zh.md` in Chinese, each linking
 to the other, with the same `##` sections in the same order. English is the
 default and the one a reader lands on. `scripts/check-docs.mjs` enforces all of
 it.
+
+`CLAUDE.md` is a symlink to `AGENTS.md` beside every one of them, for the tools
+that look for that name — **edit the real file.** `check-docs` skips symlinks
+rather than pairing them, since they are the same bytes under a second name.
 
 Write what is true now. Rationale that outlives the code goes in
 [docs/design.md](docs/design.md); a failure that cost debugging time goes in
