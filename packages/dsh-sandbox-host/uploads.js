@@ -3,7 +3,7 @@
  * about.
  *
  * Three calls rather than one, and the body limit is not the reason — dsh
- * accepts 160 MiB and nginx is set to 200. The tunnel is: it carries every
+ * accepts 300 MiB and nginx is set to 320. The tunnel is: it carries every
  * request as base64 frames over one WebSocket, so an upload sent whole holds
  * that socket for its whole duration and every other `/api` call queues behind
  * it. Chunks give the socket somewhere to breathe.

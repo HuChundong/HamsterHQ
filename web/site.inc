@@ -3,9 +3,12 @@
 
 root /usr/share/nginx/html;
 
-# dsh accepts request bodies up to its own 160 MiB default; nginx must not
+# dsh accepts request bodies up to its own 300 MiB default; nginx must not
 # become the component that refuses an upload the backend would have taken.
-client_max_body_size 200m;
+# The number tracks the harness: 0.1.1-rc.2 raised that default from 160 MiB
+# when it doubled the aggregate image budget to 200 MiB, which needs about
+# 267 MiB once base64 expansion and the envelope are counted.
+client_max_body_size 320m;
 
 # Keep redirects relative. Absolutising them uses the port nginx listens on
 # rather than the one the browser reached, so a container published on any

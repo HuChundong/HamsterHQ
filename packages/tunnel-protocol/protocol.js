@@ -8,7 +8,7 @@
  *
  * Frames are JSON text messages. HTTP bodies stream as separate `body`/`end`
  * frames rather than one inlined payload: dsh accepts request bodies up to
- * `maxRequestBodyBytes` (160 MiB by default, sized for its 100 MiB aggregate
+ * `maxRequestBodyBytes` (300 MiB by default, sized for its 200 MiB aggregate
  * image limit after base64 expansion), and a single frame that large would
  * force both peers to hold the whole request in memory at once.
  *
@@ -22,7 +22,7 @@ const FRAME_ENCODING = 'utf8'
 /**
  * Largest body chunk placed in one frame, before base64 expansion. Keeps a
  * single frame well under common WebSocket buffer limits while staying large
- * enough that a 160 MiB upload does not fan out into an unreasonable number of
+ * enough that a 300 MiB upload does not fan out into an unreasonable number of
  * frames.
  */
 const MAX_CHUNK_BYTES = 512 * 1024

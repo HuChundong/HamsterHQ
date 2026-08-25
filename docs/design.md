@@ -506,8 +506,8 @@ location and one line in the gateway's routing, both of which treat it exactly
 as they treat `/api` — authenticate the caller, hand it to their sandbox, know
 nothing about what is on it.
 
-Uploads are chunked at 4 MiB, and the body limit is not why. dsh accepts 160 MiB
-and nginx is set to 200. The tunnel is a single WebSocket carrying every request
+Uploads are chunked at 4 MiB, and the body limit is not why. dsh accepts 300 MiB
+and nginx is set to 320. The tunnel is a single WebSocket carrying every request
 as base64 frames, so a file sent whole holds it for the duration and every other
 call queues behind it.
 
