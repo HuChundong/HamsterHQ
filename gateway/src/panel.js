@@ -30,11 +30,19 @@
  */
 
 import { listDir, makeDir, move, newestFile, readFile, remove, stat, writeFile } from './envd.js'
-import { PathRefused, ROOT, pathFromRawUrl, requireInsideRoot, requireReadable } from './panel-path.js'
+import { PathRefused, ROOT, pathFromRawUrl, requirePath } from './panel-path.js'
 import { TICKET_TTL_MS, mintTicket, readPreviewUrl, readTicket } from './panel-ticket.js'
 import { STATS_PATH, WATCH_PATH, serveStats, serveWatch } from './stats.js'
 
 /** The prefix the JSON routes answer on. `/files` is the tunnel's, not ours. */
+/**
+ * Paths a delete refuses, which is a footgun rule rather than a scope one.
+ *
+ * The tenant's own root, the volume it is mounted from, and the two directories
+ * the machine is assembled out of. Everything inside them can go.
+ */
+const UNREMOVABLE = new Set(['/', '/mnt', ROOT, '/mnt/dsh'])
+
 const FS_PREFIX = '/sandbox/fs/'
 
 /**
@@ -46,26 +54,40 @@ const FS_PREFIX = '/sandbox/fs/'
 const RAW_CACHE = 'no-store'
 
 /**
- * Read one JSON request body.
+ * Read one request body, as bytes.
  *
  * Bounded, because this is a public endpoint and an unbounded read is a way to
- * spend the gateway's memory. A body that is not JSON is an empty object: the
- * path checks below refuse whatever is missing, with the message that names
- * what was wrong.
+ * spend the gateway's memory. The ceiling is a file's rather than a form's:
+ * `write` carries a whole file here, and the files a person repairs by hand —
+ * a settings document, a patch layer — are small, while the ones that are not
+ * belong in an upload.
  *
  * @param {import('node:http').IncomingMessage} req - the request.
- * @returns {Promise<object>} the parsed body.
+ * @returns {Promise<Buffer>} what was sent.
  */
-async function readJson(req) {
+async function readRaw(req) {
   const chunks = []
   let size = 0
   for await (const chunk of req) {
     size += chunk.length
-    if (size > 64 * 1024) throw new PathRefused(413, 'request too large')
+    if (size > 2 * 1024 * 1024) throw new PathRefused(413, 'request too large')
     chunks.push(chunk)
   }
+  return Buffer.concat(chunks)
+}
+
+/**
+ * The same bytes, as the object a route was described with.
+ *
+ * A body that is not JSON is an empty object: the path checks below refuse
+ * whatever is missing, with the message that names what was wrong.
+ *
+ * @param {Buffer} raw - what was sent.
+ * @returns {object} the parsed body.
+ */
+function parseJson(raw) {
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')
+    return JSON.parse(raw.toString('utf8') || '{}')
   } catch {
     return {}
   }
@@ -226,8 +248,8 @@ export async function handlePanel(req, res, deps) {
   try {
     const bytesPath = rawPath ?? preview?.path
     if (bytesPath !== undefined) {
-      // Read, so anywhere in the sandbox — see `requireReadable`.
-      const resolved = requireReadable(bytesPath)
+      // Anywhere in the sandbox — see `requirePath`.
+      const resolved = requirePath(bytesPath)
       const { status, body } = await readFile(handle, resolved)
       if (status >= 400) {
         json(res, status === 404 ? 404 : 502, { error: { code: 'file.unreadable' } })
@@ -268,14 +290,14 @@ export async function handlePanel(req, res, deps) {
 
     const action = path.slice(FS_PREFIX.length)
     if (action === 'list' && req.method === 'GET') {
-      const resolved = requireInsideRoot(url.searchParams.get('path'))
+      const resolved = requirePath(url.searchParams.get('path'))
       const entries = await listDir(handle, resolved)
       json(res, 200, { path: resolved, entries: entries.map(entryOf) })
       return true
     }
     if (action === 'stat' && req.method === 'GET') {
       // Read, and the one question a tab asks about a file it is showing.
-      const resolved = requireReadable(url.searchParams.get('path'))
+      const resolved = requirePath(url.searchParams.get('path'))
       json(res, 200, { path: resolved, entry: entryOf(await stat(handle, resolved)) })
       return true
     }
@@ -295,19 +317,22 @@ export async function handlePanel(req, res, deps) {
     }
 
     // The three that change something. POST rather than GET, and each reads
-    // its paths through the same scope check as everything else — a rename
-    // has two paths and BOTH have to be inside the workspace, or it becomes a
-    // way to write anywhere by naming a destination.
-    if (req.method === 'POST' && ['move', 'remove', 'mkdir', 'create'].includes(action)) {
-      const body = await readJson(req)
+    // its paths the same way everything else here does: absolute, normalised,
+    // and anywhere in the sandbox the tenant is root of.
+    if (req.method === 'POST' && ['move', 'remove', 'mkdir', 'create', 'write'].includes(action)) {
+      // `write` is the one whose body is the file rather than a description of
+      // what to do, so it is read as bytes and the others parse the same bytes
+      // as JSON.
+      const raw = await readRaw(req)
+      const body = action === 'write' ? {} : parseJson(raw)
       if (action === 'move') {
-        const from = requireInsideRoot(body.from)
-        const to = requireInsideRoot(body.to)
+        const from = requirePath(body.from)
+        const to = requirePath(body.to)
         json(res, 200, { entry: entryOf(await move(handle, from, to)) })
         return true
       }
       if (action === 'create') {
-        const at = requireInsideRoot(body.path)
+        const at = requirePath(body.path)
         // Refused rather than overwritten. envd's uploader replaces a file
         // without complaint, and "new file" is the one gesture where replacing
         // one is never what was meant.
@@ -323,14 +348,27 @@ export async function handlePanel(req, res, deps) {
         json(res, 200, { path: at })
         return true
       }
+      // Contents, which nothing needed until a tenant had to repair a file
+      // that stops their backend from booting. The body is the file: a JSON
+      // envelope would mean base64 for anything that is not text, and what is
+      // being written here is text somebody is looking at.
+      if (action === 'write') {
+        const at = requirePath(url.searchParams.get('path'))
+        await writeFile(handle, at, raw)
+        json(res, 200, { path: at })
+        return true
+      }
       if (action === 'mkdir') {
-        const at = requireInsideRoot(body.path)
+        const at = requirePath(body.path)
         json(res, 200, { entry: entryOf(await makeDir(handle, at)) })
         return true
       }
-      const at = requireInsideRoot(body.path)
-      // The workspace itself is not one of the things in it.
-      if (at === ROOT) throw new PathRefused(403, '工作区本身不能删除')
+      const at = requirePath(body.path)
+      // Not a scope rule — what is left of one. These are the mount points the
+      // machine is assembled from, and removing one is never the gesture that
+      // was meant: it is a slip with no undo, and everything inside them stays
+      // removable. A tenant who genuinely means it has a terminal.
+      if (UNREMOVABLE.has(at)) throw new PathRefused(403, '这是挂载点本身，不能删除')
       await remove(handle, at)
       json(res, 200, {})
       return true

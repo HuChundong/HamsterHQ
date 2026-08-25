@@ -312,6 +312,45 @@ handler, so an in-memory call would have to construct an equivalent request
 anyway, while also reaching past the route's body limits and composition. One
 loopback round trip buys behaviour identical to a browser's.
 
+## When the machine is up and the backend is not
+
+Under Docker these are one fact. The entrypoint waits on the dsh process, so a
+backend that dies takes its container with it, and the next request builds a new
+one. Under CubeSandbox they come apart: envd is PID 1 and outlives whatever it
+started, so a crashed harness leaves a microVM that is healthy, reachable, and
+empty. The gateway learned "is it up" from the tunnel alone, and read that empty
+machine as one to tear down and replace.
+
+Replacing it is wrong twice over. It destroys the evidence, and on a deployment
+with volumes the fault is usually on the volume — the same broken configuration
+is mounted into the replacement, which dies the same way. A tenant who had
+written an invalid `cordis.patch.yml` could watch that happen indefinitely.
+
+So `tunnelFor` asks the machine before destroying it: a `true` that exits zero
+over envd means alive, and a live machine with no tunnel is a failed backend
+rather than an absent sandbox. That state leaves `/_auth` as `X-Recover: 1` on
+the shell document, which a `map` turns into a redirect to `/recovery` — the
+tenant lands on a page instead of on a spinner that will never resolve.
+
+The page offers what a person needs, ordered by what it costs them:
+
+| | What it does | What it keeps |
+|---|---|---|
+| Log | the last lines the backend wrote before it stopped | everything |
+| Files | reads and writes anywhere in the sandbox, the volume included | everything |
+| Terminal | a shell on the live machine, over the same envd | everything |
+| Start backend | runs dsh again, same identity and same secrets | everything |
+| Rebuild | a new machine from the template, the same volume | their files |
+| Erase | a new machine and a new volume | nothing |
+
+The first four exist because the machine is alive, which is the whole point: a
+tenant whose backend will not start can read why, fix the file that caused it,
+and start it again without losing the work that surrounds it. The last two are
+there for when that fails, and erasing asks for an acknowledgement the dialog
+collects — and answers 502, not 204, if the volume was not actually destroyed.
+A page that reports "erased" over surviving data is the one wrong answer worse
+than an error.
+
 ## Header rewriting
 
 The tunnel replays browser requests against local dsh with three changes, each

@@ -13,7 +13,7 @@
  * Kept free of I/O and separate from the routes so every case can be produced
  * without a deployment; `scripts/check-panel-paths.mjs` runs them.
  *
- * Two rules, both of which have a specific failure behind them.
+ * One rule, with a specific failure behind it.
  *
  * Absolute only, and never assembled from a relative one. `ENV HOME` in the
  * Dockerfile is a container environment variable, not root's home in
@@ -22,10 +22,12 @@
  * Guessing a base would therefore land somewhere the caller never named. The
  * client resolves against the session's cwd before it asks.
  *
- * Inside the root after normalisation, checked segment-wise rather than by
- * `startsWith`. A raw prefix test admits `/mnt/workspace-of-someone-else`,
- * which is the oldest bug in this shape of code — and here it would simply be
- * wrong, since that is a different directory than the one being scoped to.
+ * There used to be a second rule — inside {@link ROOT} after normalisation —
+ * and it is worth recording why it went rather than leaving a gap. It read as
+ * a boundary and was not one: the sandbox is the boundary, and inside their
+ * own a tenant is root with a shell. All it did was withhold the one file most
+ * able to break their backend from the one interface they could still reach
+ * when it was broken.
  *
  * Symlinks are deliberately NOT chased. A path spelled inside the workspace
  * that resolves elsewhere in the sandbox is followed, because a tenant who
@@ -63,26 +65,6 @@ export class PathRefused extends Error {
 }
 
 /**
- * Whether `target` is `base` or lies under it.
- *
- * Segment-wise: equal, or prefixed by `base` and a separator. `startsWith` on
- * its own would accept `/mnt/workspace-evil` for a base of `/mnt/workspace`,
- * and that is a real escape rather than a theoretical one — the mount has
- * sibling directories a tenant can create.
- *
- * Both sides are expected to be already normalised, which is what
- * `requireInsideRoot` does before calling this.
- *
- * @param {string} base - the directory that bounds.
- * @param {string} target - the path being judged.
- * @returns {boolean} true when target cannot escape base.
- */
-export function isWithin(base, target) {
-  const b = base.endsWith('/') ? base.slice(0, -1) : base
-  return target === b || target.startsWith(`${b}/`)
-}
-
-/**
  * Normalise a caller-supplied path, or refuse it.
  *
  * Refuses anything that is not already absolute rather than resolving it
@@ -113,48 +95,28 @@ export function requireAbsolute(value) {
 }
 
 /**
- * The one gate every path the panel handles passes through.
+ * The one rule left: name a place, absolutely.
  *
- * @param {unknown} value - what the caller sent.
- * @returns {string} the normalised path, guaranteed inside {@link ROOT}.
- * @throws {PathRefused} when it is unusable or points outside.
- */
-/**
- * A path this may READ, which is anywhere in the sandbox.
+ * This used to be two functions, because writes were confined to the workspace
+ * while reads were not. The confinement is gone, and the reason it went is the
+ * reason it never belonged: a tenant is root inside their own sandbox and
+ * their agent is a shell they type into, so the panel refusing to write
+ * `/mnt/dsh` stopped nobody — it only meant the one file most able to break
+ * their backend was the one file they could not fix from the interface. That
+ * is exactly the state a tenant reached, and the way out was a shell they
+ * could not open because the thing that serves it had not started.
  *
- * Reading is not scoped to the workspace and refusing to would protect
- * nothing. The sandbox is the security boundary and the tenant is root inside
- * their own: anything this declines to show, they can `cat` in the terminal on
- * the next row of the same screen. What the scope was doing was making the
- * agent's own output unreachable — a script it wrote to `/tmp` came back from
- * the panel as a path the deployment would not open, and then as
- * `spawn xdg-open ENOENT`, which is the host's answer to being asked to open a
- * file on a desktop nobody is sitting at.
+ * What is scoped is what the tree OPENS at, which is still {@link ROOT}. A
+ * browser that starts at the workspace and can be steered elsewhere is a
+ * workspace browser with an escape hatch; a browser that refuses to go there
+ * is a workspace browser with a hostage.
  *
- * Writing stays inside the workspace, and that is not the same question. The
- * tree is a workspace browser; a rename or a delete offered outside the one
- * directory it shows is a destructive action against a path nobody navigated
- * to.
- *
- * Everything `requireAbsolute` refuses is still refused: a relative path, a
- * null byte, and `..` collapsed before anyone looks at the result.
- *
- * @param {string|unknown} value - the path a caller offered.
+ * @param {string | null | undefined} value - the path as the caller wrote it.
  * @returns {string} the normalised absolute path.
- * @throws {PathRefused} when it is not a path at all.
+ * @throws {PathRefused} when it is missing, relative, or not a string.
  */
-export function requireReadable(value) {
+export function requirePath(value) {
   return requireAbsolute(value)
-}
-
-export function requireInsideRoot(value) {
-  const resolved = requireAbsolute(value)
-  if (!isWithin(ROOT, resolved)) {
-    // The path is not echoed back. A caller that asked for `/etc/shadow` learns
-    // only that it was refused, which is all it is entitled to know.
-    throw new PathRefused(403, `a path outside ${ROOT} cannot be read`)
-  }
-  return resolved
 }
 
 /** The route prefix the raw-bytes reader answers on. */
@@ -180,7 +142,7 @@ export function rawUrl(absolute) {
 /**
  * Read back the path from a raw-route URL.
  *
- * The caller still passes the result through {@link requireInsideRoot}: this
+ * The caller still passes the result through {@link requirePath}: this
  * decodes, it does not judge. A `..` written as `%2e%2e` decodes to something
  * that normalises out of the root, and it is refused there.
  *

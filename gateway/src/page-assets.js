@@ -23,6 +23,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -41,6 +42,21 @@ const SOURCES = {
   'wechat-qr.webp': 'image/webp',
 }
 
+/**
+ * What is served from a package rather than from `assets/`.
+ *
+ * The recovery page runs a terminal, and a terminal needs a renderer. The
+ * panel's is bundled by esbuild; the gateway has no build step and should not
+ * grow one for this — so xterm's own UMD build and stylesheet are served as
+ * page assets, hashed like everything else here. Two files, MIT, and no
+ * harness code: the rule the gateway image is held to is about `@deepseek-ai`,
+ * not about having dependencies.
+ */
+const VENDORED = {
+  'xterm.js': ['@xterm/xterm/lib/xterm.js', 'text/javascript; charset=utf-8'],
+  'xterm.css': ['@xterm/xterm/css/xterm.css', 'text/css; charset=utf-8'],
+}
+
 /** Where these are served from. One prefix, so nginx can route on it. */
 const PREFIX = '/login-assets/'
 
@@ -50,8 +66,18 @@ const served = new Map()
 /** @type {Record<string, string>} plain name to the URL that carries its hash. */
 const urls = {}
 
-for (const [name, type] of Object.entries(SOURCES)) {
-  const body = readFileSync(fileURLToPath(new URL(`../assets/${name}`, import.meta.url)))
+const require = createRequire(import.meta.url)
+
+/** Every page asset, as a name and the bytes to serve under it. */
+const sources = [
+  ...Object.entries(SOURCES).map(([name, type]) =>
+    [name, type, fileURLToPath(new URL(`../assets/${name}`, import.meta.url))]),
+  ...Object.entries(VENDORED).map(([name, [specifier, type]]) =>
+    [name, type, require.resolve(specifier)]),
+]
+
+for (const [name, type, from] of sources) {
+  const body = readFileSync(from)
   // Ten hex characters, as the landing build uses: far past collision for a
   // handful of files, and short enough to read in a network panel.
   const digest = createHash('sha256').update(body).digest('hex').slice(0, 10)

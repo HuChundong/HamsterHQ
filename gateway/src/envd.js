@@ -302,6 +302,55 @@ export async function runCommand(handle, command, envs) {
 }
 
 /**
+ * The tail of the backend's own log.
+ *
+ * The one thing a tenant whose backend will not boot actually needs, and the
+ * gateway has always been able to read it: the entrypoint redirects dsh's
+ * output to this file, and envd reads files whether or not dsh is running.
+ * Before the recovery page existed, nobody was shown it — the tenant saw a
+ * sandbox that would not start, and the sentence naming the file they had
+ * broken sat unread in a machine that was about to be destroyed.
+ *
+ * Bounded, because a backend that boots and crashes in a loop writes a lot and
+ * none of the early part is the answer.
+ *
+ * @param {string} handle - the sandbox to read from.
+ * @param {number} [lines] - how many lines from the end.
+ * @returns {Promise<string>} what it said, or an empty string when it said nothing.
+ */
+export async function backendLog(handle, lines = 200) {
+  const { stdout } = await runCommand(handle, `tail -n ${String(lines)} ${BACKEND_LOG_PATH} 2>/dev/null || true`, {})
+  return stdout
+}
+
+/**
+ * Whether the machine itself is still answering.
+ *
+ * The question this exists to separate: a sandbox that never dialled the
+ * gateway may be a machine that is gone, or a machine that is fine whose
+ * backend died on it. Those need opposite handling — one is rebuilt, the other
+ * must not be, because rebuilding destroys the evidence and the shell a tenant
+ * could have fixed it from — and from outside they look identical.
+ *
+ * envd answers this and dsh cannot: it is the machine's own resident agent,
+ * started by the runtime before any of this deployment's code runs. If it
+ * takes a command, the machine is there.
+ *
+ * @param {string} handle - the sandbox to ask.
+ * @returns {Promise<boolean>} whether the machine answered.
+ */
+export async function machineAlive(handle) {
+  try {
+    const { exitCode } = await runCommand(handle, 'true', {})
+    return exitCode === 0
+  } catch {
+    // Any failure to reach envd is the answer, whatever its shape: a machine
+    // that cannot be asked is a machine that cannot be recovered from either.
+    return false
+  }
+}
+
+/**
  * Start the tenant's own backend.
  *
  * Detached on purpose, and the detaching is the whole trick: `setsid nohup …&`

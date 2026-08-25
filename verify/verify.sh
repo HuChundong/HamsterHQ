@@ -685,6 +685,98 @@ check 'and carry an expiry' 1 \
   "$(psql 'SELECT (count(*) = 0)::int FROM refresh_tokens WHERE expires_at <= now()')"
 
 echo
+echo '=== 17. A backend that died leaves the machine, and a way back in ==='
+#
+# The state under test cannot be produced by killing dsh here. Under Docker the
+# container's foreground process IS the backend, so killing it stops the
+# container and the machine goes with it. Under CubeSandbox envd is PID 1 and
+# survives, which is the whole reason this feature exists — so the machine is
+# put into that shape deliberately: the same name, the same label, the same
+# image and its envd, and no backend. Everything the gateway is asked
+# afterwards is asked of a real sandbox in the state a crash leaves behind.
+if [ "$RUNTIME" = docker ]; then
+  RECOVER_JAR=$(mktemp)
+  login "$ALICE" "$RECOVER_JAR" > /dev/null
+  api "$RECOVER_JAR" host.describe > /dev/null
+  RECOVER_HANDLE=$(docker ps --filter "label=$DSH_LABEL=$ALICE" --format '{{.Names}}' | head -1)
+  RECOVER_NET=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$RECOVER_HANDLE")
+
+  docker rm -f "$RECOVER_HANDLE" > /dev/null
+  # `sleep infinity` as the command, and the image's own entrypoint left alone:
+  # it starts envd and execs what it is given, so this is a machine with its
+  # resident agent up and nothing else — a crashed harness, exactly.
+  docker run -d --name "$RECOVER_HANDLE" --network "$RECOVER_NET" \
+    --label "$DSH_LABEL=$ALICE" hamsterhq-sandbox:latest sleep infinity > /dev/null
+  until docker exec "$RECOVER_HANDLE" sh -c 'test -S /var/run/envd.sock -o -n "$(pgrep envd)"' > /dev/null 2>&1; do sleep 1; done
+
+  # The distinction the whole branch turns on. Before it, a machine with no
+  # tunnel was a machine to destroy; the check that it is still there after
+  # asking for the application is the check that it is no longer destroyed.
+  check 'the shell document sends them to recovery' 303 \
+    "$(curl -s -o /dev/null -w '%{http_code}' -b "$RECOVER_JAR" "$GATEWAY/app")"
+  check 'and names the recovery page' /recovery \
+    "$(curl -s -o /dev/null -w '%{redirect_url}' -b "$RECOVER_JAR" "$GATEWAY/app" | sed 's|^.*://[^/]*||')"
+  check 'the machine was not destroyed under them' 1 \
+    "$(docker ps --filter "name=^/$RECOVER_HANDLE\$" -q | wc -l | tr -d ' ')"
+  # One fetch, two questions asked of it: a second request for the same document
+  # is a second chance to be answered differently, and was.
+  RECOVER_PAGE=$(mktemp)
+  check 'the recovery page is served' 200 \
+    "$(curl -s -o "$RECOVER_PAGE" -w '%{http_code}' -b "$RECOVER_JAR" "$GATEWAY/recovery")"
+  check 'it carries the terminal' 1 \
+    "$(grep -q 'login-assets/xterm' "$RECOVER_PAGE" && echo 1 || echo 0)"
+  check 'an anonymous caller gets none of it' 303 \
+    "$(curl -s -o /dev/null -w '%{http_code}' "$GATEWAY/recovery")"
+  check 'the backend log is readable with the backend down' 200 \
+    "$(curl -s -o /dev/null -w '%{http_code}' -b "$RECOVER_JAR" "$GATEWAY/recovery/log")"
+
+  # The file plane answers while dsh does not, because it never went through
+  # dsh: envd is the machine's own agent and it is up.
+  check 'the files are readable with the backend down' 1 \
+    "$(curl -s -b "$RECOVER_JAR" "$GATEWAY/sandbox/fs/list?path=/mnt" | grep -c '"entries"' | tr -d ' ')"
+  # Anywhere, not just the workspace — the scope that used to withhold the one
+  # file most able to break a backend from the one interface still reachable.
+  check 'including outside the workspace' 1 \
+    "$(curl -s -b "$RECOVER_JAR" "$GATEWAY/sandbox/fs/list?path=/etc" | grep -c '"entries"' | tr -d ' ')"
+
+  # The terminal, which is the reason not to destroy the machine: a shell runs
+  # on it while nothing is serving. Inside the gateway container, where `ws` is
+  # and where the pty route is one hop away.
+  docker compose cp verify-login.mjs gateway:/app/verify-login.mjs > /dev/null 2>&1 || NODE_FAIL=1
+  docker compose cp verify-terminal.mjs gateway:/app/verify-terminal.mjs > /dev/null 2>&1 || NODE_FAIL=1
+  docker compose exec -T -e GATEWAY=http://localhost:8080 -e "VERIFY_ALICE=$ALICE" \
+    gateway node /app/verify-terminal.mjs || NODE_FAIL=1
+
+  # Erasing is refused without the acknowledgement the dialog collects, so that
+  # a request made by anything other than a person who read the sentence cannot
+  # take an account's work with it.
+  check 'erasing without the acknowledgement is refused' 400 \
+    "$(curl -s -o /dev/null -w '%{http_code}' -b "$RECOVER_JAR" -X POST "$GATEWAY/recovery/wipe" \
+        -H 'Content-Type: application/json' -d '{}')"
+
+  # The one that matters: the same machine, the backend started again in it,
+  # with the identity and secrets it needs — which the first version of this
+  # route did not pass, and dsh refused to boot without.
+  check 'the backend can be started again' 204 \
+    "$(curl -s -o /dev/null -w '%{http_code}' -b "$RECOVER_JAR" -X POST "$GATEWAY/recovery/backend" \
+        -H 'Content-Type: application/json' -d '{}')"
+  RECOVER_BACK=0
+  RECOVER_WAITED=0
+  while [ "$RECOVER_WAITED" -lt 180 ]; do
+    if [ "$(api "$RECOVER_JAR" host.describe)" = 200 ]; then RECOVER_BACK=1; break; fi
+    sleep 3
+    RECOVER_WAITED=$((RECOVER_WAITED + 3))
+  done
+  check 'and the tenant is back in their own sandbox' 1 "$RECOVER_BACK"
+  check 'in the machine that was never replaced' "$RECOVER_HANDLE" \
+    "$(docker ps --filter "label=$DSH_LABEL=$ALICE" --format '{{.Names}}' | head -1)"
+  check 'so the application is served again' 200 \
+    "$(curl -s -o /dev/null -w '%{http_code}' -b "$RECOVER_JAR" "$GATEWAY/app")"
+else
+  echo '  (skipped: this shapes a machine with the Docker runtime)'
+fi
+
+echo
 if [ "$FAIL" -eq 0 ] && [ "$NODE_FAIL" -eq 0 ]; then
   printf '=== all acceptance checks passed (%d HTTP checks plus the suites above) ===\n\n' "$PASS"
   exit 0
