@@ -27,6 +27,8 @@
  * @module recovery-page
  */
 
+import { svg } from 'dsh-icons'
+
 import { asset } from './page-assets.js'
 import {
   BRAND_CSS,
@@ -66,6 +68,8 @@ const TABLE = {
   'files.deleted': { zh: '已删除', en: 'Deleted' },
   'files.binary': { zh: '这是二进制文件，不在这里编辑。', en: 'A binary file, not edited here.' },
   'files.up': { zh: '上一层', en: 'Up' },
+  'files.none': { zh: '选一个文件，就能在这里改它。', en: 'Choose a file and it opens here.' },
+  'files.empty': { zh: '这个目录是空的。', en: 'This directory is empty.' },
   'terminal.title': { zh: '终端', en: 'Terminal' },
   'terminal.hint': {
     zh: '就在这台机器上，以 root 身份。它不经过后端，所以后端死着也能用。',
@@ -101,7 +105,31 @@ const TABLE = {
 
 /** What the page is drawn with, beyond the chrome every page here shares. */
 const RECOVERY_CSS = `
-  main { max-width: 62rem; }
+  /* Centred, with the same top clearance the sign-in page keeps: the theme and
+     language buttons are fixed in the corner, and without it they sit on top of
+     the mark. Written here rather than inherited because PAGE_CSS gives main
+     nothing but the flex box it lives in — every page places its own. */
+  main {
+    flex: 1;
+    width: 100%;
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: 4.5rem 1.5rem 3rem;
+  }
+  @media (max-width: 40rem) { main { padding: 4.5rem 1rem 2rem; } }
+
+  /* The mark, drawn the way the sign-in page draws it — the hamster beside the
+     wordmark, both a link home. BRAND_CSS styles the letters and expects to
+     find them inside .brand; without the class they arrive as unstyled text,
+     which is what a person reads as "the logo is gone". */
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: 1.75rem;
+    text-decoration: none;
+  }
+  .brand img { height: 26px; width: auto; display: block; }
   .card {
     width: 100%;
     padding: 1.25rem 1.5rem;
@@ -135,25 +163,78 @@ const RECOVERY_CSS = `
   }
   textarea.sheet { min-height: 12rem; resize: vertical; white-space: pre; }
 
-  .tree { max-height: 18rem; overflow: auto; border: 1px solid var(--line-soft); border-radius: var(--radius-field); }
+  /* The tree, drawn as the panel's own tree is drawn — a row is an inset
+     rounded rectangle rather than a band across the column, because a
+     full-bleed highlight reads as a highlight of the panel and this one has to
+     read as a selection of the file. The measurements are the panel's: a 28px
+     row, an 8px gap between the mark and the name it belongs to. */
+  .tree {
+    height: 24rem;
+    overflow: auto;
+    padding: 6px 0;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-field);
+    background: var(--sunken);
+  }
   .tree button {
     display: flex;
-    gap: .5rem;
-    width: 100%;
-    padding: .3rem .75rem;
+    align-items: center;
+    gap: 8px;
+    width: calc(100% - 12px);
+    height: 28px;
+    margin: 0 6px;
+    padding: 0 6px;
     border: 0;
+    border-radius: 8px;
     background: transparent;
     color: var(--fg);
     font: inherit;
     font-size: .8125rem;
+    line-height: 28px;
     text-align: left;
     cursor: pointer;
   }
-  .tree button:hover { background: var(--surface); }
+  .tree button:hover, .tree button:focus-visible { background: var(--surface); outline: none; }
   .tree button[aria-current="true"] { background: var(--surface); font-weight: 500; }
-  .tree .kind { width: 1.25rem; color: var(--faint); }
-  .tree .size { margin-left: auto; color: var(--faint); font-variant-numeric: tabular-nums; }
+  /* The glyph keeps its own box so names line up whether or not the row above
+     was a directory, and it is quieter than the name: the name is what is being
+     read, the mark only says which kind. */
+  .tree .kind {
+    display: inline-flex;
+    flex: none;
+    width: 16px;
+    color: var(--faint);
+  }
+  .tree .kind svg { width: 16px; height: 16px; }
+  /* Up is the same chevron the harness draws, turned over. One glyph, two
+     directions, rather than an arrow borrowed from somewhere else. */
+  .tree .kind .turn { transform: rotate(180deg); }
+  .tree .grow { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .tree .size { flex: none; color: var(--faint); font-size: .75rem; font-variant-numeric: tabular-nums; }
+  .tree .note { padding: .25rem .75rem; color: var(--faint); font-size: .75rem; }
   .where { margin: 0 0 .5rem; color: var(--muted); font-family: var(--mono); font-size: .75rem; word-break: break-all; }
+
+  /* The right pane says what it is waiting for rather than showing an empty
+     box with two buttons under it — an editor with nothing in it and a Save
+     beside it is an invitation to save nothing over something. */
+  /* A display rule beats the hidden attribute, and both the note and the
+     button row have one — so the placeholder stayed on screen under the file
+     it was telling you to open. Stated once, for everything on this page. */
+  [hidden] { display: none !important; }
+  .editing { display: flex; flex-direction: column; gap: .6rem; height: 100%; }
+  .editing textarea.sheet { flex: 1; max-height: none; }
+  .empty-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 12rem;
+    border: 1px dashed var(--line-soft);
+    border-radius: var(--radius-field);
+    color: var(--faint);
+    font-size: .8125rem;
+    text-align: center;
+  }
 
   .panes { display: grid; grid-template-columns: minmax(0, 22rem) minmax(0, 1fr); gap: 1rem; }
   @media (max-width: 52rem) { .panes { grid-template-columns: minmax(0, 1fr); } }
@@ -224,7 +305,10 @@ ${THEME_TOGGLE}
 ${langToggle(TABLE)}
 <main>
   <div style="width:100%">
-    <p style="margin:0 0 1.25rem">${WORDMARK}</p>
+    <a class="brand" href="/app">
+      <img src="${asset('hamster.svg')}" alt="">
+      ${WORDMARK}
+    </a>
     <h1 style="margin:0 0 .35rem;font-size:1.35rem" data-t="title">沙箱需要修复</h1>
     <p class="hint" style="color:var(--muted);margin:0 0 1.5rem" data-t="lede">${escapeHtml(TABLE.lede.zh)}</p>
 
@@ -245,11 +329,12 @@ ${langToggle(TABLE)}
           <p class="where" id="where">/mnt</p>
           <div class="tree" id="tree"></div>
         </div>
-        <div>
-          <textarea class="sheet" id="editor" spellcheck="false" aria-label="file"></textarea>
-          <div class="row" style="margin-top:.6rem">
-            <button class="act primary" id="save" data-t="files.save" disabled>保存</button>
-            <button class="act danger" id="delete" data-t="files.delete" disabled>删除</button>
+        <div class="editing">
+          <p class="empty-note" id="nothing-open" data-t="files.none">选一个文件，就能在这里改它。</p>
+          <textarea class="sheet" id="editor" spellcheck="false" aria-label="file" hidden></textarea>
+          <div class="row" id="file-actions" hidden>
+            <button class="act primary" id="save" data-t="files.save">保存</button>
+            <button class="act danger" id="delete" data-t="files.delete">删除</button>
             <span class="said" id="file-said"></span>
           </div>
         </div>
@@ -330,7 +415,24 @@ ${langToggle(TABLE)}
   // because they go to envd rather than through a tunnel.
   const tree = $('tree'), where = $('where'), editor = $('editor')
   const save = $('save'), remove = $('delete'), fileSaid = $('file-said')
+  const nothingOpen = $('nothing-open'), fileActions = $('file-actions')
   let at = '/mnt', open = undefined
+
+  // The harness's own glyphs, written in rather than fetched: this page has no
+  // module table to require them from, and dsh-icons is markup.
+  const ICONS = {
+    up: '${svg('chevron-down', { size: 16, className: 'turn' })}',
+    dir: '${svg('folder-close', { size: 16 })}',
+    file: '${svg('file', { size: 16 })}',
+  }
+
+  /** Show the editor, or the line that says why there is nothing in it. */
+  const editing = (yes) => {
+    nothingOpen.hidden = yes
+    editor.hidden = !yes
+    fileActions.hidden = !yes
+  }
+  editing(false)
 
   const list = async (path) => {
     const response = await fetch('/sandbox/fs/list?path=' + encodeURIComponent(path), { credentials: 'same-origin' })
@@ -341,23 +443,38 @@ ${langToggle(TABLE)}
     tree.replaceChildren()
     if (at !== '/') {
       const up = document.createElement('button')
-      up.innerHTML = '<span class="kind">↑</span><span>' + dshText('files.up') + '</span>'
+      up.innerHTML = '<span class="kind">' + ICONS.up + '</span><span class="grow">' + dshText('files.up') + '</span>'
       up.addEventListener('click', () => list(at.slice(0, at.lastIndexOf('/')) || '/'))
       tree.append(up)
     }
+    if (body.entries.length === 0) {
+      const note = document.createElement('p')
+      note.className = 'note'
+      note.textContent = dshText('files.empty')
+      tree.append(note)
+    }
     for (const entry of body.entries) {
       const row = document.createElement('button')
-      const size = entry.directory ? '' : String(entry.size ?? '')
-      row.innerHTML = '<span class="kind">' + (entry.directory ? '▸' : '·') + '</span>'
+      row.innerHTML = '<span class="kind">' + (entry.directory ? ICONS.dir : ICONS.file) + '</span>'
         + '<span class="grow">' + entry.name.replace(/[<&]/g, (c) => c === '<' ? '&lt;' : '&amp;') + '</span>'
-        + '<span class="size">' + size + '</span>'
-      row.addEventListener('click', () => entry.directory ? list(entry.path) : show(entry.path))
+        + '<span class="size">' + (entry.directory ? '' : bytes(entry.size)) + '</span>'
+      row.addEventListener('click', () => entry.directory ? list(entry.path) : show(entry.path, row))
       tree.append(row)
     }
   }
 
-  const show = async (path) => {
+  /** A size a person reads, rather than a number of bytes to count digits in. */
+  const bytes = (n) => {
+    if (typeof n !== 'number') return ''
+    if (n < 1024) return n + ' B'
+    if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB'
+    return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + ' MB'
+  }
+
+  const show = async (path, row) => {
     fileSaid.textContent = ''
+    for (const node of tree.querySelectorAll('button')) node.removeAttribute('aria-current')
+    if (row !== undefined) row.setAttribute('aria-current', 'true')
     const response = await fetch('/sandbox/raw/' + path.split('/').filter(Boolean).map(encodeURIComponent).join('/'),
       { credentials: 'same-origin' })
     const bytes = await response.arrayBuffer()
@@ -366,9 +483,12 @@ ${langToggle(TABLE)}
     // beats handing back mojibake and writing it out again.
     if (text.includes('\\u0000')) { editor.value = dshText('files.binary'); open = undefined; }
     else { editor.value = text; open = path }
+    editing(true)
+    // A binary file is shown as the line that says so, and not edited: leaving
+    // Save live over it would write that sentence into the file.
     save.disabled = open === undefined
     remove.disabled = open === undefined
-    for (const node of tree.querySelectorAll('button')) node.removeAttribute('aria-current')
+    editor.readOnly = open === undefined
   }
 
   save.addEventListener('click', async () => {
@@ -399,6 +519,35 @@ ${langToggle(TABLE)}
     theme: { background: '#1b1b1c', foreground: '#e6e6e6' },
   })
   term.open($('terminal'))
+
+  /**
+   * Make the shell as wide as the box it is drawn in, and tell it so.
+   *
+   * Measured rather than guessed, and without the fit addon: one more package
+   * for one number is not worth carrying into a page whose whole point is to
+   * work when little else does. A monospace cell is measured off a probe in
+   * the page's own font, which is the same thing the addon does.
+   *
+   * The sandbox has to be told as well as the renderer — a shell that thinks
+   * it has 80 columns wraps at 80 however wide the window is.
+   */
+  const fit = () => {
+    const probe = document.createElement('span')
+    probe.textContent = 'MMMMMMMMMM'
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;'
+      + 'font:12px ui-monospace, SFMono-Regular, Menlo, monospace'
+    document.body.append(probe)
+    const cell = probe.getBoundingClientRect().width / 10
+    probe.remove()
+    const box = $('terminal').getBoundingClientRect()
+    if (cell <= 0 || box.width <= 0) return
+    const cols = Math.max(20, Math.floor((box.width - 16) / cell))
+    const rows = Math.max(6, Math.floor((box.height - 12) / (12 * 1.2)))
+    term.resize(cols, rows)
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'size', cols: cols, rows: rows }))
+  }
+  window.addEventListener('resize', fit)
+  $('terminal').addEventListener('click', () => term.focus())
   const socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/sandbox/pty')
   // The shell starts on connect; the frames are the ones terminal.js speaks —
   // ready, out, exit, error one way, in and size the other. No handshake of
@@ -412,8 +561,12 @@ ${langToggle(TABLE)}
       term.write(bytes)
       return
     }
-    if (frame.type === 'ready') { socket.send(JSON.stringify({ type: 'size', cols: term.cols, rows: term.rows })); return }
-    if (frame.type === 'exit' || frame.type === 'error') term.write('\r\n[' + (frame.message ?? 'exit ' + frame.code) + ']\r\n')
+    if (frame.type === 'ready') { fit(); term.focus(); return }
+    // Escaped twice on purpose: this script is written out of a template
+    // literal, so an unescaped \\r\\n is a real newline inside a single-quoted
+    // string by the time a browser parses it — which is a SyntaxError, and one
+    // that takes the whole script with it rather than just this line.
+    if (frame.type === 'exit' || frame.type === 'error') term.write('\\r\\n[' + (frame.message ?? 'exit ' + frame.code) + ']\\r\\n')
   })
   term.onData((data) => {
     if (socket.readyState !== WebSocket.OPEN) return

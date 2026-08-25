@@ -79,6 +79,29 @@ export async function serveTerminal(socket, caller, sandboxes) {
   // before the prompt has finished painting.
   const waiting = []
 
+  // One send at a time, in the order they were typed.
+  //
+  // Each keystroke is its own call to envd, and a call is a round trip. Started
+  // in parallel — which is what `void sendPtyInput(...)` per frame does — they
+  // arrive in whatever order the network settles, and a shell reads them in
+  // that order: `echo shot-ok` typed quickly came back as `soh`, `ot-ok`, and
+  // a `command not found`. Typing slowly hides it, which is why a person
+  // pasting a line is the one who finds it.
+  //
+  // A promise chain rather than a queue object: this has one producer and the
+  // only property that matters is that the next call starts after the previous
+  // one finished. A failed send does not break the chain — the shell is gone
+  // or it is not, and the socket's own end will say so.
+  let sending = Promise.resolve()
+  /**
+   * Send one chunk of input, after everything typed before it.
+   *
+   * @param {Buffer} bytes - what was typed.
+   */
+  const type = (bytes) => {
+    sending = sending.then(() => sendPtyInput(handle, pid, bytes)).catch(() => {})
+  }
+
   try {
     session = await startPty(handle, {
       cols: 80,
@@ -92,9 +115,7 @@ export async function serveTerminal(socket, caller, sandboxes) {
       onStart: (started) => {
         pid = started
         say({ type: 'ready' })
-        for (const bytes of waiting.splice(0)) {
-          void sendPtyInput(handle, pid, bytes).catch(() => {})
-        }
+        for (const bytes of waiting.splice(0)) type(bytes)
       },
       // Base64 rather than a binary frame: the socket already carries JSON in
       // both directions, and one shape is easier to reason about than two.
@@ -126,7 +147,7 @@ export async function serveTerminal(socket, caller, sandboxes) {
     if (message.type === 'in' && typeof message.data === 'string') {
       const bytes = Buffer.from(message.data, 'base64')
       if (pid === undefined) waiting.push(bytes)
-      else void sendPtyInput(handle, pid, bytes).catch(() => {})
+      else type(bytes)
       return
     }
     if (message.type === 'size' && pid !== undefined) {

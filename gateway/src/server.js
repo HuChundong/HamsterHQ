@@ -815,7 +815,7 @@ async function handleRequest(req, res) {
   // The right-hand panel's file plane. Ahead of the `/api|/files` branch below
   // because that one is a catch-all, and on its own prefix because `/files` is
   // already the tunnel's channel.
-  if (await handlePanel(req, res, { callerOf, sandboxes, sessionSecret, accountById: async (id) => await accounts.readById(id) })) return
+  if (await handlePanel(req, res, { callerOf, sandboxes, sessionSecret, backendFailed, accountById: async (id) => await accounts.readById(id) })) return
 
   if (path === '/sandbox/restart' && req.method === 'POST') {
     const caller = await callerOf(req, res)

@@ -739,6 +739,16 @@ if [ "$RUNTIME" = docker ]; then
   check 'including outside the workspace' 1 \
     "$(curl -s -b "$RECOVER_JAR" "$GATEWAY/sandbox/fs/list?path=/etc" | grep -c '"entries"' | tr -d ' ')"
 
+  # The application's own way of finding out. The shell holds this stream open
+  # and it is the one channel that does not run through the sandbox, so it is
+  # the only one still speaking when the sandbox stops — and what it says here
+  # is what turns a page that retries forever into a page that leaves.
+  # The frame itself rather than a count of them: what a stream said is the
+  # thing worth reading when it said the wrong thing, and a 0 next to "expected
+  # 1" tells nobody anything.
+  RECOVER_FRAME=$(curl -s -N -m 20 -b "$RECOVER_JAR" "$GATEWAY/sandbox/stats" | grep -m1 '^data:' | tr -d '\r')
+  check 'the status stream says recovery is the answer' 'data: {"ok":false,"recover":true}' "$RECOVER_FRAME"
+
   # The terminal, which is the reason not to destroy the machine: a shell runs
   # on it while nothing is serving. Inside the gateway container, where `ws` is
   # and where the pty route is one hop away.

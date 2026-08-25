@@ -23,6 +23,7 @@
  */
 
 import process from 'node:process'
+import vm from 'node:vm'
 
 const CJK = /[一-鿿]/
 
@@ -127,12 +128,56 @@ function embedded(html) {
  */
 const ALLOWED = [/<button type="button" data-lang="zh"[^>]*>/, /<title>/]
 
+/**
+ * Whether every inline script on this page actually parses.
+ *
+ * The reason this exists is one character. A page is written as a template
+ * literal, so an escape inside the script it carries is resolved TWICE: once
+ * when the page is built, and once when the browser reads it. A `\r\n` written
+ * with one backslash therefore reaches the browser as a real newline in the
+ * middle of a quoted string, which is a SyntaxError — and a SyntaxError does
+ * not break one line, it discards the whole script. The recovery page shipped
+ * that way: it rendered, it was styled, it answered its routes, and nothing on
+ * it worked. Every check here passed, because every check here read the page
+ * as text.
+ *
+ * So: read it the way a browser does. `vm.Script` parses without running,
+ * which is the whole question — nothing here can be executed anyway, there
+ * being no document to execute it against.
+ *
+ * JSON islands are skipped: they are data by their own type attribute, and an
+ * object literal is not a statement.
+ *
+ * @param {string} name - the page, for the message.
+ * @param {string} html - the rendered page.
+ * @returns {string[]} one problem per script that does not parse.
+ */
+function scriptsParse(name, html) {
+  const found = []
+  for (const match of html.matchAll(/<script((?:"[^"]*"|[^>"])*)>([\s\S]*?)<\/script>/g)) {
+    const attributes = match[1]
+    const body = match[2]
+    if (attributes.includes('src=')) continue
+    if (/type="(?!text\/javascript|module)[^"]*"/.test(attributes)) continue
+    if (body.trim() === '') continue
+    try {
+      new vm.Script(body)
+    } catch (error) {
+      // The line number is the script's own, which is what a browser console
+      // would say too — and enough to find it in the template that wrote it.
+      found.push(`${name}: an inline script does not parse (${error.message}); a browser discards the whole script, not the line`)
+    }
+  }
+  return found
+}
+
 const problems = []
 
 /** What each page's states, taken together, name and carry. */
 const reachable = new Map()
 
 for (const { name, group, html } of await pages()) {
+  problems.push(...scriptsParse(name, html))
   const { table, rest: whole } = embedded(html)
   // An element written through innerHTML replaces everything inside it, so its
   // children are already translated by the key on the parent. Emptied rather

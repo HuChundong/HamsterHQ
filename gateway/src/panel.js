@@ -228,7 +228,10 @@ export async function handlePanel(req, res, deps) {
   // non-2xx as fatal and never reconnects. So these open unconditionally and
   // report the trouble down the stream they just opened.
   if (path === STATS_PATH) {
-    serveStats(req, res, resolve)
+    // The stream is also what tells a browser to leave: a sandbox that stops
+    // answering while its machine is up is a backend that died, and the shell
+    // has no other way to find that out.
+    serveStats(req, res, resolve, async () => await deps.backendFailed(caller.email))
     return true
   }
   if (path === WATCH_PATH) {

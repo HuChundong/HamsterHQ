@@ -78,7 +78,11 @@ function subscribe() {
     headers: {},
     socket: { setTimeout: () => {}, setNoDelay: () => {}, setKeepAlive: () => {} },
   })
-  stats.serveStats(req, res, async () => ({ handle: 'probe-handle', sandboxId: SANDBOX }))
+  // The fourth argument is the question the stream asks when a sandbox stops
+  // answering: is the machine still up? Answered no here, because what this
+  // probe is about is which reading is current — the recovery case has its own
+  // section, against a machine that is genuinely in it.
+  stats.serveStats(req, res, async () => ({ handle: 'probe-handle', sandboxId: SANDBOX }), async () => false)
   return {
     latest: () => {
       const line = sent.flatMap((c) => c.split('\n')).filter((l) => l.startsWith('data:')).pop()

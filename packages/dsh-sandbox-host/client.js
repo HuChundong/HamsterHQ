@@ -1239,8 +1239,20 @@ window.__ModuleLoader__.load({
         const onMessage = (event) => {
           let reading
           try { reading = JSON.parse(event.data) } catch { return }
-          // Any failure means the same thing to a person: their sandbox is not
-          // answering. Which HTTP status it was is a detail for a log.
+          // The gateway has looked and the machine is up with nothing serving
+          // on it. That is not a wait, and nothing in this shell can end it —
+          // the shell IS the thing that died. The recovery page is served by
+          // the gateway for exactly this moment, so go there rather than
+          // retrying a backend that is not coming back on its own.
+          //
+          // A whole-page navigation, not a route change: everything on this
+          // screen is drawn by the process that is gone.
+          if (reading.recover === true) {
+            window.location.assign('/recovery')
+            return
+          }
+          // Any other failure means the same thing to a person: their sandbox
+          // is not answering. Which HTTP status it was is a detail for a log.
           setState((current) => (reading.ok === true
             ? { status: 'running', stats: reading.stats }
             : { status: 'starting', stats: current.stats }))
