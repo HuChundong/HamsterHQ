@@ -402,26 +402,61 @@ function serveStream(req, res, attach) {
 /**
  * Serve one browser's subscription to a sandbox's numbers.
  *
+ * This stream is also how a browser LEARNS that its backend died. It is the
+ * one channel the shell holds open that does not run through the sandbox, so
+ * it is the only one still speaking when the sandbox stops — every other
+ * request the frontend makes simply fails, and the shell answers a failure by
+ * retrying rather than by concluding anything. Which is why, before this, a
+ * tenant whose backend crashed sat in front of an application that kept trying
+ * until they thought to reload the page themselves.
+ *
+ * So a reading that says "not answering" is asked one further question: is the
+ * machine still there? When it is, this is not a sandbox coming up, it is a
+ * backend that failed — and `recover` says so, which the browser turns into
+ * the recovery page.
+ *
  * @param {import('node:http').IncomingMessage} req - the request.
  * @param {import('node:http').ServerResponse} res - the response.
  * @param {() => Promise<{handle: string, sandboxId: string}>} resolve - the caller's sandbox, resolved afresh on every attempt.
+ * @param {() => Promise<boolean>} failed - whether this caller's machine is up with no backend on it.
  */
-export function serveStats(req, res, resolve) {
+export function serveStats(req, res, resolve, failed) {
   serveStream(req, res, async (send, retry) => {
+    /**
+     * Say a sandbox is not answering, and whether it is worth going to look.
+     *
+     * The question costs a round trip to the machine, so it is asked only on
+     * the answer that might mean recovery — never on the ordinary one.
+     */
+    const notAnswering = async () => {
+      send({ ok: false, recover: await failed().catch(() => false) })
+    }
+
     let where
     try {
       where = await resolve()
     } catch {
       // Told, not swallowed: to a person a sandbox that is still coming up and
       // one that is not answering are the same state, and the bar draws it.
-      send({ ok: false })
+      await notAnswering()
       return undefined
     }
+    // Asked before subscribing, not only when a reading disappoints. A machine
+    // with no backend on it sends no reports at all, so waiting for one to fail
+    // means waiting for a timeout — and what is being waited for is already
+    // known. Cheap in the ordinary case: a tenant with a live tunnel is
+    // answered from memory without touching the machine.
+    if (await failed().catch(() => false)) send({ ok: false, recover: true })
+
     return watchSandbox(where.sandboxId, (reading) => {
-      send(reading)
+      if (reading.ok) {
+        send(reading)
+        return
+      }
+      void notAnswering()
       // A sandbox that stops answering may simply have been replaced, so the
       // next attempt starts over at `resolve` rather than asking this id again.
-      if (!reading.ok) retry()
+      retry()
     })
   })
 }

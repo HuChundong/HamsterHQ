@@ -80,16 +80,18 @@ function runShell(cookie) {
       }
       if (message.type === 'ready') {
         ready = true
-        // Base64, which is what the socket carries in both directions — sent
-        // as plain text it is decoded as base64 anyway and reaches the shell
-        // as bytes nobody typed.
-        //
-        // The marker is split in the command so that the shell echoing the
-        // line back does not itself count as the shell having run it.
-        const typed = Buffer.from(`echo ${MARK}"-said"\n`).toString('base64')
-        socket.send(JSON.stringify({ type: 'in', data: typed }))
+        // One frame per character, which is what a browser sends: xterm emits
+        // onData per keystroke, and a paste arrives as a burst of them. Sent
+        // this way because the gateway used to start each one as its own call
+        // to envd without waiting for the last, so a line typed quickly reached
+        // the shell out of order — `echo x-said` came back as `soh`, `ot-ok`
+        // and a command not found. Typing slowly hides it; pasting does not.
+        for (const ch of `echo ${MARK}"-said"\n`) {
+          socket.send(JSON.stringify({ type: 'in', data: Buffer.from(ch).toString('base64') }))
+        }
         return
       }
+
       if (message.type === 'out') {
         output += Buffer.from(message.data, 'base64').toString()
         if (output.includes(`${MARK}-said`)) finish('answered')
