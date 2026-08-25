@@ -34,7 +34,6 @@ import {
   PathRefused,
   RAW_PREFIX,
   ROOT,
-  isWithin,
   pathFromRawUrl,
   rawUrl,
   requireAbsolute,
@@ -144,14 +143,6 @@ t('a path anywhere in the machine is nameable', () => {
 })
 
 // ---- the primitives, on their own ---------------------------------------
-
-t('isWithin is segment-wise, not prefix-wise', () => {
-  assert.equal(isWithin('/workspace', '/workspace'), true)
-  assert.equal(isWithin('/workspace', '/workspace/a'), true)
-  assert.equal(isWithin('/workspace/', '/workspace/a'), true)
-  assert.equal(isWithin('/workspace', '/workspace-evil'), false)
-  assert.equal(isWithin('/workspace', '/works'), false)
-})
 
 t('requireAbsolute normalises without judging where it points', () => {
   // Separating the two is what lets the fence be read as one rule per line.

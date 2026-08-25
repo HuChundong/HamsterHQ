@@ -248,7 +248,7 @@ export async function handlePanel(req, res, deps) {
   try {
     const bytesPath = rawPath ?? preview?.path
     if (bytesPath !== undefined) {
-      // Read, so anywhere in the sandbox — see `requireReadable`.
+      // Anywhere in the sandbox — see `requirePath`.
       const resolved = requirePath(bytesPath)
       const { status, body } = await readFile(handle, resolved)
       if (status >= 400) {
