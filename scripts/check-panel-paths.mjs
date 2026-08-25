@@ -32,14 +32,13 @@ import {
 import { forgetPath, shows } from '../packages/dsh-artifact-panel/src/tabs.js'
 import {
   PathRefused,
-  requireReadable,
   RAW_PREFIX,
   ROOT,
   isWithin,
   pathFromRawUrl,
   rawUrl,
   requireAbsolute,
-  requireInsideRoot,
+  requirePath,
 } from '../gateway/src/panel-path.js'
 
 let failures = 0
@@ -68,7 +67,7 @@ const t = (name, fn) => {
  */
 const refused = (value, status) => {
   assert.throws(
-    () => requireInsideRoot(value),
+    () => requirePath(value),
     (error) => error instanceof PathRefused && error.status === status,
     `expected ${JSON.stringify(value)} to be refused with ${String(status)}`,
   )
@@ -77,27 +76,27 @@ const refused = (value, status) => {
 // ---- what is allowed through --------------------------------------------
 
 t('a plain path inside the workspace passes', () => {
-  assert.equal(requireInsideRoot(`${ROOT}/notes.md`), `${ROOT}/notes.md`)
+  assert.equal(requirePath(`${ROOT}/notes.md`), `${ROOT}/notes.md`)
 })
 
 t('the workspace itself passes', () => {
-  assert.equal(requireInsideRoot(`${ROOT}`), `${ROOT}`)
+  assert.equal(requirePath(`${ROOT}`), `${ROOT}`)
 })
 
 t('a trailing slash is dropped so two spellings are one path', () => {
-  assert.equal(requireInsideRoot(`${ROOT}/src/`), `${ROOT}/src`)
+  assert.equal(requirePath(`${ROOT}/src/`), `${ROOT}/src`)
 })
 
 t('interior traversal that stays inside is normalised, not refused', () => {
-  assert.equal(requireInsideRoot(`${ROOT}/a/../b/c.txt`), `${ROOT}/b/c.txt`)
+  assert.equal(requirePath(`${ROOT}/a/../b/c.txt`), `${ROOT}/b/c.txt`)
 })
 
 t('repeated separators collapse', () => {
-  assert.equal(requireInsideRoot(`${ROOT}//a///b.txt`), `${ROOT}/a/b.txt`)
+  assert.equal(requirePath(`${ROOT}//a///b.txt`), `${ROOT}/a/b.txt`)
 })
 
 t('a name that merely looks like a traversal is a name', () => {
-  assert.equal(requireInsideRoot(`${ROOT}/..hidden`), `${ROOT}/..hidden`)
+  assert.equal(requirePath(`${ROOT}/..hidden`), `${ROOT}/..hidden`)
 })
 
 // ---- what is turned away ------------------------------------------------
@@ -124,39 +123,24 @@ t('a null byte is refused', () => {
   refused(`${ROOT}/ok\0/../../etc/shadow`, 400)
 })
 
-t('traversal out of the workspace is refused', () => {
-  refused(`${ROOT}/../etc/shadow`, 403)
-  refused(`${ROOT}/a/../../root/.dsh`, 403)
+// The panel browses the whole sandbox now. These are the cases that used to be
+// refused for being outside the workspace and are answered instead — kept as
+// tests because the change was deliberate, and a scope quietly growing back
+// would be a regression in both directions.
+t('traversal out of the workspace normalises rather than refusing', () => {
+  assert.equal(requirePath(`${ROOT}/../etc/hosts`), '/mnt/etc/hosts')
+  assert.equal(requirePath(`${ROOT}/a/../../dsh`), '/mnt/dsh')
 })
 
-t('the tenant secrets directory is refused', () => {
-  refused('/root/.dsh/settings.json', 403)
+t('the tenant home the backend reads its patches from is nameable', () => {
+  // The file that put a tenant in recovery: one stray bracket here and dsh
+  // will not boot. Refusing to name it is what left them without a way back.
+  assert.equal(requirePath('/mnt/dsh/cordis.patch.yml'), '/mnt/dsh/cordis.patch.yml')
 })
 
-t('a path outside the workspace is out of scope', () => {
-  // Not a secret being guarded — the tenant's agent can read this file on
-  // request. It is simply not part of what this browser browses.
-  refused('/proc/1/environ', 403)
-})
-
-t('a sibling directory sharing the prefix is refused', () => {
-  // `startsWith(`${ROOT}`)` alone would let all of these through.
-  refused(`${ROOT}-evil/x`, 403)
-  refused(`${ROOT}s/x`, 403)
-  refused(`${ROOT}.bak`, 403)
-})
-
-t('the filesystem root is refused', () => {
-  refused('/', 403)
-})
-
-t('a refusal never echoes the path back', () => {
-  try {
-    requireInsideRoot('/etc/shadow')
-    assert.fail('expected a refusal')
-  } catch (error) {
-    assert.ok(!error.message.includes('/etc/shadow'), error.message)
-  }
+t('a path anywhere in the machine is nameable', () => {
+  assert.equal(requirePath('/var/log/dsh.log'), '/var/log/dsh.log')
+  assert.equal(requirePath('/'), '/')
 })
 
 // ---- the primitives, on their own ---------------------------------------
@@ -200,11 +184,12 @@ t('malformed percent-encoding decodes to nothing rather than throwing', () => {
   assert.equal(pathFromRawUrl(`${RAW_PREFIX}mnt/workspace/%zz`), undefined)
 })
 
-t('an encoded traversal decodes, and is then refused by the fence', () => {
-  // The decoder does not judge; this is the pair that makes it safe.
+t('an encoded traversal decodes, and is then normalised', () => {
+  // The decoder does not judge; the normaliser is what makes two spellings of
+  // one place one path, which is what the routes need.
   const decoded = pathFromRawUrl(`${RAW_PREFIX}mnt/workspace/%2e%2e/%2e%2e/root`)
   assert.equal(decoded, `${ROOT}/../../root`)
-  refused(decoded, 403)
+  assert.equal(requirePath(decoded), '/root')
 })
 
 t('the root the fence bounds is the workspace', () => {
@@ -270,44 +255,32 @@ t('a preview URL with no file part is not one of ours', () => {
   assert.equal(readPreviewUrl('/sandbox/raw/workspace/a'), undefined)
 })
 
-t('a preview path is still bounded by the same scope', () => {
+t('a preview path goes through the same normaliser as everything else', () => {
   const ticket = mintTicket(SECRET, 'acct-1', NOW)
   const parsed = readPreviewUrl(previewUrl(ticket, `${ROOT}/../root/.dsh`))
-  refused(parsed.path, 403)
+  assert.equal(requirePath(parsed.path), '/mnt/root/.dsh')
 })
 
-// ---- reading reaches the whole sandbox; writing does not --------------------
+// ---- one rule for reading and writing alike --------------------------------
 
-// Two scopes, and the difference is the point. `requireInsideRoot` is the
-// tree's: a rename or a delete offered outside the one directory it lists is a
-// destructive action against a path nobody navigated to. `requireReadable` is
-// a tab's, and it is deliberately wider — refusing to SHOW a path protects
-// nothing when the tenant is root in the same sandbox and can read it from the
-// terminal on the next row. What the narrow scope actually did was make the
-// agent's own output unreachable: a file written to `/tmp` came back as
-// `spawn xdg-open ENOENT`, the host being asked to open a file on a desktop
-// nobody is sitting at.
-
-t('a path outside the workspace may be read', () => {
-  assert.equal(requireReadable('/tmp/notes.txt'), '/tmp/notes.txt')
-  assert.equal(requireReadable('/etc/hostname'), '/etc/hostname')
+// There were two scopes, and the narrower one governed writes. It is gone: a
+// tenant is root in their own sandbox, so confining the panel confined only
+// the tenant's ability to repair it. What is left is the shape of a path.
+t('any absolute path is accepted, for reading and for writing', () => {
+  assert.equal(requirePath('/tmp/notes.txt'), '/tmp/notes.txt')
+  assert.equal(requirePath('/etc/hostname'), '/etc/hostname')
+  assert.equal(requirePath('/mnt/dsh/settings.yaml'), '/mnt/dsh/settings.yaml')
 })
 
-t('and may not be written, which is a different question', () => {
-  assert.throws(() => requireInsideRoot('/tmp/notes.txt'), PathRefused)
-})
-
-// Everything the narrow scope refused about the shape of a path, the wide one
-// refuses too. Only the root requirement is gone.
-t('reading still refuses what is not a path', () => {
+t('what is not a path is still refused', () => {
   for (const bad of ['', 'relative/path', '/nul\u0000byte', undefined, 42]) {
-    assert.throws(() => requireReadable(bad), PathRefused, `accepted ${JSON.stringify(bad)}`)
+    assert.throws(() => requirePath(bad), PathRefused, `accepted ${JSON.stringify(bad)}`)
   }
 })
 
-t('and still collapses traversal before anyone reads the answer', () => {
-  assert.equal(requireReadable('/tmp/../etc/hostname'), '/etc/hostname')
-  assert.equal(requireReadable('/tmp//a/./b'), '/tmp/a/b')
+t('and traversal still collapses before anyone reads the answer', () => {
+  assert.equal(requirePath('/tmp/../etc/hostname'), '/etc/hostname')
+  assert.equal(requirePath('/tmp//a/./b'), '/tmp/a/b')
 })
 
 // ---- what the tab bar looks like once a file is gone ----

@@ -39,7 +39,8 @@ import { ASSET_PREFIX, assetFor } from './page-assets.js'
 import { POLICY_SLUGS, policyPage } from './policy-page.js'
 import { handlePanel } from './panel.js'
 import { DEFAULT_PLAN } from './plans.js'
-import { machineAlive } from './envd.js'
+import { backendLog, machineAlive } from './envd.js'
+import { recoveryPage } from './recovery-page.js'
 import { TERMINAL_PATH, serveTerminal } from './terminal.js'
 import { handleProfile } from './profile.js'
 import { DIAL_IN_TIMEOUT_MS, SandboxManager } from './sandboxes.js'
@@ -51,7 +52,7 @@ import { handleSignIn } from './sign-in.js'
 import { Tokens, signedOutCookies } from './tokens.js'
 import { TunnelServer } from './tunnel-server.js'
 import { Verification } from './verification.js'
-import { destroyVolume } from './volumes.js'
+import { destroyVolume, volumesEnabled } from './volumes.js'
 import { eraseAccount } from './erase.js'
 
 /**
@@ -171,7 +172,7 @@ const verification = new Verification(db)
  */
 const modelKeys = new ModelKeys(db)
 
-const sandboxes = new SandboxManager({
+const sandboxOptions = {
   db,
   gatewayTunnelUrl: GATEWAY_TUNNEL_URL,
   // What this tenant is allowed, resolved here because this is the one place
@@ -242,7 +243,18 @@ const sandboxes = new SandboxManager({
   // calls it runs on a timer, long after both are built.
   lastActiveAt: (sandboxId) => tunnels.lastActiveAt(sandboxId),
   presenceOf: (sandboxId) => tunnels.presenceOf(sandboxId),
-})
+}
+
+/**
+ * The manager, and the options it was built from.
+ *
+ * Kept as a value rather than an argument expression because one of them is
+ * needed twice: recovery restarts a backend in a machine that already exists,
+ * and it must hand that backend the same environment a normal start would —
+ * the model route, the tunnel address, the tenant's own credential. Rebuilding
+ * that by hand in a second place is how the two drift.
+ */
+const sandboxes = new SandboxManager(sandboxOptions)
 /**
  * What the two page modules are handed.
  *
@@ -688,6 +700,118 @@ async function handleRequest(req, res) {
   //
   // It is the only way a tenant applies a change to their own environment, and
   // the only way out of a sandbox that has wedged.
+  // Recovery: what a tenant is given when their machine is up and their backend
+  // is not. Ahead of the panel and the `/api` catch-all, and every one of these
+  // reaches the machine through envd rather than through a tunnel — which is
+  // the whole reason they answer at all in the state they exist for.
+  if (path.startsWith('/recovery')) {
+    const caller = await callerOf(req, res)
+    if (caller === undefined) {
+      // The page is a page, so a stranger meets the sign-in form; the calls
+      // behind it are JSON and say so.
+      if (path === '/recovery') {
+        res.writeHead(303, { Location: '/login' })
+        res.end()
+        return
+      }
+      res.writeHead(401, { 'Content-Type': 'application/json' })
+      res.end('{}')
+      return
+    }
+
+    if (path === '/recovery' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+      res.end(recoveryPage({ email: caller.email, version: DSH_VERSION }))
+      return
+    }
+
+    // What the backend said before it stopped. `ensure` rather than `recorded`,
+    // because a tenant who arrives here after the machine was reclaimed should
+    // get one started rather than an empty page — the log will be short and the
+    // backend will be up, which is the answer they came for.
+    if (path === '/recovery/log' && req.method === 'GET') {
+      const { handle } = await sandboxes.ensure(caller.email, caller.id)
+      const log = await backendLog(handle).catch((error) => `gateway: ${error.message}`)
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      res.end(JSON.stringify({ log }))
+      return
+    }
+
+    if (req.method === 'POST' && ['/recovery/backend', '/recovery/rebuild', '/recovery/wipe'].includes(path)) {
+      const body = await readBody(req, 4096)
+      let asked = {}
+      try { asked = JSON.parse(body?.toString('utf8') ?? '{}') } catch { asked = {} }
+
+      // Start the backend again, in the machine that is already running.
+      // Nothing is destroyed and nothing is created: this is the first thing to
+      // try and the only one that keeps the session in flight.
+      if (path === '/recovery/backend') {
+        try {
+          await sandboxes.ensure(caller.email, caller.id)
+          await sandboxes.restartBackend(caller.email)
+        } catch (error) {
+          console.error(`gateway: restarting the backend for ${caller.email} failed: ${error.message}`)
+          res.writeHead(502, { 'Content-Type': 'application/json' })
+          res.end('{}')
+          return
+        }
+        console.log(`gateway: ${caller.email} started their backend from recovery`)
+        res.writeHead(204)
+        res.end()
+        return
+      }
+
+      // A different machine, the same volume. The tenant's files and history
+      // are on the volume, so this costs them the conversation in flight and
+      // nothing else.
+      if (path === '/recovery/rebuild') {
+        await sandboxes.release(caller.email).catch((error) => {
+          console.error(`gateway: releasing ${caller.email} failed: ${error.message}`)
+        })
+        console.log(`gateway: ${caller.email} rebuilt their sandbox from recovery`)
+        res.writeHead(204)
+        res.end()
+        return
+      }
+
+      // The volume too, which is everything they have. Refused without the
+      // acknowledgement the dialog collects, so that a request made by anything
+      // other than a person who read the sentence does not erase an account's
+      // work.
+      if (asked.acknowledged !== true) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'acknowledgement required' }))
+        return
+      }
+      await sandboxes.release(caller.email).catch((error) => {
+        console.error(`gateway: releasing ${caller.email} failed: ${error.message}`)
+      })
+      // Said plainly when it does not happen. A volume that survived while the
+      // page reports "erased" is the one answer here that is worse than an
+      // error: the tenant believes their data is gone and it is not. Where
+      // there are no volumes at all — the Docker simulation — there is nothing
+      // to destroy and nothing to claim.
+      if (volumesEnabled()) {
+        try {
+          await destroyVolume(caller.id)
+        } catch (error) {
+          console.error(`gateway: destroying the volume for ${caller.email} failed: ${error.message}`)
+          res.writeHead(502, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'the volume could not be destroyed' }))
+          return
+        }
+      }
+      console.log(`gateway: ${caller.email} erased their own data from recovery`)
+      res.writeHead(204)
+      res.end()
+      return
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' })
+    res.end('{}')
+    return
+  }
+
   // The right-hand panel's file plane. Ahead of the `/api|/files` branch below
   // because that one is a catch-all, and on its own prefix because `/files` is
   // already the tunnel's channel.

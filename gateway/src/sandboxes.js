@@ -31,6 +31,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { hostname } from 'node:os'
 import process from 'node:process'
+import { startBackend } from './envd.js'
 import { selectRuntime } from './runtimes.js'
 
 /** The sandbox runtime in use — CubeSandbox, or the Docker simulation. */
@@ -273,6 +274,36 @@ export class SandboxManager {
    */
   stateOf(username) {
     return this.byUser.has(username) ? 'running' : 'none'
+  }
+
+  /**
+   * Start the backend again in the machine this tenant already has.
+   *
+   * For recovery, and it lives here rather than in the route because of what
+   * goes into the environment: the same composition `ensure` builds, least
+   * trusted first, with the sandbox's own identity and its way back in the
+   * middle. A route that assembled that by hand would drift from this one, and
+   * the first sign of the drift was a backend told to start without the three
+   * variables the tunnel plugin refuses to run without.
+   *
+   * The machine is not touched — nothing is created, destroyed or reordered.
+   * If the backend is already running this starts a second one, which is why
+   * the caller is a page a person is looking at rather than anything automatic.
+   *
+   * @param {string} username - whose backend to start.
+   * @returns {Promise<void>} when envd has taken the command.
+   * @throws {Error} when there is no record, or the machine refuses it.
+   */
+  async restartBackend(username) {
+    const record = this.byUser.get(username)
+    if (record === undefined) throw new Error(`no sandbox is recorded for ${username}`)
+    await startBackend(record.handle, {
+      ...await this.options.secrets(username),
+      SANDBOX_ID: record.sandboxId,
+      SANDBOX_TOKEN: record.token,
+      GATEWAY_TUNNEL_URL: this.options.gatewayTunnelUrl,
+      ...await this.options.env(username),
+    })
   }
 
   /**

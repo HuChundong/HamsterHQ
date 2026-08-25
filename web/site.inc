@@ -92,6 +92,11 @@ location /profile { proxy_pass http://$gateway_upstream; proxy_set_header Host $
 # The tenant's own sandbox environment. A prefix rather than an exact match:
 # `/secrets` lists and writes, `/secrets/delete` removes.
 location /secrets { proxy_pass http://$gateway_upstream; proxy_set_header Host $host; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto $scheme; }
+
+# The recovery page and the three things it can do. Proxied like the other
+# gateway-served pages, and reached when the application cannot be: the whole
+# point is that nothing on this path goes through the tenant's backend.
+location /recovery { proxy_pass http://$gateway_upstream; proxy_set_header Host $host; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto $scheme; }
 # Throwing away this tenant's own machine. Removing a container is slower than
 # a request usually is, so it gets the long read timeout rather than the 60s
 # default — a timeout here would report failure for something that worked.

@@ -76,6 +76,7 @@ for (const page of [
   'gateway/src/login-page.js',
   'gateway/src/profile-page.js',
   'gateway/src/policy-page.js',
+  'gateway/src/recovery-page.js',
   'admin/console-shell.js',
   'admin/sections/tenants.js',
   'admin/sections/invites.js',

@@ -143,18 +143,29 @@ export function requireAbsolute(value) {
  * @returns {string} the normalised absolute path.
  * @throws {PathRefused} when it is not a path at all.
  */
-export function requireReadable(value) {
+/**
+ * The one rule left: name a place, absolutely.
+ *
+ * This used to be two functions, because writes were confined to the workspace
+ * while reads were not. The confinement is gone, and the reason it went is the
+ * reason it never belonged: a tenant is root inside their own sandbox and
+ * their agent is a shell they type into, so the panel refusing to write
+ * `/mnt/dsh` stopped nobody — it only meant the one file most able to break
+ * their backend was the one file they could not fix from the interface. That
+ * is exactly the state a tenant reached, and the way out was a shell they
+ * could not open because the thing that serves it had not started.
+ *
+ * What is scoped is what the tree OPENS at, which is still {@link ROOT}. A
+ * browser that starts at the workspace and can be steered elsewhere is a
+ * workspace browser with an escape hatch; a browser that refuses to go there
+ * is a workspace browser with a hostage.
+ *
+ * @param {string | null | undefined} value - the path as the caller wrote it.
+ * @returns {string} the normalised absolute path.
+ * @throws {PathRefused} when it is missing, relative, or not a string.
+ */
+export function requirePath(value) {
   return requireAbsolute(value)
-}
-
-export function requireInsideRoot(value) {
-  const resolved = requireAbsolute(value)
-  if (!isWithin(ROOT, resolved)) {
-    // The path is not echoed back. A caller that asked for `/etc/shadow` learns
-    // only that it was refused, which is all it is entitled to know.
-    throw new PathRefused(403, `a path outside ${ROOT} cannot be read`)
-  }
-  return resolved
 }
 
 /** The route prefix the raw-bytes reader answers on. */

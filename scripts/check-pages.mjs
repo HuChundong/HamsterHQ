@@ -37,6 +37,7 @@ async function pages() {
   const { policyPage, POLICY_SLUGS } = await import('../gateway/src/policy-page.js')
   const { loginPage } = await import('../gateway/src/login-page.js')
   const { profilePage } = await import('../gateway/src/profile-page.js')
+  const { recoveryPage } = await import('../gateway/src/recovery-page.js')
   const { consolePage } = await import('../admin/console-shell.js')
   const { SECTIONS } = await import('../admin/sections/index.js')
   const { PAGE_SIZE } = await import('../admin/sections/paging.js')
@@ -65,6 +66,14 @@ async function pages() {
         email: 'someone@example.com', name: 'Someone', error: 'avatar.large',
         avatarLimit: 64_000, nameLimit: 40, version: '1.2.3',
       }),
+    },
+    // One state: the page is the same document whatever went wrong, and what
+    // differs — the log, the files, whether the backend comes back — arrives
+    // after it has loaded.
+    {
+      name: 'recovery',
+      group: 'recovery',
+      html: recoveryPage({ email: 'someone@example.com', version: '1.2.3' }),
     },
     // Every section, in two states each: with rows and without. A section is
     // a file now, so the way this check goes stale is a new file nobody added

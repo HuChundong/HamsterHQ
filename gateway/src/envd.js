@@ -302,6 +302,28 @@ export async function runCommand(handle, command, envs) {
 }
 
 /**
+ * The tail of the backend's own log.
+ *
+ * The one thing a tenant whose backend will not boot actually needs, and the
+ * gateway has always been able to read it: the entrypoint redirects dsh's
+ * output to this file, and envd reads files whether or not dsh is running.
+ * Before the recovery page existed, nobody was shown it — the tenant saw a
+ * sandbox that would not start, and the sentence naming the file they had
+ * broken sat unread in a machine that was about to be destroyed.
+ *
+ * Bounded, because a backend that boots and crashes in a loop writes a lot and
+ * none of the early part is the answer.
+ *
+ * @param {string} handle - the sandbox to read from.
+ * @param {number} [lines] - how many lines from the end.
+ * @returns {Promise<string>} what it said, or an empty string when it said nothing.
+ */
+export async function backendLog(handle, lines = 200) {
+  const { stdout } = await runCommand(handle, `tail -n ${String(lines)} ${BACKEND_LOG_PATH} 2>/dev/null || true`, {})
+  return stdout
+}
+
+/**
  * Whether the machine itself is still answering.
  *
  * The question this exists to separate: a sandbox that never dialled the
