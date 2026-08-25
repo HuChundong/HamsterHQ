@@ -39,6 +39,7 @@ import { ASSET_PREFIX, assetFor } from './page-assets.js'
 import { POLICY_SLUGS, policyPage } from './policy-page.js'
 import { handlePanel } from './panel.js'
 import { DEFAULT_PLAN } from './plans.js'
+import { machineAlive } from './envd.js'
 import { TERMINAL_PATH, serveTerminal } from './terminal.js'
 import { handleProfile } from './profile.js'
 import { DIAL_IN_TIMEOUT_MS, SandboxManager } from './sandboxes.js'
@@ -340,6 +341,29 @@ function readBody(req, limit) {
 }
 
 /**
+ * Whether this tenant's machine is up while its backend is not.
+ *
+ * Asked before the shell is served, so a tenant whose backend cannot boot is
+ * sent somewhere they can see why instead of to an application that will spend
+ * the next minute failing every call it makes.
+ *
+ * Cheap in the ordinary case, which is the reason for the order: a tenant with
+ * a live tunnel is answered from two in-memory lookups, and a tenant with no
+ * sandbox at all is answered by the first — they are about to have one started
+ * for them, which is not a failure. Only the narrow case where a machine is
+ * recorded and silent costs a round trip to it.
+ *
+ * @param {string} username - the tenant to ask about.
+ * @returns {Promise<boolean>} whether to send them to the recovery page.
+ */
+async function backendFailed(username) {
+  const record = sandboxes.recorded(username)
+  if (record === undefined) return false
+  if (tunnels.has(record.sandboxId)) return false
+  return await machineAlive(record.handle)
+}
+
+/**
  * Resolve the caller's live tunnel, starting their sandbox and waiting for it
  * to dial in when necessary.
  * @param {{email: string, id: string}} caller - the authenticated caller.
@@ -347,16 +371,29 @@ function readBody(req, limit) {
  */
 async function tunnelFor(caller) {
   const username = caller.email
-  const { sandboxId } = await sandboxes.ensure(username, caller.id)
+  const { sandboxId, handle } = await sandboxes.ensure(username, caller.id)
   sandboxes.touch(username)
   const tunnel = await tunnels.waitFor(sandboxId, DIAL_IN_TIMEOUT_MS)
   if (tunnel !== undefined) return tunnel
 
-  // The sandbox never dialed in, which most often means it is no longer there
-  // to dial: it crashed, was OOM-killed, or was removed out from under us.
-  // Rebuilding once turns that into a slow request instead of a tenant stuck
-  // at 503 until the idle sweep notices.
+  // Nothing dialled in. Two very different things look like this, and the
+  // difference decides whether the machine may be destroyed.
   //
+  // The machine is gone — it crashed, was OOM-killed, or was removed out from
+  // under us. Rebuilding once turns that into a slow request instead of a
+  // tenant stuck at 503 until the idle sweep notices.
+  //
+  // Or the machine is fine and its backend is not. dsh refusing to boot looks
+  // identical from here, and rebuilding is then the worst possible answer: it
+  // destroys a healthy machine, takes the log that says why with it, and comes
+  // back to the same failure, because what broke is on the volume the new
+  // machine mounts. That loop is what a tenant sees as "the sandbox will not
+  // start" — and it ran for every request they made.
+  //
+  // So the machine is asked directly. `undefined` from here with the machine
+  // alive means the caller should send them somewhere they can look at the
+  // log and open a shell, which `/recovery` is.
+  if (await machineAlive(handle)) return undefined
   // Scoped to the sandbox this call waited on. Requests time out together, so
   // an unscoped forget lets the second one discard the replacement the first
   // just built — and then build another, leaving the tenant with an orphan for
@@ -587,6 +624,11 @@ async function handleRequest(req, res) {
         res.end()
         return
       }
+      // A header rather than a status, because this is not a refusal: the
+      // caller is signed in and entitled to the shell. It is nginx being told
+      // that serving it would waste their time — see `$recover` in
+      // `web/site.inc`. The renewed-cookie headers below travel the same way.
+      if (await backendFailed(caller.email)) res.setHeader('X-Recover', '1')
     }
     res.writeHead(204)
     res.end()

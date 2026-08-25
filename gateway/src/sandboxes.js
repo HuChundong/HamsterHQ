@@ -276,6 +276,22 @@ export class SandboxManager {
   }
 
   /**
+   * The record this gateway holds for a tenant, without making one.
+   *
+   * Separate from `ensure` because the caller is asking a question rather than
+   * expressing a need: the recovery path has to tell "no sandbox yet, start
+   * one" from "a sandbox exists and something about it is wrong", and `ensure`
+   * answers both with a running machine.
+   *
+   * @param {string} username - the tenant to ask about.
+   * @returns {{sandboxId: string, handle: string} | undefined} what is recorded, or nothing.
+   */
+  recorded(username) {
+    const record = this.byUser.get(username)
+    return record === undefined ? undefined : { sandboxId: record.sandboxId, handle: record.handle }
+  }
+
+  /**
    * How many sandboxes are running across the whole deployment.
    *
    * From the table rather than from `byUser`, which is only this gateway's own

@@ -247,6 +247,12 @@ location @home { return 303 /; }
 # the profile page instead of an application it is halfway into.
 location @profile { return 303 /profile; }
 
+# Where a tenant goes when their machine is up and their backend is not: the
+# log that says why, a shell into the machine, their files, and the two ways
+# out. Served by the gateway, because what is broken is the thing that would
+# otherwise serve it.
+location @recovery { return 303 /recovery; }
+
 # Carry a renewal back to the browser. The gateway renews an expired access
 # token during auth_request — the frontend is dsh's own shell and knows nothing
 # about this deployment's tokens, so it can neither refresh nor notice — but
@@ -297,12 +303,21 @@ location = /app {
   auth_request /_auth;
   auth_request_set $renew_access $upstream_http_x_renew_access;
   auth_request_set $renew_refresh $upstream_http_x_renew_refresh;
+  # Set by the gateway when this tenant's machine is up and its backend is not.
+  # Serving the shell then is a minute of failing calls and no explanation, so
+  # the map below turns it into a name that cannot be found and `try_files`
+  # falls through to the redirect.
+  #
+  # Through `try_files` for the same reason `/` is: `if (...) { return }` runs
+  # in the rewrite phase, which is before access — so it would answer every
+  # visitor and auth_request would never run.
+  auth_request_set $recover $upstream_http_x_recover;
   # A stranger who typed /app meets the front door, at the address that is the
   # front door.
   error_page 401 = @home;
   error_page 403 = @profile;
   root /usr/share/nginx/html;
-  try_files /index.html =404;
+  try_files $shell_document @recovery;
   add_header Set-Cookie $renew_access;
   add_header Set-Cookie $renew_refresh;
   add_header Cache-Control "no-store";
