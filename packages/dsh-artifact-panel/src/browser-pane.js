@@ -49,12 +49,18 @@ export function setBrowserPlane(value) {
 
 /**
  * One call on the browser channel.
+ *
+ * Always with a payload, even an empty one: the tunnel's envelope declares
+ * the field required, so a call that omitted it was refused at validation
+ * and the pane sat on "loading" forever — found by watching the wire, not
+ * the code.
+ *
  * @param {string} endpoint - `status` or `shot`.
  * @param {object} [payload] - what the endpoint takes.
  * @returns {Promise<object>} the value, unwrapped.
  */
 const call = async (endpoint, payload) => {
-  const result = await connection.rpc.call(CHANNEL, endpoint, payload)
+  const result = await connection.rpc.call(CHANNEL, endpoint, payload ?? {})
   if (result.ok) return result.value
   throw new Error(result.error.message)
 }
