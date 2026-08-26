@@ -175,6 +175,30 @@ skill=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
 ' 2>/dev/null || echo error)
 check 'the officecli skill is where dsh will look' ok "$skill"
 
+# The browser, and the two things that make it usable by an agent rather than
+# merely present: the engine runs, and the CLI that drives it is on the PATH
+# with a configuration naming the port the entrypoint will serve on. A CLI with
+# no configuration launches a Chromium this image deliberately does not carry,
+# and says so only at the moment a tenant asked for a page.
+browser=$(docker run --rm --entrypoint obscura "$SANDBOX" --version 2>/dev/null | head -1 | grep -c . || echo 0)
+check 'the browser engine runs' 1 "$browser"
+
+cli=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
+  command -v playwright-cli > /dev/null || { echo no-cli; exit 0; }
+  test -f /opt/playwright-cli.config.json || { echo no-config; exit 0; }
+  grep -q "cdpEndpoint" /opt/playwright-cli.config.json && echo ok || echo config-names-no-endpoint
+' 2>/dev/null || echo error)
+check 'the browser CLI is wired to it' ok "$cli"
+
+# Same two questions as OfficeCLI's skill, and for the same reason: this one is
+# also written by the tool at build time, so its absence is silent.
+browser_skill=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
+  f="$DSH_BUNDLED_SKILL_DIR/playwright-cli/SKILL.md"
+  test -f "$f" || { echo no-file; exit 0; }
+  grep -q "^name: playwright-cli$" "$f" && grep -q "^description: " "$f" && echo ok || echo no-frontmatter
+' 2>/dev/null || echo error)
+check 'the browser skill is where dsh will look' ok "$browser_skill"
+
 # Both package managers must point somewhere before a tenant reaches for them.
 # What they point AT is the deployment's choice — a mirror close to the host, or
 # the public default — but an empty registry is a tenant discovering on their

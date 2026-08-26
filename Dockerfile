@@ -76,6 +76,33 @@ ARG TARGETARCH
 # cube-entrypoint.sh; the architecture-specific binaries are built below.
 FROM --platform=linux/amd64 ghcr.io/tencentcloud/cubesandbox-base:2026.16 AS cube-tools
 
+# ------------------------------------------------------------- browser ----
+# The browser a tenant's agent drives, taken from the vendor's own image.
+#
+# From an image rather than a release archive, and that was measured on the
+# host this is built on rather than assumed from the sentence below about
+# OfficeCLI. Inside a build container there, `HEAD` on the release URL answers
+# 200 in under two seconds — github.com hands back the redirect — and the GET
+# that follows it sits at zero bytes until it is killed at five minutes. The
+# same host pulls this image in sixteen seconds. So the release archive is the
+# path that looks fine and never finishes, which is the worst shape a build
+# step can have.
+#
+# Pinned by digest as well as version. A tag can be moved under a deployment;
+# the archive would at least have carried a checksum, and this is how an image
+# carries the same promise. The digest is the multi-arch index, so amd64 and
+# arm64 both resolve from it.
+#
+# Obscura rather than headless Chrome, and the number that decides it is
+# memory. A sandbox is a machine with 2-4 GB for everything a tenant does;
+# Chrome wants 200 MB before it renders anything and its shared-memory and
+# sandbox flags need loosening inside a container, while this is one static
+# binary that idles around 30 MB and speaks the same Chrome DevTools Protocol
+# to the same Playwright client. It is an independent engine, so long-tail CSS
+# and some Web APIs differ — `verify/probe-browser-conformance.mjs` measures
+# what it actually does rather than repeating what it says.
+FROM h4ckf0r0day/obscura:0.2.1@sha256:e65cb455fc67543283da6901e8735c45aab5421e2ced8879b0a1fa70a4e38a2d AS browser
+
 # ---------------------------------------------------------------- envd ----
 # envd, for the architecture this image is being built for.
 #
@@ -347,6 +374,58 @@ RUN set -eux; \
     rm -rf "$scratch"; \
     grep -q '^name: officecli$' "$DSH_BUNDLED_SKILL_DIR/officecli/SKILL.md"
 
+# ---- the browser, and the way an agent asks it for a page -----------------
+#
+# Two halves that only make sense together: Obscura is the engine, and
+# `playwright-cli` is what an agent types. The CLI is Playwright's own, which
+# matters twice — it is the interface a coding agent already knows, and it
+# ships the skill that teaches it, so this repository does not write one.
+#
+# `obscura-worker` comes along because the parallel `scrape` command looks for
+# it beside the binary.
+COPY --from=browser /obscura /usr/local/bin/obscura
+COPY --from=browser /obscura-worker /usr/local/bin/obscura-worker
+
+# The CLI, pinned, and told not to fetch browsers for itself. It would
+# otherwise download Chromium on first use — 300 MB into a tenant's volume, for
+# a browser this image already has and did not want.
+ARG PLAYWRIGHT_CLI_VERSION=0.1.18
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN npm install -g --no-audit --no-fund "@playwright/cli@${PLAYWRIGHT_CLI_VERSION}" \
+ && rm -rf /root/.npm \
+ && playwright-cli --help > /dev/null
+
+# The skill that tells an agent how to drive it, written by the CLI itself for
+# the same reason OfficeCLI's is: a copy kept here would be a second source of
+# truth ageing against the version pinned above.
+#
+# `install --skills` writes into the WORKING DIRECTORY, not into a home — it
+# says "workspace initialized" and drops `.claude/skills` beside itself. Given
+# a home the way OfficeCLI's installer is given one, it wrote to `/` instead
+# and the move that followed found nothing. So this one is handed a scratch
+# directory to stand in.
+RUN set -eux; \
+    scratch=$(mktemp -d); \
+    mkdir -p "$DSH_BUNDLED_SKILL_DIR"; \
+    cd "$scratch"; \
+    playwright-cli install --skills; \
+    mv "$scratch/.claude/skills/playwright-cli" "$DSH_BUNDLED_SKILL_DIR/playwright-cli"; \
+    cd /; \
+    rm -rf "$scratch"; \
+    grep -q '^name: playwright-cli$' "$DSH_BUNDLED_SKILL_DIR/playwright-cli/SKILL.md"
+
+# Where the CLI finds the browser.
+#
+# `playwright-cli open` means "launch a browser" everywhere else; here it has
+# to mean "use the one already running", and the only way to say that is the
+# config file — which the CLI resolves as `.playwright/cli.config.json`
+# relative to the working directory, with no environment variable to override
+# it. The entrypoint writes it into the tenant's workspace on every boot, which
+# is where their agent starts. This copy is the source it writes from.
+COPY sandbox/playwright-cli.config.json /opt/playwright-cli.config.json
+
+ENV OBSCURA_CDP_URL=http://127.0.0.1:9222
+
 # pnpm and yarn, for a repository that is entered through one of them. Corepack
 # ships with node; enabling it costs two shims rather than two installs.
 #
@@ -492,7 +571,8 @@ ENV DSH_HOME=/mnt/dsh
 
 RUN for name in PATH DSH_BIN DSH_HOME IMAGE_DSH_HOME MOUNT WORKSPACE SANDBOX_LAYOUT_VERSION HOME DSH_PERMISSION_MODE NODE_ENV \
                 NODE_EXTRA_CA_CERTS TZ VIRTUAL_ENV MPLBACKEND MPLCONFIGDIR \
-                OFFICECLI_SKIP_UPDATE DSH_BUNDLED_SKILL_DIR; do \
+                OFFICECLI_SKIP_UPDATE DSH_BUNDLED_SKILL_DIR \
+                OBSCURA_CDP_URL PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD; do \
       printf 'export %s=%s\n' "$name" "$(printenv "$name")"; \
     done > /app/sandbox/env.sh
 

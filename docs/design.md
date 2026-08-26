@@ -609,6 +609,60 @@ Not taken at all: database drivers, because one deployment's databases are not
 another's; and a compiler, because every wheel here is prebuilt for this
 platform and a source build is the one thing a tenant has to arrange itself.
 
+## The browser in the sandbox
+
+An agent that cannot open a page can only describe the web second-hand, so the
+sandbox carries a browser. Which one is the interesting question, and the
+number that decides it is memory: a sandbox is a machine with 2–4 GB for
+everything a tenant does, and headless Chrome wants 200 MB before it renders
+anything, plus the shared-memory and sandbox flags a container makes it need.
+
+Obscura is a single static binary that idles around 30 MB, speaks the Chrome
+DevTools Protocol, and is Apache-2.0. It comes from the vendor's own image
+rather than a release archive, and that was measured on the host this is built
+on rather than inherited from what the `Dockerfile` says about OfficeCLI:
+inside a build container there, `HEAD` on the release URL answers 200 in under
+two seconds and the GET that follows it sits at zero bytes until it is killed
+at five minutes, while the same host pulls the image in sixteen. A step that
+looks fine and never finishes is the worst shape a build can have. It is
+pinned by version *and* by the multi-arch index digest — a tag can be moved
+under a deployment, and the archive would at least have carried a checksum.
+
+What an agent types is not the protocol but `playwright-cli`, Playwright's own
+CLI for coding agents. That choice buys two things at once. It is the interface
+an agent already knows, and it ships the skill that teaches it — so this
+repository writes no skill of its own, the same arrangement OfficeCLI is under
+and for the same reason: a copy kept here would age silently against the pinned
+version.
+
+The two halves are joined by a configuration file, and that file is the whole
+trick. `playwright-cli open` means "launch a browser" everywhere else; here it
+has to mean "use the one already running", which is what `cdpEndpoint` says.
+The CLI resolves its configuration as `.playwright/cli.config.json` relative to
+the working directory and has no environment variable for it, so the entrypoint
+writes it into the tenant's workspace on every boot — rewritten rather than
+created once, so an image that moves the port cannot leave a volume pointing at
+the old answer.
+
+The browser listens on loopback and refuses private addresses, and both are
+load-bearing. A CDP port drives the browser as the tenant: anything that can
+reach it reads what they read and posts as them. And a browser inside a sandbox
+is the classic way to reach what a tenant cannot address — an agent can be
+talked into fetching an internal endpoint, and the request leaves from in here
+rather than from whoever asked for it. Obscura refuses private and loopback
+ranges unless told otherwise, and it is not told otherwise. Under CubeSandbox
+egress is fenced again outside; this is the half that holds without it.
+
+It is an independent engine, not Chromium, so some of what Playwright asks for
+lands differently. `verify/probe-browser-conformance.mjs` measures that against
+a fixture served inside the sandbox rather than repeating the claim: at Obscura
+0.2.1, sixteen of the commands the skill teaches answer — navigating,
+snapshotting, finding, evaluating, clicking, typing, pressing, checking,
+selecting, hovering, resizing, screenshots, PDF, back and close — and two
+differ. `fill` times out on Playwright's actionability wait, where `click` then
+`type` works; and some links come back from the snapshot without a ref, which
+`goto` steps around. Run the probe when the pin moves.
+
 ## The model plane
 
 A deployment names one model route and every tenant spends their own key on it.

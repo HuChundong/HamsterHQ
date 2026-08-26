@@ -482,6 +482,44 @@ forwarding cannot change that.
 sticking "for a tenant arriving by domain name". That was this, seen once and
 read as a quirk of one notice rather than as the rule for every setting.
 
+## A skill installer that writes where you are, not where you live
+
+OfficeCLI's `skills install` writes into the agent homes it detects, so the
+image gives it a scratch `HOME` and moves the result. `playwright-cli install
+--skills` looks like the same command and is not: it initializes a *workspace*
+and writes `.claude/skills` beside the working directory. Given a scratch home
+and left in `/`, it reported success — "✅ Workspace initialized at `/`", "✅
+Skill installed to `.claude/skills/playwright-cli`" — and the `mv` that followed
+failed on a path that was never going to exist.
+
+The wrong conclusion first: that the CLI had refused to install because it was
+running as root in a container with no agent to install for. It had installed
+perfectly, one directory up from where the next line looked.
+
+Both installers now get what they actually read — a home for one, a working
+directory for the other — and both are followed by a `grep` for the frontmatter,
+which is what turns "the file is missing" into a failed build instead of a
+sandbox whose agent is never told the tool exists.
+
+## A probe that blocks its own fixture
+
+`verify/probe-browser-conformance.mjs` serves a page and then drives a browser
+at it. The first version served that page from the probe's own event loop and
+ran each command with `spawnSync` — which blocks that loop until the command
+returns. So the fixture was deaf for exactly as long as the browser was asking
+for it: `open` measured a blank page and every command after it measured
+nothing, reporting nine divergences that did not exist.
+
+The fixture is a separate process now. The general shape is worth remembering:
+anything that answers requests cannot live in a process that also calls
+`spawnSync`.
+
+The second run of that probe was wrong for a different reason, and it is the
+more embarrassing one — a browser and a fixture left over from an earlier
+experiment were still holding the ports, so the probe attached to a browser
+looking at a page from ten minutes ago. It now refuses to start when either
+port already answers.
+
 ## What generalizes
 
 - **A snapshot cannot hold what is only knowable later.** Everything
