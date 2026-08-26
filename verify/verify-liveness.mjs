@@ -100,7 +100,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 80))
 const first = subscribe()
 await settle()
 check('with no tunnel, the stream opens and says it is not up', () => {
-  assert.deepEqual(first.latest(), { ok: false })
+  assert.deepEqual(first.latest(), { ok: false, recover: false })
 })
 
 // The tunnel connects and nothing has been measured yet. This is the case the

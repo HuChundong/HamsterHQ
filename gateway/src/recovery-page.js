@@ -51,45 +51,34 @@ import {
 const TABLE = {
   'title': { zh: '沙箱需要修复', en: 'Your sandbox needs a hand' },
   'lede': {
-    zh: '机器是好的，跑在里面的后端没起来。下面是它自己的日志、你的文件，以及一个终端——多数情况下改一个文件就能修好。',
-    en: 'The machine is fine; the backend inside it did not start. Below are its own log, your files, and a terminal — most of the time one file is all that needs changing.',
+    zh: '机器还在，跑在里面的后端没起来。',
+    en: 'The machine is up. The backend inside it is not.',
   },
   'log.title': { zh: '后端最后说了什么', en: 'What the backend said last' },
-  'log.empty': { zh: '日志是空的——后端可能还没来得及写。', en: 'The log is empty — the backend may not have got that far.' },
+  'log.empty': { zh: '日志是空的。', en: 'The log is empty.' },
   'log.refresh': { zh: '重新读取', en: 'Read it again' },
-  'files.title': { zh: '机器上的文件', en: 'The files on the machine' },
-  'files.hint': {
-    zh: '整台机器都可以看和改。出问题最多的是 /mnt/dsh 下的配置。',
-    en: 'The whole machine can be read and changed. Configuration under /mnt/dsh is what usually breaks a boot.',
-  },
+  'files.title': { zh: '文件', en: 'Files' },
   'files.save': { zh: '保存', en: 'Save' },
   'files.delete': { zh: '删除', en: 'Delete' },
   'files.saved': { zh: '已保存', en: 'Saved' },
   'files.deleted': { zh: '已删除', en: 'Deleted' },
-  'files.binary': { zh: '这是二进制文件，不在这里编辑。', en: 'A binary file, not edited here.' },
+  'files.binary': { zh: '二进制文件，不在这里编辑。', en: 'A binary file, not edited here.' },
   'files.up': { zh: '上一层', en: 'Up' },
-  'files.none': { zh: '选一个文件，就能在这里改它。', en: 'Choose a file and it opens here.' },
-  'files.empty': { zh: '这个目录是空的。', en: 'This directory is empty.' },
+  'files.none': { zh: '选一个文件', en: 'Choose a file' },
+  'files.empty': { zh: '空目录', en: 'Empty' },
   'terminal.title': { zh: '终端', en: 'Terminal' },
-  'terminal.hint': {
-    zh: '就在这台机器上，以 root 身份。它不经过后端，所以后端死着也能用。',
-    en: 'On this machine, as root. It does not go through the backend, which is why it works while the backend is down.',
+  'terminal.lost': { zh: '连接断了，正在重连…', en: 'Disconnected — reconnecting…' },
+  'start.title': { zh: '重新启动', en: 'Start it again' },
+  'start.hint': {
+    zh: '两种都不动你的文件。重启沙箱换一台新机器，按模板自己的方式启动。',
+    en: 'Neither touches your files. Restarting takes a fresh machine and boots it the way the template says.',
   },
-  'start.title': { zh: '改完之后', en: 'When you have fixed it' },
-  'start.hint': { zh: '重新启动后端。数据一律不动。', en: 'Start the backend again. Nothing is touched.' },
-  'start.action': { zh: '启动后端', en: 'Start the backend' },
-  'start.working': { zh: '正在启动…', en: 'Starting…' },
-  'start.ok': { zh: '起来了，正在回到应用…', en: 'It is up. Going back to the application…' },
-  'start.failed': { zh: '还是没起来——再看一次日志。', en: 'Still down — read the log again.' },
-  'last.title': { zh: '最后的办法', en: 'Last resorts' },
-  'rebuild.hint': {
-    zh: '换一台新机器。你的文件和历史都在卷上，会跟着回来。',
-    en: 'Take a fresh machine. Your files and history are on the volume and come back with it.',
-  },
-  'rebuild.action': { zh: '重建沙箱', en: 'Rebuild the sandbox' },
+  'restart.action': { zh: '重启沙箱', en: 'Restart the sandbox' },
+  'start.action': { zh: '只启动后端', en: 'Only start the backend' },
+  'last.title': { zh: '最后的办法', en: 'Last resort' },
   'wipe.hint': {
-    zh: '连同卷一起删除：文件、会话历史、配置，全部消失，且无法恢复。',
-    en: 'Delete the volume with it: files, session history, configuration — all of it, with no way back.',
+    zh: '连同卷一起删除，无法恢复。',
+    en: 'Deletes the volume with it. There is no way back.',
   },
   'wipe.action': { zh: '清空全部数据', en: 'Erase everything' },
   'wipe.confirm': {
@@ -168,13 +157,22 @@ const RECOVERY_CSS = `
      full-bleed highlight reads as a highlight of the panel and this one has to
      read as a selection of the file. The measurements are the panel's: a 28px
      row, an 8px gap between the mark and the name it belongs to. */
-  .tree {
+  /* The path and the list are one box, and the box is what lines up with the
+     editor beside it. Written above the border, the path pushed this column
+     down by its own height and the two panes started at different places. */
+  .tree-pane {
+    display: flex;
+    flex-direction: column;
     height: 24rem;
-    overflow: auto;
-    padding: 6px 0;
+    overflow: hidden;
     border: 1px solid var(--line-soft);
     border-radius: var(--radius-field);
     background: var(--sunken);
+  }
+  .tree {
+    flex: 1;
+    overflow: auto;
+    padding: 6px 0;
   }
   .tree button {
     display: flex;
@@ -212,7 +210,15 @@ const RECOVERY_CSS = `
   .tree .grow { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .tree .size { flex: none; color: var(--faint); font-size: .75rem; font-variant-numeric: tabular-nums; }
   .tree .note { padding: .25rem .75rem; color: var(--faint); font-size: .75rem; }
-  .where { margin: 0 0 .5rem; color: var(--muted); font-family: var(--mono); font-size: .75rem; word-break: break-all; }
+  .where {
+    margin: 0;
+    padding: .45rem .75rem;
+    border-bottom: 1px solid var(--line-soft);
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: .75rem;
+    word-break: break-all;
+  }
 
   /* The right pane says what it is waiting for rather than showing an empty
      box with two buttons under it — an editor with nothing in it and a Save
@@ -221,7 +227,7 @@ const RECOVERY_CSS = `
      button row have one — so the placeholder stayed on screen under the file
      it was telling you to open. Stated once, for everything on this page. */
   [hidden] { display: none !important; }
-  .editing { display: flex; flex-direction: column; gap: .6rem; height: 100%; }
+  .editing { display: flex; flex-direction: column; gap: .6rem; height: 24rem; }
   .editing textarea.sheet { flex: 1; max-height: none; }
   .empty-note {
     display: flex;
@@ -236,12 +242,13 @@ const RECOVERY_CSS = `
     text-align: center;
   }
 
-  .panes { display: grid; grid-template-columns: minmax(0, 22rem) minmax(0, 1fr); gap: 1rem; }
+  .panes { display: grid; grid-template-columns: minmax(0, 22rem) minmax(0, 1fr); gap: 1rem; align-items: stretch; }
   @media (max-width: 52rem) { .panes { grid-template-columns: minmax(0, 1fr); } }
 
   #terminal { height: 22rem; border-radius: var(--radius-field); overflow: hidden; background: #1b1b1c; }
 
-  button.act {
+  a.act { display: inline-flex; align-items: center; text-decoration: none; }
+  button.act, a.act {
     height: 2.25rem;
     padding: 0 1rem;
     border: 1px solid var(--line);
@@ -252,7 +259,7 @@ const RECOVERY_CSS = `
     font-size: .8125rem;
     cursor: pointer;
   }
-  button.act:hover { border-color: var(--line-strong); }
+  button.act:hover, a.act:hover { border-color: var(--line-strong); }
   button.act.primary { border-color: var(--ink); background: var(--ink); color: var(--on-ink); }
   button.act.danger { border-color: var(--danger); color: var(--danger); }
   button.act.danger:hover { background: var(--danger); color: #fff; }
@@ -322,10 +329,9 @@ ${langToggle(TABLE)}
     </section>
 
     <section class="card">
-      <h2 data-t="files.title">机器上的文件</h2>
-      <p class="hint" data-t="files.hint">${escapeHtml(TABLE['files.hint'].zh)}</p>
+      <h2 data-t="files.title">文件</h2>
       <div class="panes">
-        <div>
+        <div class="tree-pane">
           <p class="where" id="where">/mnt</p>
           <div class="tree" id="tree"></div>
         </div>
@@ -343,26 +349,22 @@ ${langToggle(TABLE)}
 
     <section class="card">
       <h2 data-t="terminal.title">终端</h2>
-      <p class="hint" data-t="terminal.hint">${escapeHtml(TABLE['terminal.hint'].zh)}</p>
       <div id="terminal"></div>
+      <p class="hint" id="terminal-lost" data-t="terminal.lost" hidden>连接断了，正在重连…</p>
     </section>
 
     <section class="card">
-      <h2 data-t="start.title">改完之后</h2>
+      <h2 data-t="start.title">重新启动</h2>
       <p class="hint" data-t="start.hint">${escapeHtml(TABLE['start.hint'].zh)}</p>
       <div class="row">
-        <button class="act primary" id="start" data-t="start.action">启动后端</button>
+        <button class="act primary" id="restart" data-t="restart.action">重启沙箱</button>
+        <button class="act" id="start" data-t="start.action">只启动后端</button>
         <span class="said" id="start-said"></span>
       </div>
     </section>
 
     <section class="card">
       <h2 data-t="last.title">最后的办法</h2>
-      <p class="hint" data-t="rebuild.hint">${escapeHtml(TABLE['rebuild.hint'].zh)}</p>
-      <div class="row" style="margin-bottom:1.25rem">
-        <button class="act" id="rebuild" data-t="rebuild.action">重建沙箱</button>
-        <span class="said" id="rebuild-said"></span>
-      </div>
       <p class="hint" data-t="wipe.hint">${escapeHtml(TABLE['wipe.hint'].zh)}</p>
       <div class="row">
         <button class="act danger" id="wipe" data-t="wipe.action">清空全部数据</button>
@@ -370,7 +372,9 @@ ${langToggle(TABLE)}
       </div>
     </section>
 
-    <p style="margin:1.5rem 0 0"><a href="/app" data-t="back">返回应用</a></p>
+    <div class="row" style="margin-top:1.5rem">
+      <a class="act" href="/app" data-t="back">返回应用</a>
+    </div>
   </div>
 </main>
 
@@ -544,32 +548,66 @@ ${langToggle(TABLE)}
     const cols = Math.max(20, Math.floor((box.width - 16) / cell))
     const rows = Math.max(6, Math.floor((box.height - 12) / (12 * 1.2)))
     term.resize(cols, rows)
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'size', cols: cols, rows: rows }))
+    if (socket !== undefined && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'size', cols: cols, rows: rows }))
   }
   window.addEventListener('resize', fit)
   $('terminal').addEventListener('click', () => term.focus())
-  const socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/sandbox/pty')
-  // The shell starts on connect; the frames are the ones terminal.js speaks —
-  // ready, out, exit, error one way, in and size the other. No handshake of
-  // this page's own, so there is one protocol rather than two spellings of it.
-  socket.addEventListener('message', (event) => {
-    const frame = JSON.parse(event.data)
-    if (frame.type === 'out') {
-      const binary = atob(frame.data)
-      const bytes = new Uint8Array(binary.length)
-      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
-      term.write(bytes)
-      return
-    }
-    if (frame.type === 'ready') { fit(); term.focus(); return }
-    // Escaped twice on purpose: this script is written out of a template
-    // literal, so an unescaped \\r\\n is a real newline inside a single-quoted
-    // string by the time a browser parses it — which is a SyntaxError, and one
-    // that takes the whole script with it rather than just this line.
-    if (frame.type === 'exit' || frame.type === 'error') term.write('\\r\\n[' + (frame.message ?? 'exit ' + frame.code) + ']\\r\\n')
-  })
+
+  // The socket, and how it comes back.
+  //
+  // A pty ends for reasons that have nothing to do with the tenant: the shell
+  // exits, envd drops a long-lived stream, a laptop sleeps, the gateway is
+  // restarted under them. Every one of those left a dead black box with
+  // "disconnected" written in it, on the one page whose promise is that the
+  // machine is still reachable — so the terminal now dials again by itself.
+  //
+  // Backing off rather than hammering: a machine that is genuinely gone should
+  // not be asked ten times a second, and a person watching wants the first
+  // retry to be quick.
+  let socket
+  let attempt = 0
+  const lost = $('terminal-lost')
+
+  const connect = () => {
+    socket = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/sandbox/pty')
+
+    // The shell starts on connect; the frames are the ones terminal.js speaks —
+    // ready, out, exit, error one way, in and size the other. No handshake of
+    // this page's own, so there is one protocol rather than two spellings of it.
+    socket.addEventListener('message', (event) => {
+      const frame = JSON.parse(event.data)
+      if (frame.type === 'out') {
+        const binary = atob(frame.data)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+        term.write(bytes)
+        return
+      }
+      if (frame.type === 'ready') {
+        attempt = 0
+        lost.hidden = true
+        fit()
+        term.focus()
+        return
+      }
+      // Escaped twice on purpose: this script is written out of a template
+      // literal, so an unescaped \\r\\n is a real newline inside a single-quoted
+      // string by the time a browser parses it — which is a SyntaxError, and one
+      // that takes the whole script with it rather than just this line.
+      if (frame.type === 'exit' || frame.type === 'error') term.write('\\r\\n[' + (frame.message ?? 'exit ' + frame.code) + ']\\r\\n')
+    })
+
+    socket.addEventListener('close', () => {
+      lost.hidden = false
+      attempt += 1
+      // 0.5s, 1s, 2s, 4s, then every 8s.
+      setTimeout(connect, Math.min(8000, 500 * Math.pow(2, attempt - 1)))
+    })
+  }
+  connect()
+
   term.onData((data) => {
-    if (socket.readyState !== WebSocket.OPEN) return
+    if (socket === undefined || socket.readyState !== WebSocket.OPEN) return
     // The same encoding the panel's terminal uses: UTF-8 bytes, then base64,
     // because btoa on a multi-byte character throws.
     const bytes = new TextEncoder().encode(data)
@@ -592,20 +630,27 @@ ${langToggle(TABLE)}
     } catch { said.textContent = dshText('failed'); button.disabled = false; return false }
   }
 
-  $('start').addEventListener('click', async () => {
-    const said = $('start-said')
-    said.textContent = dshText('start.working')
-    if (await act($('start'), said, '/recovery/backend')) {
-      said.textContent = dshText('start.ok')
-      setTimeout(() => { location.href = '/app' }, 1500)
-    } else {
-      said.textContent = dshText('start.failed')
-      readLog()
-    }
+  // Both ways back go to the application and wait there, rather than reporting
+  // success here. Whether it worked is not a thing this page can see: the
+  // backend answers the gateway, not the browser, and "started" only means the
+  // command returned. The application is where a person was going anyway, it
+  // shows its own coming-up state, and if the backend dies again its status
+  // stream brings them straight back here. One place that decides, instead of
+  // two that guess.
+  const goBack = () => { location.href = '/app' }
+
+  // Restart is a NEW MACHINE from the current template, keeping the volume, and
+  // that is the difference worth having: the machine boots the way its template
+  // says to boot. Starting the backend runs a command this gateway spells out,
+  // which is one more copy of the sandbox's own start-up to keep in step — it
+  // stays because it is the cheap answer when a tenant has just fixed a file
+  // and nothing else is wrong.
+  $('restart').addEventListener('click', async () => {
+    if (await act($('restart'), $('start-said'), '/recovery/rebuild')) goBack()
   })
 
-  $('rebuild').addEventListener('click', async () => {
-    if (await act($('rebuild'), $('rebuild-said'), '/recovery/rebuild')) location.href = '/app'
+  $('start').addEventListener('click', async () => {
+    if (await act($('start'), $('start-said'), '/recovery/backend')) goBack()
   })
 
   const dialog = $('confirm'), acknowledge = $('acknowledge'), go = $('confirm-go')

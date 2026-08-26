@@ -770,6 +770,12 @@ if [ "$RUNTIME" = docker ]; then
   check 'the backend can be started again' 204 \
     "$(curl -s -o /dev/null -w '%{http_code}' -b "$RECOVER_JAR" -X POST "$GATEWAY/recovery/backend" \
         -H 'Content-Type: application/json' -d '{}')"
+  # Asked while it is still coming up, which is the window the page now sends
+  # people into. A sandbox that has been asked to start is a sandbox to wait
+  # for, and answering 303 here is a loop: the application sends them to
+  # recovery, recovery sends them back, neither ever waits.
+  check 'and the application waits rather than bouncing them back' 200 \
+    "$(curl -s -o /dev/null -w '%{http_code}' -b "$RECOVER_JAR" "$GATEWAY/app")"
   RECOVER_BACK=0
   RECOVER_WAITED=0
   while [ "$RECOVER_WAITED" -lt 180 ]; do
