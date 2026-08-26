@@ -425,11 +425,15 @@ export function serveStats(req, res, resolve, failed) {
     /**
      * Say a sandbox is not answering, and whether it is worth going to look.
      *
-     * The question costs a round trip to the machine, so it is asked only on
-     * the answer that might mean recovery — never on the ordinary one.
+     * The reading is carried through rather than replaced. A sandbox that has
+     * gone quiet is still the sandbox whose figures the bar is showing, and
+     * they are what it goes on showing — state must be now, figures need only
+     * be the last ones seen. Sending a bare `ok: false` blanked them.
+     *
+     * @param {object} [reading] - the reading that prompted this, when there was one.
      */
-    const notAnswering = async () => {
-      send({ ok: false, recover: await failed().catch(() => false) })
+    const notAnswering = async (reading) => {
+      send({ ...reading, ok: false, recover: await failed().catch(() => false) })
     }
 
     let where
@@ -453,7 +457,7 @@ export function serveStats(req, res, resolve, failed) {
         send(reading)
         return
       }
-      void notAnswering()
+      void notAnswering(reading)
       // A sandbox that stops answering may simply have been replaced, so the
       // next attempt starts over at `resolve` rather than asking this id again.
       retry()

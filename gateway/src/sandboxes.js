@@ -108,6 +108,25 @@ export class SandboxManager {
   }
 
   /**
+   * Note that a sandbox's backend has answered.
+   *
+   * Called from the one place that knows the instant it changes: the tunnel
+   * server's own liveness hook. A machine that has dialled in once and is
+   * silent now is a machine whose backend died, however recently it started —
+   * there is nothing left to wait for.
+   *
+   * @param {string} sandboxId - the sandbox that connected.
+   */
+  markDialledIn(sandboxId) {
+    for (const record of this.byUser.values()) {
+      if (record.sandboxId === sandboxId) {
+        record.dialled = true
+        return
+      }
+    }
+  }
+
+  /**
    * Put one row into the cache.
    * @param {object} row - a `sandboxes` row.
    */
@@ -119,6 +138,17 @@ export class SandboxManager {
       accountId: row.account_id,
       lastUsedAt: new Date(row.last_used_at).getTime(),
       flushedAt: Date.now(),
+      // When this machine's backend was last asked to start, and whether it
+      // ever answered. Together they separate the two states that look
+      // identical from outside — a backend still coming up, and one that is
+      // not coming up at all — which is the difference between waiting and
+      // sending a tenant to the recovery page.
+      //
+      // A sandbox adopted at start-up counts as started now: this process
+      // cannot know when the last one asked, and the grace it buys is one
+      // dial-in window at boot, which is the right answer anyway.
+      startedAt: Date.now(),
+      dialled: false,
       // Resolved once and carried, rather than looked up on every sweep. That
       // is a read per sandbox per minute saved, and it is also the shape the
       // split needs: when entitlements arrive from somewhere else, the last
@@ -297,6 +327,12 @@ export class SandboxManager {
   async restartBackend(username) {
     const record = this.byUser.get(username)
     if (record === undefined) throw new Error(`no sandbox is recorded for ${username}`)
+    // The clock starts again here. Without this a tenant who has just asked
+    // for a backend is told a second later that their backend is not coming
+    // back — the page they were sent to bounces them to the application, which
+    // bounces them back, and neither ever waits for the thing they asked for.
+    record.startedAt = Date.now()
+    record.dialled = false
     await startBackend(record.handle, {
       ...await this.options.secrets(username),
       SANDBOX_ID: record.sandboxId,
@@ -314,12 +350,26 @@ export class SandboxManager {
    * one" from "a sandbox exists and something about it is wrong", and `ensure`
    * answers both with a running machine.
    *
+   * A copy of the fields a caller outside this class has any business reading,
+   * and every one of them is here because something reads it. A field added to
+   * the record and forgotten here does not fail: it arrives as `undefined`,
+   * and arithmetic on it is `NaN`, which compares false against everything —
+   * so the branch that was supposed to hold a booting sandbox back simply
+   * never ran, and every tenant who asked for a backend was told a second
+   * later that theirs had died.
+   *
    * @param {string} username - the tenant to ask about.
-   * @returns {{sandboxId: string, handle: string} | undefined} what is recorded, or nothing.
+   * @returns {{sandboxId: string, handle: string, startedAt: number, dialled: boolean} | undefined} what is recorded, or nothing.
    */
   recorded(username) {
     const record = this.byUser.get(username)
-    return record === undefined ? undefined : { sandboxId: record.sandboxId, handle: record.handle }
+    if (record === undefined) return undefined
+    return {
+      sandboxId: record.sandboxId,
+      handle: record.handle,
+      startedAt: record.startedAt,
+      dialled: record.dialled,
+    }
   }
 
   /**

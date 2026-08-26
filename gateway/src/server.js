@@ -285,7 +285,13 @@ const tunnels = new TunnelServer(
   // Whether a sandbox is up is known here the instant it changes, so the
   // status bar is told from here rather than left to infer it from how
   // recently the sandbox last reported.
-  (sandboxId) => { livenessChanged(sandboxId) },
+  (sandboxId) => {
+    // A tunnel that has just appeared is a backend that answered. Recorded
+    // because the opposite state — silent, machine up — means two different
+    // things depending on whether this ever happened.
+    if (tunnels.has(sandboxId)) sandboxes.markDialledIn(sandboxId)
+    livenessChanged(sandboxId)
+  },
 )
 knowsLiveness((sandboxId) => tunnels.has(sandboxId))
 const browserSockets = new WebSocketServer({ noServer: true })
@@ -372,6 +378,15 @@ async function backendFailed(username) {
   const record = sandboxes.recorded(username)
   if (record === undefined) return false
   if (tunnels.has(record.sandboxId)) return false
+  // A machine that has never answered may simply be booting, and a cold start
+  // takes most of a dial-in window. Calling that a failed backend would send
+  // every tenant to the recovery page on the way in — and, now that the page
+  // sends them back to the application to wait, would bounce them between the
+  // two for as long as they had the patience to watch.
+  //
+  // Once it has answered there is nothing to wait for: a tunnel that was there
+  // and is gone is a backend that died, however recently the machine started.
+  if (!record.dialled && Date.now() - record.startedAt < DIAL_IN_TIMEOUT_MS) return false
   return await machineAlive(record.handle)
 }
 
