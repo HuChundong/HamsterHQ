@@ -175,13 +175,29 @@ skill=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
 ' 2>/dev/null || echo error)
 check 'the officecli skill is where dsh will look' ok "$skill"
 
-# The browser, and the two things that make it usable by an agent rather than
-# merely present: the engine runs, and the CLI that drives it is on the PATH
-# with a configuration naming the port the entrypoint will serve on. A CLI with
-# no configuration launches a Chromium this image deliberately does not carry,
-# and says so only at the moment a tenant asked for a page.
-browser=$(docker run --rm --entrypoint obscura "$SANDBOX" --version 2>/dev/null | head -1 | grep -c . || echo 0)
+# The browser, and the three things that make it usable by an agent rather
+# than merely present: the engine runs, the one launch path leaves the port
+# answering, and the CLI that drives it is on the PATH with a configuration
+# naming that port. A CLI with no configuration launches a Chromium this image
+# deliberately does not carry, and says so only at the moment a tenant asked
+# for a page.
+browser=$(docker run --rm --entrypoint /usr/local/bin/headless-shell "$SANDBOX" --version 2>/dev/null | head -1 | grep -c 'Chrome' || echo 0)
 check 'the browser engine runs' 1 "$browser"
+
+# Run the real launch path — the same script the template's start command and
+# the entrypoint run — and ask what the template's ready command will ask:
+# does 9222 answer. A script that quietly starts nothing (a missing tuning
+# file, an engine the flags no longer fit) becomes a template whose ready
+# command never returns, discovered at template creation instead of here.
+warm=$(docker run --rm --entrypoint bash "$SANDBOX" -c '
+  /app/sandbox/start-browser.sh || { echo start-failed; exit 0; }
+  for _ in $(seq 40); do
+    curl -sf http://127.0.0.1:9222/json/version > /dev/null && { echo ok; exit 0; }
+    sleep 0.5
+  done
+  echo never-listened
+' 2>/dev/null || echo error)
+check 'the browser start script leaves the CDP port answering' ok "$warm"
 
 cli=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
   command -v playwright-cli > /dev/null || { echo no-cli; exit 0; }

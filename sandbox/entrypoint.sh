@@ -135,29 +135,18 @@ if [ -x /usr/local/bin/dsh-agent ]; then
   /usr/local/bin/dsh-agent serve "$WORKSPACE" >/dev/null 2>&1 &
 fi
 
-# The browser, and the file that tells the agent's CLI where to find it.
-#
-# Started beside the backend rather than on demand, for the same reason the
-# reporter is: a thing an agent reaches for mid-turn should already be there.
-# It idles at about 30 MB, which is the whole argument for this engine over a
-# headless Chrome that would want most of a tenant's machine.
-#
-# Loopback only — the default, stated here because it is load-bearing. The CDP
-# port is a remote-control interface for a browser; anything that can reach it
-# can drive the browser as the tenant. Nothing outside this machine may.
-#
-# The private-network fence stays ON. A browser inside a sandbox is the classic
-# way to reach things a tenant cannot address themselves: an agent can be
-# talked into fetching an internal endpoint, and the request would leave from
-# in here rather than from them. Obscura refuses private and loopback ranges
-# unless told otherwise, and it is not told otherwise. Under CubeSandbox egress
-# is fenced again outside; this is the half that holds without it.
+# The browser, warm where the runtime allows it. Under CubeSandbox the
+# template's start command already ran this same script and the snapshot was
+# held until the port answered, so a restored sandbox meets a running browser
+# and this call returns on its first check — none of the launch is spent in a
+# tenant's cold start. Under plain Docker no snapshot exists and this call is
+# the one that starts it. The script carries the reasoning (the port check,
+# loopback, the lost private-network fence, where the profile lives); it is
+# its own file because the template's start command must be able to run it
+# with no tenant in sight.
 #
 # Not waited on: a sandbox whose browser died should keep serving its tenant.
-if [ -x /usr/local/bin/obscura ]; then
-  setsid nohup obscura serve --port 9222 --workers 1 --max-connections 8 \
-    > "$MOUNT/obscura.log" 2>&1 < /dev/null &
-fi
+/app/sandbox/start-browser.sh || true
 
 # `playwright-cli` resolves its configuration as `.playwright/cli.config.json`
 # relative to the working directory, and there is no environment variable for

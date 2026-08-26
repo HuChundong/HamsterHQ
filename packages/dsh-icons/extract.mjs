@@ -57,6 +57,11 @@ const WANTED = {
   brush: 'brush',
   // The sandbox is a box a tenant's work sits inside.
   sandbox: 'box',
+  // The panel's page-preview tab: the sandbox's own browser, watched from
+  // outside. Not the globe — that already marks an .html FILE as "somewhere
+  // on the web" — and not the brush, which is the page the agent is making.
+  // This tab is the window those are seen through, so it wears one.
+  window: 'app-window',
   // The operator's console, whose sections are administrators, users and
   // invite codes: everyone who has an account, not one being configured.
   people: 'users',

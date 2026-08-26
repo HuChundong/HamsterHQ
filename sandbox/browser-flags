@@ -1,0 +1,60 @@
+# How the sandbox's browser is started: one flag per line, comments and blank
+# lines skipped. This file is the single home for the tuning — the entrypoint
+# starts the resident browser with it and the conformance probe starts its
+# throwaway one from the same file, so what the probe measures is what a
+# tenant runs. The port, the profile, the cache directory and the log are the
+# caller's own and stay with the caller.
+#
+# The machine this is tuned for has 2-4 GB for everything a tenant does, so
+# every flag here is about not spending it. The flag that would spend least of
+# all, --single-process, is deliberately absent: one misbehaving page then
+# takes the whole browser and its CDP port with it, and the agent loses the
+# tool rather than the tab.
+
+# The container grants no unprivileged user namespaces for Chromium's own
+# sandbox, and the isolation boundary is the tenant's machine itself.
+--no-sandbox
+
+# A container's /dev/shm is smaller than Chromium assumes; without this,
+# renderers crash on pages that are merely large.
+--disable-dev-shm-usage
+
+# There is no GPU, and saying so stops the search for one.
+--disable-gpu
+
+# Fewer processes. Site isolation gives every cross-site iframe its own
+# renderer — defence in depth against renderer exploits, priced in processes,
+# and an ad-heavy page spawns a dozen. Inside a per-tenant machine that
+# defence duplicates the boundary the sandbox already is, so it is traded
+# back for memory. BackForwardCache keeps whole pages alive for an instant
+# back-navigation an agent rarely performs. The renderer cap holds what tab
+# count would otherwise spend.
+--disable-features=site-per-process,BackForwardCache
+--renderer-process-limit=2
+
+# Chromium's own switch for hardware like this: smaller caches and more eager
+# GC throughout. The V8 heap cap is per renderer, so a page that will not
+# stop allocating kills its own tab rather than the machine.
+--enable-low-end-device-mode
+--js-flags=--max-old-space-size=256
+
+# Bounded disk cache. The cache directory itself is the caller's, and that is
+# load-bearing: left unset it lives inside the profile, and the resident
+# browser's profile is on the tenant's mount — a network filesystem where
+# this deployment measured 38 ms per small-file create.
+--disk-cache-size=104857600
+
+# Idle work for a browser nobody updates or reports on: no component
+# updates, no phoning home, no crash uploader. Headless shell already lacks
+# the rest of desktop Chrome's background surface — extensions, sync,
+# translate — so those need no flags.
+--disable-background-networking
+--disable-component-update
+--disable-breakpad
+
+# Headless housekeeping: no first-run state, no audio device, scrollbars out
+# of screenshots, and a viewport sized for a page rather than a poster.
+--no-first-run
+--mute-audio
+--hide-scrollbars
+--window-size=1280,800

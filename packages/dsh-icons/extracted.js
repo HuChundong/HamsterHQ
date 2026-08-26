@@ -9,7 +9,7 @@
 export const EXTRACTED_SET = 'lucide-static'
 
 /** The generator's input version of lucide-static. */
-export const EXTRACTED_FROM = '1.33.0'
+export const EXTRACTED_FROM = '1.34.0'
 
 /** The set, by this deployment's name for each glyph. */
 export const extracted = Object.freeze({
@@ -122,6 +122,17 @@ export const extracted = Object.freeze({
       'M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z',
       'm3.3 7 8.7 5 8.7-5',
       'M12 22V12',
+    ],
+    stroke: { width: 2, linecap: 'round', linejoin: 'round' },
+  },
+  'window': {
+    from: 'app-window',
+    viewBox: '0 0 24 24',
+    paths: [
+      'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2z',
+      'M10 4v4',
+      'M2 8h20',
+      'M6 4v4',
     ],
     stroke: { width: 2, linecap: 'round', linejoin: 'round' },
   },

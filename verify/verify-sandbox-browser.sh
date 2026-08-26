@@ -3,9 +3,9 @@
 # sandbox, as `key=value` lines.
 #
 # The questions are the ones a tenant's agent asks by existing: is there a
-# browser, can the CLI it was taught reach it, and is that browser fenced the
-# way this deployment says it is. Everything here runs inside the sandbox,
-# because every one of those is only true in there.
+# browser, is it reachable only from this machine, and can the CLI the agent
+# was taught reach it. Everything here runs inside the sandbox, because every
+# one of those is only true in there.
 #
 # Fed to the sandbox base64-encoded, so that neither `docker exec sh -c` nor
 # envd's `bash -l -c` has to survive the quoting.
@@ -20,16 +20,13 @@ echo "cdp=$(curl -s --max-time 5 http://127.0.0.1:9222/json/version | grep -c '"
 # be addressable from outside this machine. `ss` prints the address it bound.
 echo "bound=$(ss -ltn 2>/dev/null | awk '$4 ~ /:9222$/ { print $4 }' | head -1)"
 
-# The fence that makes a browser in a sandbox something other than a way into
-# the deployment. An agent can be talked into fetching an internal address, and
-# the request would leave from in here rather than from whoever asked. Obscura
-# refuses private and loopback ranges unless told otherwise; this asks it to
-# fetch one and reports whether it declined.
-if obscura fetch http://127.0.0.1:9222/json/version --dump text > /dev/null 2>&1; then
-  echo "private=allowed"
-else
-  echo "private=refused"
-fi
+# What is NOT checked here, and why the absence is written down: the browser
+# no longer refuses private addresses. That fence was Obscura's, inside the
+# engine, and it left with the engine — Chromium has no such switch. Under
+# CubeSandbox the fence is CubeEgress, outside the sandbox where this script
+# cannot see it; under plain Docker nothing enforces it. "The browser in the
+# sandbox" in docs/design.md carries the account, so a run of this suite does
+# not report a property the deployment no longer has.
 
 # What the agent types, and the file that tells it where the browser is. The
 # config is resolved relative to the working directory, so it is the workspace

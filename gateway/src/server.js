@@ -928,13 +928,14 @@ async function handleRequest(req, res) {
     return
   }
 
-  // The two planes a tenant's browser talks to their own backend over. `/api`
-  // is dsh's own; `/files` is the channel `dsh-sandbox-host` registers for
-  // uploads, because `/api` accepts exactly one interceptor and dsh already
-  // holds it. Both are the same thing to the gateway — a request that means
-  // nothing without knowing whose sandbox it belongs in — so they authenticate
-  // and route identically, and only the sandbox knows what is on them.
-  if (path.startsWith('/api') || path.startsWith('/files')) {
+  // The planes a tenant's browser talks to their own backend over. `/api` is
+  // dsh's own; `/files` and `/browser` are channels `dsh-sandbox-host`
+  // registers — uploads and the watched headless browser — because `/api`
+  // accepts exactly one interceptor and dsh already holds it. All are the
+  // same thing to the gateway — a request that means nothing without knowing
+  // whose sandbox it belongs in — so they authenticate and route identically,
+  // and only the sandbox knows what is on them.
+  if (path.startsWith('/api') || path.startsWith('/files') || path.startsWith('/browser')) {
     const caller = await callerOf(req, res)
     if (caller === undefined) {
       res.writeHead(401, { 'Content-Type': 'text/plain' })

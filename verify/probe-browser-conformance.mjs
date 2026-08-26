@@ -1,26 +1,32 @@
 /**
  * How much of what `playwright-cli` asks for the sandbox's browser answers.
  *
- * The browser in this image is not Chromium. Obscura is an independent engine
- * that speaks the Chrome DevTools Protocol, which is what lets Playwright's own
- * CLI drive it — but "speaks CDP" is the same kind of claim as "E2B
- * compatible", and this repository does not build on that word either. So the
- * commands the bundled skill tells an agent to use are run, one at a time,
- * against a page whose contents are known, and each is recorded as answering,
- * differing, or missing.
+ * The engine is chrome-headless-shell now, so the command table should answer
+ * in full — but "should" is the same kind of claim as "E2B compatible", and
+ * this repository does not build on that word either. So the commands the
+ * bundled skill tells an agent to use are run, one at a time, against a page
+ * whose contents are known, and each is recorded as answering, differing, or
+ * missing. The probe kept its shape across the engine swap on purpose: it was
+ * written for an independent engine and it is what would catch the next one,
+ * or a Chromium build that stopped answering something the skill teaches.
  *
- * Run it when the pinned Obscura version moves. What it prints is the list a
- * person decides about — not every divergence is worth blocking an upgrade,
- * and the ones that are should be named in docs rather than discovered by a
- * tenant.
+ * One measurement here is of the image rather than the engine: whether CJK
+ * text rasterizes as glyphs or as boxes. Chromium draws with the system's
+ * fontconfig stack, so this holds the image's font install to account — the
+ * previous engine drew only from fonts embedded in its binary, and every
+ * Chinese page screenshotted as boxes while every command still "answered".
+ * Two screenshots that differ only in their Chinese characters must differ as
+ * bytes; tofu boxes are the same box every time.
+ *
+ * Run it when `PLAYWRIGHT_CLI_VERSION` moves, which is what pins the browser.
+ * What it prints is the list a person decides about — not every divergence is
+ * worth blocking an upgrade, and the ones that are should be named in docs
+ * rather than discovered by a tenant.
  *
  * Hermetic on purpose. The fixture is served from inside the sandbox, so the
  * result says something about the browser rather than about the network that
- * day. That needs a second Obscura: the one the entrypoint starts refuses
- * private and loopback addresses — deliberately, since a browser an agent can
- * be talked into pointing at internal endpoints is how a sandbox becomes a
- * proxy into a deployment — so the probe starts its own with that fence
- * lowered, on its own port, and stops it when it is done.
+ * day. The probe starts its own browser on its own port beside the sandbox's
+ * resident one, and stops it when it is done.
  *
  * Usage, from inside a sandbox:
  *   node probe-browser-conformance.mjs
@@ -49,9 +55,9 @@ const FIXTURE_PORT = 8899
  */
 const FIXTURE = `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>obscura-probe-fixture</title></head>
+<head><meta charset="utf-8"><title>browser-probe-fixture</title></head>
 <body>
-  <h1 id="title">obscura-probe-fixture</h1>
+  <h1 id="title">browser-probe-fixture</h1>
   <a id="link" href="/second.html">second page</a>
   <input id="text" type="text" aria-label="a text field">
   <textarea id="area" aria-label="an area"></textarea>
@@ -70,6 +76,19 @@ const SECOND = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Second</title></head>
 <body><h1>Second page</h1></body></html>`
 
+/**
+ * Two pages that differ only in their Chinese characters, same count, same
+ * layout. A font stack that has the glyphs draws two different rasters; one
+ * that does not draws the same row of boxes twice. Everything else on the
+ * page is identical so the byte comparison measures exactly the glyphs.
+ *
+ * @param {string} text - the Chinese text this variant carries.
+ * @returns {string} the page.
+ */
+const cjkPage = (text) => `<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>cjk-probe</title></head>
+<body><p style="font-size:32px">${text}</p></body></html>`
+
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-probe-'))
 fs.mkdirSync(path.join(work, '.playwright'), { recursive: true })
 fs.writeFileSync(
@@ -86,6 +105,8 @@ const pages = path.join(work, 'fixture')
 fs.mkdirSync(pages, { recursive: true })
 fs.writeFileSync(path.join(pages, 'index.html'), FIXTURE)
 fs.writeFileSync(path.join(pages, 'second.html'), SECOND)
+fs.writeFileSync(path.join(pages, 'cjk-a.html'), cjkPage('中文字形探针甲'))
+fs.writeFileSync(path.join(pages, 'cjk-b.html'), cjkPage('汉语笔画测量乙'))
 const fixture = spawn('python3', ['-m', 'http.server', String(FIXTURE_PORT), '--bind', '127.0.0.1'], {
   cwd: pages,
   stdio: 'ignore',
@@ -107,8 +128,19 @@ for (const [port, what] of [[CDP_PORT, 'a browser'], [FIXTURE_PORT, 'the fixture
   }
 }
 
-const browser = spawn('obscura', [
-  'serve', '--port', String(CDP_PORT), '--allow-private-network', '--workers', '1',
+// The flags come from the same file the entrypoint reads, so the probe
+// measures the browser a tenant runs rather than a differently-shaped one.
+// What differs is only what belongs to the caller: the port, and a profile
+// and cache in the probe's own scratch directory.
+const FLAGS = fs.readFileSync('/app/sandbox/browser-flags', 'utf8')
+  .split('\n')
+  .map((line) => line.trim())
+  .filter((line) => line !== '' && !line.startsWith('#'))
+const browser = spawn('/usr/local/bin/headless-shell', [
+  ...FLAGS,
+  `--remote-debugging-port=${String(CDP_PORT)}`,
+  `--user-data-dir=${path.join(work, 'profile')}`,
+  `--disk-cache-dir=${path.join(work, 'cache')}`,
 ], { stdio: 'ignore', detached: true })
 
 /** Give the engine and the fixture a moment to bind; both do in well under a second. */
@@ -186,15 +218,15 @@ function refFor(snapshotOutput, needle) {
 }
 
 const base = `http://127.0.0.1:${String(FIXTURE_PORT)}`
-console.log(`\n=== what the sandbox's browser answers (obscura ${version()}) ===\n`)
+console.log(`\n=== what the sandbox's browser answers (chrome-headless-shell ${version()}) ===\n`)
 
 // The title is a marker rather than a name: a port that turns out to be
 // serving something else — a leftover from an earlier run, a tenant's own dev
 // server — would otherwise be measured as if it were the fixture, and every
 // ref below would come back empty.
-measure('open', ['open', base], (out) => out.includes('obscura-probe-fixture'))
+measure('open', ['open', base], (out) => out.includes('browser-probe-fixture'))
 const snapshot = measure('snapshot', ['snapshot'], (out) => out.includes('Snapshot'))
-measure('eval', ['eval', '() => document.title'], (out) => out.includes('obscura-probe-fixture'))
+measure('eval', ['eval', '() => document.title'], (out) => out.includes('browser-probe-fixture'))
 measure('find', ['find', 'press me'], (out) => out.includes('press me'))
 
 const button = refFor(snapshot, 'press me')
@@ -221,6 +253,27 @@ measure('pdf', ['pdf'], (out) => !out.includes('### Error'))
 measure('navigate by clicking a link', ['click', link], (out) => !out.includes('### Error'))
 measure('  and the page changed', ['eval', '() => document.title'], (out) => out.includes('Second'))
 measure('back', ['back'], (out) => !out.includes('### Error'))
+
+// The image's fonts, measured through the engine. Two screenshots of pages
+// that differ only in their Chinese characters must differ as bytes: a font
+// stack without the glyphs draws the same row of boxes twice, while every
+// command above still answers. This is the one check here that judges the
+// image rather than the browser, and it exists because the previous engine
+// passed the whole table while screenshotting Chinese as tofu.
+const shotPath = (output) => /\((\.playwright-cli\/[^)]+\.(?:png|jpe?g))\)/.exec(output)?.[1] ?? ''
+measure('goto a Chinese page', ['goto', `${base}/cjk-a.html`], (out) => !out.includes('### Error'))
+const shotA = shotPath(measure('  and screenshot it', ['screenshot'], (out) => !out.includes('### Error')))
+measure('goto one with different characters', ['goto', `${base}/cjk-b.html`], (out) => !out.includes('### Error'))
+const shotB = shotPath(measure('  and screenshot it too', ['screenshot'], (out) => !out.includes('### Error')))
+if (shotA !== '' && shotB !== ''
+  && !fs.readFileSync(path.join(work, shotA)).equals(fs.readFileSync(path.join(work, shotB)))) {
+  console.log('  ANSWERS  CJK glyphs render')
+  answered += 1
+} else {
+  console.log(`  DIFFERS  ${'CJK glyphs render'.padEnd(34)} the two screenshots are identical — the font stack has no CJK glyphs`)
+  differed += 1
+}
+
 measure('close', ['close'], (out) => !out.includes('### Error'))
 
 console.log(`\n=== ${String(answered)} answered, ${String(differed)} differed ===\n`)
@@ -231,7 +284,7 @@ console.log(`\n=== ${String(answered)} answered, ${String(differed)} differed ==
  * @returns {string} the version, or a question mark when the binary will not say.
  */
 function version() {
-  const run = spawnSync('obscura', ['--version'], { encoding: 'utf8' })
+  const run = spawnSync('/usr/local/bin/headless-shell', ['--version'], { encoding: 'utf8' })
   return (run.stdout ?? '').trim().split(' ').pop() ?? '?'
 }
 

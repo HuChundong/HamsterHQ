@@ -612,21 +612,30 @@ platform and a source build is the one thing a tenant has to arrange itself.
 ## The browser in the sandbox
 
 An agent that cannot open a page can only describe the web second-hand, so the
-sandbox carries a browser. Which one is the interesting question, and the
-number that decides it is memory: a sandbox is a machine with 2–4 GB for
-everything a tenant does, and headless Chrome wants 200 MB before it renders
-anything, plus the shared-memory and sandbox flags a container makes it need.
+sandbox carries a browser: chrome-headless-shell, the UI-less Chromium build
+that Playwright itself pins. It is installed at image build by the bundled
+Playwright inside the pinned `@playwright/cli`, so the engine is exactly the
+build that CLI version expects and the two cannot drift apart. The download
+host is npmmirror, because this repository is built from inside China where
+Playwright's default CDN is the step that fails — the same reason OfficeCLI
+arrives from a CDN.
 
-Obscura is a single static binary that idles around 30 MB, speaks the Chrome
-DevTools Protocol, and is Apache-2.0. It comes from the vendor's own image
-rather than a release archive, and that was measured on the host this is built
-on rather than inherited from what the `Dockerfile` says about OfficeCLI:
-inside a build container there, `HEAD` on the release URL answers 200 in under
-two seconds and the GET that follows it sits at zero bytes until it is killed
-at five minutes, while the same host pulls the image in sixteen. A step that
-looks fine and never finishes is the worst shape a build can have. It is
-pinned by version *and* by the multi-arch index digest — a tag can be moved
-under a deployment, and the archive would at least have carried a checksum.
+It replaced Obscura, an independent 30 MB engine chosen for memory, and the
+replacement was decided by measurement rather than preference. Two things
+were measured that no configuration could fix. Obscura rasterizes text only
+from the Liberation fonts embedded in its binary: fonts mounted into
+`/usr/share/fonts` and `~/.fonts` changed nothing, the binary carries no font
+flag or environment variable, and so every Chinese page screenshots as rows
+of boxes — for a deployment whose tenants write Chinese, every screenshot and
+PDF was illegible while every command still reported success. And its task
+budget refuses heavy pages outright: Wikipedia's main page failed to open
+with "autonomous browser task exceeded its task budget". Chromium draws with
+the image's own fontconfig stack — the wqy-microhei installed for matplotlib
+now serves the browser too — and its screenshots are what the panel's browser
+tab shows, polled about once a second over the `/browser` channel
+`dsh-sandbox-host` registers. The memory argument that chose Obscura was real and its
+price is now paid knowingly: roughly 100 MB idle against 30, and 300–500 MB
+with a heavy page open, out of a sandbox's 2–4 GB.
 
 What an agent types is not the protocol but `playwright-cli`, Playwright's own
 CLI for coding agents. That choice buys two things at once. It is the interface
@@ -644,24 +653,41 @@ writes it into the tenant's workspace on every boot — rewritten rather than
 created once, so an image that moves the port cannot leave a volume pointing at
 the old answer.
 
-The browser listens on loopback and refuses private addresses, and both are
-load-bearing. A CDP port drives the browser as the tenant: anything that can
-reach it reads what they read and posts as them. And a browser inside a sandbox
-is the classic way to reach what a tenant cannot address — an agent can be
-talked into fetching an internal endpoint, and the request leaves from in here
-rather than from whoever asked for it. Obscura refuses private and loopback
-ranges unless told otherwise, and it is not told otherwise. Under CubeSandbox
-egress is fenced again outside; this is the half that holds without it.
+The browser is running before any tenant arrives. `sandbox/start-browser.sh`
+is the template's start command, and the ready command holds the snapshot
+until the CDP port answers — so a restored sandbox meets a browser already
+listening, and none of the launch is spent inside a tenant's cold start. The
+entrypoint runs the same script: against a listening port it is the check and
+nothing more, and under plain Docker, where no snapshot exists, it is the
+launch. Freezing a running process into the template is exactly what the
+backend cannot have, and the browser passes the test the backend failed:
+nothing about it is only knowable when a tenant arrives. Which is also why
+its profile lives on the machine's own disk rather than the tenant's mount —
+no mount exists when the template is made, a mount arriving later must not
+shadow a running browser's files, and Chromium's profile is precisely the
+many-small-files workload the mount is worst at. The price, paid knowingly:
+cookies do not survive a rebuild, the working set's fate rather than the
+files'.
 
-It is an independent engine, not Chromium, so some of what Playwright asks for
-lands differently. `verify/probe-browser-conformance.mjs` measures that against
-a fixture served inside the sandbox rather than repeating the claim: at Obscura
-0.2.1, sixteen of the commands the skill teaches answer — navigating,
-snapshotting, finding, evaluating, clicking, typing, pressing, checking,
-selecting, hovering, resizing, screenshots, PDF, back and close — and two
-differ. `fill` times out on Playwright's actionability wait, where `click` then
-`type` works; and some links come back from the snapshot without a ref, which
-`goto` steps around. Run the probe when the pin moves.
+The browser listens on loopback, and that is load-bearing: a CDP port drives
+the browser as the tenant, so anything that can reach it reads what they read
+and posts as them. What the engine swap gave up is the other fence, and the
+regression is recorded here rather than smoothed over. A browser inside a
+sandbox is the classic way to reach what a tenant cannot address — an agent
+can be talked into fetching an internal endpoint, and the request leaves from
+in here rather than from whoever asked for it. Obscura refused private and
+loopback ranges inside the engine; Chromium has no such switch. Under
+CubeSandbox that fence is CubeEgress, outside the sandbox. Under plain Docker
+nothing enforces it now, and this paragraph is the only place that says so.
+
+`verify/probe-browser-conformance.mjs` still runs the skill's whole command
+table against a fixture served inside the sandbox — written for an independent
+engine, kept because it is what catches a Chromium build that stops answering
+something the skill teaches. It also holds the image's fonts to account: two
+screenshots of pages differing only in their Chinese characters must differ as
+bytes, because the previous engine passed that whole table while
+screenshotting Chinese as tofu. Run the probe when `PLAYWRIGHT_CLI_VERSION`
+moves, which is what pins the browser.
 
 ## The model plane
 

@@ -26,6 +26,13 @@ The image therefore declares no `CMD`. `cube-entrypoint.sh` waits on envd, and
 the gateway starts each tenant's backend through envd's process API with the
 identity that only exists at creation.
 
+The rule is a test, not a ban. The sandbox's browser is frozen into the
+snapshot deliberately — the template's start command launches it and the ready
+command holds the snapshot until its port answers — because it passes where
+the backend failed: no identity, no mount, a profile on the machine's own
+disk. Nothing about it arrives with a tenant, so its launch happens once, at
+template creation, instead of inside every cold start.
+
 **Corollary that cost a second round:** `POST /templates/{id}` does not pick up
 a new image. Pointing an existing template at one leaves every sandbox restoring
 the snapshot it already had. A new image means a new template, every time.
@@ -519,6 +526,37 @@ more embarrassing one — a browser and a fixture left over from an earlier
 experiment were still holding the ports, so the probe attached to a browser
 looking at a page from ten minutes ago. It now refuses to start when either
 port already answers.
+
+## A browser whose fonts are the engine's, not the image's
+
+Every Chinese page Obscura screenshotted came back as rows of boxes, and the
+diagnosis went through two wrong conclusions before the right one.
+
+The first: the container is missing CJK fonts — obviously, since the vendor
+image carries no font files at all. But the sandbox image already installs
+`fontconfig` and `fonts-wqy-microhei` for matplotlib, so production should
+have been fine. It was not, which led to the second wrong conclusion: the
+engine must want the fonts somewhere specific. A CJK font was mounted into
+`/usr/share/fonts`, then into `~/.fonts`; the screenshots did not change by a
+byte. Meanwhile Latin text had rendered perfectly all along from an image
+that contained no fonts — which was the fact that mattered, noticed last.
+
+`strings` on the binary settled it: the Liberation family is embedded in the
+executable, complete with Red Hat's copyright notice, and its fontdb never
+loads system fonts. There is no font flag and no `OBSCURA_*` variable for it.
+Rendering was working exactly as built; the font stack was simply sealed
+inside the binary, and no arrangement of the image could reach it. That —
+together with a task budget that refused heavy pages outright — is what
+retired the engine in favour of chrome-headless-shell, which draws through
+the image's own fontconfig.
+
+Two things generalize. A renderer that produces correct output for the Latin
+half of the test set can be wholly incapable of the other half, and every
+command still reports success — the probe's CJK check (two screenshots that
+differ only in their Chinese characters must differ as bytes) exists so this
+fails loudly next time. And when mounting a resource somewhere has no effect,
+stop trying new locations and ask whether the consumer reads the filesystem
+at all; `strings` answered in one minute what four mounts did not.
 
 ## What generalizes
 

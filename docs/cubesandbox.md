@@ -20,9 +20,18 @@ docker push 127.0.0.1:5000/hamsterhq-sandbox:$TAG
 # snapshot taken when it is created, and pointing an existing one at a new
 # image leaves every sandbox restoring the snapshot it already had. Set
 # CUBE_TEMPLATE_ID to the alias.
+#
+# The start command boots the sandbox's browser and the ready command holds
+# the snapshot until its CDP port answers, so every sandbox restores with the
+# browser already running instead of spending its own cold start launching
+# it. The script knows no tenant and is idempotent — the entrypoint calls it
+# too, and on a restored sandbox that call meets the listening port and
+# returns at once.
 cubemastercli template create-from-image \
   --image 127.0.0.1:5000/hamsterhq-sandbox:$TAG --alias hamsterhq-sandbox-$TAG \
-  --writable-layer-size 20Gi --cpu 2000 --memory 4000
+  --writable-layer-size 20Gi --cpu 2000 --memory 4000 \
+  --start-cmd /app/sandbox/start-browser.sh \
+  --ready-cmd 'curl -sf http://127.0.0.1:9222/json/version'
 
 docker compose -f compose.yml -f compose.cube.yml up -d
 ```

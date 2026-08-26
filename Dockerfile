@@ -76,33 +76,6 @@ ARG TARGETARCH
 # cube-entrypoint.sh; the architecture-specific binaries are built below.
 FROM --platform=linux/amd64 ghcr.io/tencentcloud/cubesandbox-base:2026.16 AS cube-tools
 
-# ------------------------------------------------------------- browser ----
-# The browser a tenant's agent drives, taken from the vendor's own image.
-#
-# From an image rather than a release archive, and that was measured on the
-# host this is built on rather than assumed from the sentence below about
-# OfficeCLI. Inside a build container there, `HEAD` on the release URL answers
-# 200 in under two seconds — github.com hands back the redirect — and the GET
-# that follows it sits at zero bytes until it is killed at five minutes. The
-# same host pulls this image in sixteen seconds. So the release archive is the
-# path that looks fine and never finishes, which is the worst shape a build
-# step can have.
-#
-# Pinned by digest as well as version. A tag can be moved under a deployment;
-# the archive would at least have carried a checksum, and this is how an image
-# carries the same promise. The digest is the multi-arch index, so amd64 and
-# arm64 both resolve from it.
-#
-# Obscura rather than headless Chrome, and the number that decides it is
-# memory. A sandbox is a machine with 2-4 GB for everything a tenant does;
-# Chrome wants 200 MB before it renders anything and its shared-memory and
-# sandbox flags need loosening inside a container, while this is one static
-# binary that idles around 30 MB and speaks the same Chrome DevTools Protocol
-# to the same Playwright client. It is an independent engine, so long-tail CSS
-# and some Web APIs differ — `verify/probe-browser-conformance.mjs` measures
-# what it actually does rather than repeating what it says.
-FROM h4ckf0r0day/obscura:0.2.1@sha256:e65cb455fc67543283da6901e8735c45aab5421e2ced8879b0a1fa70a4e38a2d AS browser
-
 # ---------------------------------------------------------------- envd ----
 # envd, for the architecture this image is being built for.
 #
@@ -227,8 +200,13 @@ RUN if [ -n "$APT_MIRROR" ]; then \
 #
 # `make` because repositories are entered through it. `fontconfig` and
 # `fonts-wqy-microhei` because a chart with CJK labels renders as boxes without
-# them, and this deployment's tenants write Chinese. `libmagic1` and `libgomp1`
-# are runtime dependencies of the wheels below, not tools in their own right.
+# them, and this deployment's tenants write Chinese; `fonts-noto-color-emoji`
+# because the browser below rasterizes pages with this same font stack, and a
+# modern page without its emoji is measurably not that page. `libmagic1` and
+# `libgomp1` are runtime dependencies of the wheels below, not tools in their
+# own right. The `lib*` block is the browser's: what chrome-headless-shell
+# links against on a slim base, as `playwright install-deps --dry-run` lists
+# it, minus xvfb and the font packages that list would double up.
 #
 # Measured while trimming, because two of these are not obvious: `libgl1` costs
 # 41 packages and 49 MB of downloads for an OpenGL stack that nothing here uses
@@ -252,7 +230,11 @@ RUN apt-get update \
        unzip zip p7zip-full zstd xz-utils libarchive-tools \
        sqlite3 poppler-utils \
        dnsutils iputils-ping iproute2 netcat-openbsd \
-       fontconfig fonts-wqy-microhei \
+       fontconfig fonts-wqy-microhei fonts-noto-color-emoji \
+       libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcairo2 \
+       libcups2 libdbus-1-3 libdrm2 libgbm1 libglib2.0-0 libnspr4 libnss3 \
+       libpango-1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 \
+       libxfixes3 libxkbcommon0 libxrandr2 \
        python3 python3-venv libmagic1 libgomp1 \
   && ln -sf "$(command -v fdfind)" /usr/local/bin/fd \
   && fc-cache -f \
@@ -376,24 +358,52 @@ RUN set -eux; \
 
 # ---- the browser, and the way an agent asks it for a page -----------------
 #
-# Two halves that only make sense together: Obscura is the engine, and
-# `playwright-cli` is what an agent types. The CLI is Playwright's own, which
-# matters twice — it is the interface a coding agent already knows, and it
-# ships the skill that teaches it, so this repository does not write one.
+# Two halves that only make sense together: chrome-headless-shell is the
+# engine, and `playwright-cli` is what an agent types. The CLI is Playwright's
+# own, which matters twice — it is the interface a coding agent already knows,
+# and it ships the skill that teaches it, so this repository does not write
+# one.
 #
-# `obscura-worker` comes along because the parallel `scrape` command looks for
-# it beside the binary.
-COPY --from=browser /obscura /usr/local/bin/obscura
-COPY --from=browser /obscura-worker /usr/local/bin/obscura-worker
-
-# The CLI, pinned, and told not to fetch browsers for itself. It would
-# otherwise download Chromium on first use — 300 MB into a tenant's volume, for
-# a browser this image already has and did not want.
+# The CLI, pinned, and told not to fetch browsers on its own schedule. The
+# engine is installed one step below by this CLI's own bundled Playwright, so
+# the two cannot drift apart; the variable stays set at runtime so nothing a
+# tenant runs starts a 150 MB download into their volume for a browser this
+# image already carries.
 ARG PLAYWRIGHT_CLI_VERSION=0.1.18
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm install -g --no-audit --no-fund "@playwright/cli@${PLAYWRIGHT_CLI_VERSION}" \
  && rm -rf /root/.npm \
  && playwright-cli --help > /dev/null
+
+# The engine: chrome-headless-shell, the UI-less Chromium build Playwright
+# itself pins. It replaced Obscura, and what decided the replacement is in
+# "The browser in the sandbox" in docs/design.md; the short form is that
+# Obscura rasterizes text only from the Liberation fonts embedded in its
+# binary — no system font is ever read, so every Chinese page screenshots as
+# boxes for a deployment whose tenants write Chinese — and that its task
+# budget refuses heavy pages outright. Chromium draws through the image's own
+# fontconfig stack (the wqy-microhei above) and answers the full protocol,
+# including the screencast the panel's preview consumes. The memory cost is
+# real and accepted: roughly 100 MB idle against Obscura's 30, and 300-500 MB
+# with a heavy page open, in a sandbox of 2-4 GB.
+#
+# Installed by the CLI's own bundled Playwright rather than by a second pinned
+# version, so the browser build is exactly the one the CLI expects. The
+# download host is npmmirror because this repository is built from inside
+# China, where Playwright's default CDN is the step that fails — the same
+# reason OfficeCLI arrives from a CDN and the base images from Docker Hub.
+# The path is outside any home because HOME at runtime is the tenant's volume.
+ARG PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+RUN set -eux; \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD= \
+    PLAYWRIGHT_DOWNLOAD_HOST="$PLAYWRIGHT_DOWNLOAD_HOST" \
+      node /usr/local/lib/node_modules/@playwright/cli/node_modules/playwright/cli.js \
+      install --only-shell chromium; \
+    shell_bin="$(find "$PLAYWRIGHT_BROWSERS_PATH" -type f \( -name headless_shell -o -name chrome-headless-shell \) | head -1)"; \
+    test -n "$shell_bin"; \
+    ln -s "$shell_bin" /usr/local/bin/headless-shell; \
+    /usr/local/bin/headless-shell --version
 
 # The skill that tells an agent how to drive it, written by the CLI itself for
 # the same reason OfficeCLI's is: a copy kept here would be a second source of
@@ -424,8 +434,6 @@ RUN set -eux; \
 # is where their agent starts. This copy is the source it writes from.
 COPY sandbox/playwright-cli.config.json /opt/playwright-cli.config.json
 
-ENV OBSCURA_CDP_URL=http://127.0.0.1:9222
-
 # pnpm and yarn, for a repository that is entered through one of them. Corepack
 # ships with node; enabling it costs two shims rather than two installs.
 #
@@ -449,9 +457,9 @@ RUN ln -snf "/usr/share/zoneinfo/$TZ" /etc/localtime && echo "$TZ" > /etc/timezo
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package.json ./package.json
-COPY sandbox/entrypoint.sh sandbox/migrate-storage-paths.mjs \
-     sandbox/cordis.patch.yml sandbox/cordis.model.patch.yml ./sandbox/
-RUN chmod +x /app/sandbox/entrypoint.sh
+COPY sandbox/entrypoint.sh sandbox/start-browser.sh sandbox/migrate-storage-paths.mjs \
+     sandbox/browser-flags sandbox/cordis.patch.yml sandbox/cordis.model.patch.yml ./sandbox/
+RUN chmod +x /app/sandbox/entrypoint.sh /app/sandbox/start-browser.sh
 
 # The entry a tenant's backend runs: the same `lib/bin.js` the npm package ships
 # as `dsh`, named explicitly so the entrypoint does not depend on PATH.
@@ -572,7 +580,7 @@ ENV DSH_HOME=/mnt/dsh
 RUN for name in PATH DSH_BIN DSH_HOME IMAGE_DSH_HOME MOUNT WORKSPACE SANDBOX_LAYOUT_VERSION HOME DSH_PERMISSION_MODE NODE_ENV \
                 NODE_EXTRA_CA_CERTS TZ VIRTUAL_ENV MPLBACKEND MPLCONFIGDIR \
                 OFFICECLI_SKIP_UPDATE DSH_BUNDLED_SKILL_DIR \
-                OBSCURA_CDP_URL PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD; do \
+                PLAYWRIGHT_BROWSERS_PATH PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD; do \
       printf 'export %s=%s\n' "$name" "$(printenv "$name")"; \
     done > /app/sandbox/env.sh
 

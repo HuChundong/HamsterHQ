@@ -71,6 +71,19 @@ location /files/ {
   proxy_buffering off;
 }
 
+# The browser plane: the panel watching the sandbox's own headless browser,
+# a channel `dsh-sandbox-host` registers the same way it registers `/files`.
+# Request/response only — the panel polls frames — so no upgrade headers here
+# either. Buffering off because a frame is watched, not archived: it should
+# reach the panel as the sandbox answers, not when a buffer feels full.
+location /browser/ {
+  proxy_pass http://$gateway_upstream;
+  proxy_http_version 1.1;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_buffering off;
+}
+
 # `X-Forwarded-Proto` decides whether the gateway marks its token cookies
 # `Secure`. It is trustworthy only because nothing but this nginx can reach the
 # gateway's port.
