@@ -507,7 +507,13 @@ export async function stat(handle, path) {
 export async function readFile(handle, path) {
   try {
     const sandbox = await client(handle)
-    const bytes = await sandbox.files.read(path)
+    // `format: 'bytes'`, because the client's default is `text`: it decodes
+    // the file as UTF-8 and hands back a string, and for anything binary that
+    // decode has already happened by the time the string arrives — a PNG's
+    // 0x89 magic byte came back as the three-byte replacement character, and
+    // the panel's image viewer drew a broken glyph over a file that was fine.
+    // Text comes through `bytes` unchanged, so there is one read, not two.
+    const bytes = await sandbox.files.read(path, { format: 'bytes' })
     return { status: 200, body: Buffer.from(bytes) }
   } catch (error) {
     const failure = restate(error, `reading ${path}`, handle)
