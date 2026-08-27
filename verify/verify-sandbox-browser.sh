@@ -8,7 +8,11 @@
 # one of those is only true in there.
 #
 # Fed to the sandbox base64-encoded, so that neither `docker exec sh -c` nor
-# envd's `bash -l -c` has to survive the quoting.
+# envd's `bash -l -c` has to survive the quoting. PATH, WORKSPACE and
+# DSH_BUNDLED_SKILL_DIR arrive in the caller's prelude, read off the backend
+# process — the shell this runs in has none of them under CubeSandbox, and a
+# fragment that asks its own shell reports the image's tools missing while a
+# tenant is using them.
 
 # The engine, asked over the protocol its client will use rather than by
 # looking for a process: a browser that is running and not listening is the
