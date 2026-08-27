@@ -188,11 +188,11 @@ check 'the officecli skill is where dsh will look' ok "$skill"
 browser=$(docker run --rm --entrypoint /usr/local/bin/headless-shell "$SANDBOX" --version 2>/dev/null | head -1 | grep -c 'Chrom' || echo 0)
 check 'the browser engine runs' 1 "$browser"
 
-# Run the real launch path — the same script the template's start command and
-# the entrypoint run — and ask what the template's ready command will ask:
-# does 9222 answer. A script that quietly starts nothing (a missing tuning
-# file, an engine the flags no longer fit) becomes a template whose ready
-# command never returns, discovered at template creation instead of here.
+# Run the real launch path — the script the entrypoint runs on every backend
+# boot — and ask whether 9222 answers afterwards. A script that quietly
+# starts nothing (a missing tuning file, an engine the flags no longer fit)
+# is a sandbox whose agent has no browser, discovered here instead of by the
+# first tenant to ask for a page.
 warm=$(docker run --rm --entrypoint bash "$SANDBOX" -c '
   /app/sandbox/start-browser.sh || { echo start-failed; exit 0; }
   for _ in $(seq 40); do

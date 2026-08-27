@@ -17,14 +17,11 @@ docker push 127.0.0.1:5000/hamsterhq-sandbox:$TAG
 # 每次都建新模板，而不是更新旧的：模板是创建那一刻拍下的快照，把已有模板指向新镜像，
 # 每个沙箱还原的仍是它原来那份快照。把 CUBE_TEMPLATE_ID 指向别名。
 #
-# start 命令把沙箱的浏览器启动起来，ready 命令按住快照直到它的 CDP 端口应答——于是每个
-# 沙箱还原出来时浏览器已在运行，不必再花自己的冷启动时间去拉起它。这个脚本不认识任何
-# 租户且幂等：entrypoint 也会调用它，在还原出来的沙箱里那次调用碰到已监听的端口，立即返回。
+# 这里没有任何东西预启动沙箱的浏览器：create-from-image 不接受 start 或 ready 命令，
+# 所以浏览器改为随每个租户的后端一起启动——后台方式，租户等待的任何东西都不等它。
 cubemastercli template create-from-image \
   --image 127.0.0.1:5000/hamsterhq-sandbox:$TAG --alias hamsterhq-sandbox-$TAG \
-  --writable-layer-size 20Gi --cpu 2000 --memory 4000 \
-  --start-cmd /app/sandbox/start-browser.sh \
-  --ready-cmd 'curl -sf http://127.0.0.1:9222/json/version'
+  --writable-layer-size 20Gi --cpu 2000 --memory 4000
 
 docker compose -f compose.yml -f compose.cube.yml up -d
 ```

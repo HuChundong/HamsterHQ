@@ -1,20 +1,19 @@
 #!/bin/bash
 # Start the sandbox's browser — once, whoever asks first.
 #
-# Two callers share this file, and the port check is what lets them. Under
-# CubeSandbox it is the template's *start command*: it runs while the template
-# is created, the ready command holds the snapshot until 9222 answers, and so
-# every sandbox restores with the browser already running — none of its launch
-# is spent inside a tenant's cold start. The entrypoint calls it too, and on a
-# restored sandbox that call meets a listening port and returns at once; under
-# plain Docker, where nothing pre-started it, that same call is the one that
-# starts it.
+# The caller is the entrypoint, and a backend boots more than once in a
+# machine's life — the gateway restarts it through envd, recovery starts it
+# by hand — so the port check is what keeps a second boot from spawning a
+# second browser beside the first.
 #
-# Freezing a running browser into the snapshot is safe by the rule in
-# docs/sandbox-pitfalls.md — a template cannot hold anything only knowable
-# when a tenant arrives — because nothing here knows one: no identity, no
-# mount, a profile on the machine's own disk. Every restore gets an identical
-# fresh browser that diverges privately from there.
+# This was written to be a CubeSandbox template's start command, baking a
+# running browser into the snapshot so a restored sandbox would meet it
+# already listening. cubemastercli template create-from-image turned out to
+# carry no start or ready hook, so the launch rides the first backend boot
+# instead — backgrounded below, costing the tenant nothing they wait on. The
+# script keeps the shape the hook would need — it knows no tenant: no
+# identity, no mount, a profile on the machine's own disk — so if the CLI
+# grows one, point it here and nothing changes.
 #
 # Loopback only — the default for the debugging port, stated because it is
 # load-bearing: CDP drives the browser as the tenant, so anything that can
@@ -26,8 +25,8 @@
 # "The browser in the sandbox" in docs/design.md carries the account.
 set -eu
 
-# Already listening means already started — restored from the snapshot, or by
-# an earlier caller. bash's own /dev/tcp, so the check needs nothing else.
+# Already listening means already started, by an earlier boot of the same
+# machine. bash's own /dev/tcp, so the check needs nothing else.
 if (exec 3<>/dev/tcp/127.0.0.1/9222) 2>/dev/null; then
   exit 0
 fi
@@ -47,11 +46,11 @@ while IFS= read -r flag; do
 done < /app/sandbox/browser-flags
 
 # Profile, cache and log on the machine's own disk, deliberately not the
-# tenant's mount: no mount exists when the template's start command runs, a
-# restored browser must not have its profile shadowed by one arriving later,
-# and Chromium's profile is exactly the many-small-files workload a network
-# filesystem is worst at. The price is that a rebuilt sandbox starts with a
-# fresh browser — cookies are working set, not files.
+# tenant's mount: the browser may start before the mount settles and a mount
+# arriving later must not shadow a running browser's files, and Chromium's
+# profile is exactly the many-small-files workload a network filesystem is
+# worst at. The price is that a rebuilt sandbox starts with a fresh browser —
+# cookies are working set, not files.
 setsid nohup /usr/local/bin/headless-shell "${flags[@]}" \
   --remote-debugging-port=9222 \
   --user-data-dir=/tmp/browser-profile \
