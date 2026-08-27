@@ -12,12 +12,13 @@
 # resolve from where the registry will look for it, and does the plugin whose
 # absence would be silent actually load?
 #
-# Usage: scripts/check-images.sh [sandbox-image] [gateway-image] [web-image]
+# Usage: scripts/check-images.sh [sandbox-image] [gateway-image] [web-image] [admin-image]
 set -euo pipefail
 
 SANDBOX="${1:-hamsterhq-sandbox:latest}"
 GATEWAY="${2:-hamsterhq-gateway:latest}"
 WEB="${3:-hamsterhq-web:latest}"
+ADMIN="${4:-hamsterhq-admin:latest}"
 # The IMAGE's profile directory. At runtime the entrypoint links it into the
 # tenant's DSH_HOME on the mount; here we check the copy the image ships.
 PROFILE=/root/.dsh/profiles/web
@@ -264,6 +265,23 @@ check 'the frame protocol imports' complete "$exports"
 harness=$(docker run --rm --entrypoint sh "$GATEWAY" -c \
   "test -d /app/node_modules/@deepseek-ai && echo present || echo absent" 2>/dev/null || echo error)
 check 'the gateway carries no harness code' absent "$harness"
+
+echo
+echo "=== the console image ==="
+
+# The console shares the gateway's page modules and deliberately not its
+# dependencies — that shortness is the isolation showing up where it can be
+# checked. So a gateway module that resolves a gateway-only package at import
+# is a console that does not boot: xterm, resolved by page-assets on import
+# for a terminal the console never draws, crashed this image while every
+# build succeeded. Load the console's own pages with only what the image
+# carries; they pull page-assets and everything else the sharing reaches.
+console=$(docker run --rm --entrypoint node "$ADMIN" --input-type=module -e "
+  await import('/app/admin/sign-in-page.js')
+  await import('/app/admin/console-shell.js')
+  console.log('loads')
+" 2>/dev/null | tail -1 || echo error)
+check "the console pages load with the image's own modules" loads "$console"
 
 echo
 [ "$fail" -eq 0 ] && echo 'check-images: the images resolve what they will be asked for' \

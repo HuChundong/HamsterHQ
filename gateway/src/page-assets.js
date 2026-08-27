@@ -42,21 +42,6 @@ const SOURCES = {
   'wechat-qr.webp': 'image/webp',
 }
 
-/**
- * What is served from a package rather than from `assets/`.
- *
- * The recovery page runs a terminal, and a terminal needs a renderer. The
- * panel's is bundled by esbuild; the gateway has no build step and should not
- * grow one for this — so xterm's own UMD build and stylesheet are served as
- * page assets, hashed like everything else here. Two files, MIT, and no
- * harness code: the rule the gateway image is held to is about `@deepseek-ai`,
- * not about having dependencies.
- */
-const VENDORED = {
-  'xterm.js': ['@xterm/xterm/lib/xterm.js', 'text/javascript; charset=utf-8'],
-  'xterm.css': ['@xterm/xterm/css/xterm.css', 'text/css; charset=utf-8'],
-}
-
 /** Where these are served from. One prefix, so nginx can route on it. */
 const PREFIX = '/login-assets/'
 
@@ -68,15 +53,14 @@ const urls = {}
 
 const require = createRequire(import.meta.url)
 
-/** Every page asset, as a name and the bytes to serve under it. */
-const sources = [
-  ...Object.entries(SOURCES).map(([name, type]) =>
-    [name, type, fileURLToPath(new URL(`../assets/${name}`, import.meta.url))]),
-  ...Object.entries(VENDORED).map(([name, [specifier, type]]) =>
-    [name, type, require.resolve(specifier)]),
-]
-
-for (const [name, type, from] of sources) {
+/**
+ * Read one file and serve it under a name that carries its content hash.
+ *
+ * @param {string} name - the plain file name the templates ask for.
+ * @param {string} type - the Content-Type to serve it as.
+ * @param {string} from - where its bytes are on disk.
+ */
+function serve(name, type, from) {
   const body = readFileSync(from)
   // Ten hex characters, as the landing build uses: far past collision for a
   // handful of files, and short enough to read in a network panel.
@@ -85,6 +69,30 @@ for (const [name, type, from] of sources) {
   const hashed = `${name.slice(0, dot)}.${digest}${name.slice(dot)}`
   served.set(hashed, { type, body })
   urls[name] = `${PREFIX}${hashed}`
+}
+
+for (const [name, type] of Object.entries(SOURCES)) {
+  serve(name, type, fileURLToPath(new URL(`../assets/${name}`, import.meta.url)))
+}
+
+/**
+ * Serve a file out of an npm package, hashed like everything in `assets/`.
+ *
+ * Called at module top by the page that draws with it, never resolved here.
+ * This module is shared with the operator's console, whose image carries the
+ * gateway's source and deliberately not its dependencies — a package resolved
+ * on import made the console's boot depend on a terminal renderer it never
+ * serves, and the console image would not start. The eager failure the file
+ * assets have is kept, one import away: the gateway's server imports the
+ * page, the page registers what it draws with, and a missing package still
+ * stops the process at boot instead of 404ing later.
+ *
+ * @param {string} name - the plain file name the templates ask for.
+ * @param {string} specifier - the module specifier naming the file.
+ * @param {string} type - the Content-Type to serve it as.
+ */
+export function serveFromPackage(name, specifier, type) {
+  serve(name, type, require.resolve(specifier))
 }
 
 /**

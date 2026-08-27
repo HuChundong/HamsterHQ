@@ -29,7 +29,7 @@
 
 import { svg } from 'dsh-icons'
 
-import { asset } from './page-assets.js'
+import { asset, serveFromPackage } from './page-assets.js'
 import {
   BRAND_CSS,
   documentHead,
@@ -46,6 +46,19 @@ import {
   TOAST_CSS,
   WORDMARK,
 } from './page-chrome.js'
+
+// The terminal's renderer and stylesheet, served as hashed page assets. The
+// panel's terminal is bundled by esbuild; the gateway has no build step and
+// should not grow one for two files — so xterm's own UMD build is served the
+// way the marks in assets/ are. MIT, and no harness code: the rule the
+// gateway image is held to is about @deepseek-ai, not about dependencies.
+//
+// Registered by this page rather than inside page-assets, because that module
+// is shared with the operator's console — whose image carries the gateway's
+// source and not its dependencies, and whose boot must not require a terminal
+// it never draws. check-images.sh holds the console image to that.
+serveFromPackage('xterm.js', '@xterm/xterm/lib/xterm.js', 'text/javascript; charset=utf-8')
+serveFromPackage('xterm.css', '@xterm/xterm/css/xterm.css', 'text/css; charset=utf-8')
 
 /** Every string on the page, in both languages, as the other pages carry them. */
 const TABLE = {
