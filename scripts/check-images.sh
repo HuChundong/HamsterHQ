@@ -175,6 +175,49 @@ skill=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
 ' 2>/dev/null || echo error)
 check 'the officecli skill is where dsh will look' ok "$skill"
 
+# The browser, and the three things that make it usable by an agent rather
+# than merely present: the engine runs, the one launch path leaves the port
+# answering, and the CLI that drives it is on the PATH with a configuration
+# naming that port. A CLI with no configuration launches a Chromium this image
+# deliberately does not carry, and says so only at the moment a tenant asked
+# for a page.
+# 'Chrom', not 'Chrome': the binary announces itself as "Chromium 152...",
+# while its CDP endpoint says "HeadlessChrome/152..." — this check reads the
+# former and was first written against the latter.
+browser=$(docker run --rm --entrypoint /usr/local/bin/headless-shell "$SANDBOX" --version 2>/dev/null | head -1 | grep -c 'Chrom' || echo 0)
+check 'the browser engine runs' 1 "$browser"
+
+# Run the real launch path — the same script the template's start command and
+# the entrypoint run — and ask what the template's ready command will ask:
+# does 9222 answer. A script that quietly starts nothing (a missing tuning
+# file, an engine the flags no longer fit) becomes a template whose ready
+# command never returns, discovered at template creation instead of here.
+warm=$(docker run --rm --entrypoint bash "$SANDBOX" -c '
+  /app/sandbox/start-browser.sh || { echo start-failed; exit 0; }
+  for _ in $(seq 40); do
+    curl -sf http://127.0.0.1:9222/json/version > /dev/null && { echo ok; exit 0; }
+    sleep 0.5
+  done
+  echo never-listened
+' 2>/dev/null || echo error)
+check 'the browser start script leaves the CDP port answering' ok "$warm"
+
+cli=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
+  command -v playwright-cli > /dev/null || { echo no-cli; exit 0; }
+  test -f /opt/playwright-cli.config.json || { echo no-config; exit 0; }
+  grep -q "cdpEndpoint" /opt/playwright-cli.config.json && echo ok || echo config-names-no-endpoint
+' 2>/dev/null || echo error)
+check 'the browser CLI is wired to it' ok "$cli"
+
+# Same two questions as OfficeCLI's skill, and for the same reason: this one is
+# also written by the tool at build time, so its absence is silent.
+browser_skill=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
+  f="$DSH_BUNDLED_SKILL_DIR/playwright-cli/SKILL.md"
+  test -f "$f" || { echo no-file; exit 0; }
+  grep -q "^name: playwright-cli$" "$f" && grep -q "^description: " "$f" && echo ok || echo no-frontmatter
+' 2>/dev/null || echo error)
+check 'the browser skill is where dsh will look' ok "$browser_skill"
+
 # Both package managers must point somewhere before a tenant reaches for them.
 # What they point AT is the deployment's choice — a mirror close to the host, or
 # the public default — but an empty registry is a tenant discovering on their

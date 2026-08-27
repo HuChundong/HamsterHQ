@@ -14,7 +14,7 @@ That sentence is the test. Anything that wants in is asked which of the two it i
 
 Tabs are sorted by **where they come from**, and that division is the skeleton of the whole thing.
 
-**Active** — tools the user reaches for, which stay: Files, Terminal, Canvas.
+**Active** — tools the user reaches for, which stay: Files, Terminal, Canvas, Browser.
 
 **Passive** — what the agent produced during the session, which the user looks at: previews of produced files (markdown, code, images, HTML).
 
@@ -46,7 +46,7 @@ The active/passive split is the reason to refuse: **a new tab is either a tool a
 
 The showing tab is told apart **by its ground alone** — no ring, no heavier weight. Measured: the old fill was 1.12:1 against the panel's surface and 1.005:1 against the **hover** fill, so the tab that was open and whatever tab the pointer happened to be over were the same colour to three decimal places. The weight went too: 500 measures wider than 400, so selecting a tab widened it and pushed every tab to its right along.
 
-The `+` button does two different things. With **no tabs open** it shows the panel's empty state — three cards: Files, Terminal, Canvas. With **something open** it drops a menu below itself listing the same three, because sending the panel to the chooser would take the tab away to ask a question: the tenant loses sight of what they were reading in order to add something beside it.
+The `+` button does two different things. With **no tabs open** it shows the panel's empty state — four cards: Files, Terminal, Canvas, Browser. With **something open** it drops a menu below itself listing the same four, because sending the panel to the chooser would take the tab away to ask a question: the tenant loses sight of what they were reading in order to add something beside it.
 
 ## Opening the panel
 
@@ -109,7 +109,9 @@ The gateway already has the path: `callerOf(req)` resolves the caller and `sandb
 
 A bonus: the panel works before the dsh backend is up — envd does not depend on it — so a tenant sees what is already in their workspace during a cold start.
 
-All three active tabs land on envd: the tree on `ListDir`, previews on `GET /files?path=` plus `Stat`, and the terminal on envd's PTY service — which needed a streaming path in `envd.js` and a WebSocket endpoint in the gateway to bridge it, because `envdRequest` decodes a whole body at `end` and a long-lived stream would block until it times out. A PTY through envd also means **no native terminal dependency in the sandbox image**.
+Three of the four active tabs land on envd: the tree on `ListDir`, previews on `GET /files?path=` plus `Stat`, and the terminal on envd's PTY service — which needed a streaming path in `envd.js` and a WebSocket endpoint in the gateway to bridge it, because `envdRequest` decodes a whole body at `end` and a long-lived stream would block until it times out. A PTY through envd also means **no native terminal dependency in the sandbox image**.
+
+The fourth cannot: the browser watch reads CDP, which listens on the sandbox's own loopback — deliberately, since that port drives the browser as the tenant — and envd does not forward TCP. So that one tab rides the `/browser` channel `dsh-sandbox-host` registers, through the tunnel, the way `/files` does. The panel stays a browser-only package either way; the host half it talks to belongs to the plugin whose subject is "what a remote machine cannot show".
 
 ### The canvas is not a browser
 
@@ -121,6 +123,12 @@ Two settled trades:
 
 - **The public web is allowed.** The CSP carries only the `sandbox` directive (which removes the same origin); `script-src` and `connect-src` are unrestricted, so a page the agent writes can pull a charting library from a CDN. Tightening that would narrow what the agent can produce.
 - **The canvas follows its own page.** Every two seconds it asks which page is newest and whether it was rewritten, and reloads when it changed. This is a deliberate exception to "focus is never taken", and it holds: opening the canvas *is* the user saying "show me what you are making". It still never opens the panel by itself and never touches another tab. It follows **modification time** rather than the produced-file signal, because that signal's blind spot is exactly where the canvas cannot afford one — a page written through a shell redirect never appears in it.
+
+### The browser tab is a window, not that browser
+
+The fourth tab looks like the thing the section above rejected, and is not. What was rejected was an **interactive** browser with a machine behind it — the reverse proxy, the wildcard certificate, the path rewriting and the egress boundary all existed to let a person drive pages served inside the sandbox. What this tab is instead is a **watch**: the agent drives a headless Chromium in there through its own CLI, and without this tab that work is invisible — commands succeed in the transcript while the page they acted on appears nowhere.
+
+So the tab shows what the agent's browser is showing, and nothing more: about once a second it asks the sandbox for a JPEG of the page and draws it, with the open pages listed beside it. Read-only on purpose — a person and an agent sharing one browser's hands is a fight, not a feature — which is also why none of the dev-server machinery returns: one polled image over the request/response channel, no clicks, no keystrokes, no proxy. Frames are asked for only while the tab is showing and the window visible; a closed tab costs the sandbox nothing.
 
 ## Two path constraints that have to be right
 

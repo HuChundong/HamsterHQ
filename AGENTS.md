@@ -50,10 +50,11 @@ today:
 - `dsh-gateway-tunnel` carries a sandbox's `/api` traffic out to the gateway.
   It follows the transport.
 - `dsh-sandbox-host` supplies what a browser needs when the backend is on a
-  machine the person cannot reach: the `/files` upload channel, and the settings
-  document read back instead of handed to a desktop that is not there. Every
-  line of it survives the gateway's removal, which is why it is not more surface
-  on another plugin — and why it would be usable by anyone running dsh remotely.
+ machine the person cannot reach: the `/files` upload channel, the settings
+ document read back instead of handed to a desktop that is not there, and the
+ `/browser` channel that watches the sandbox's own headless browser. Every
+ line of it survives the gateway's removal, which is why it is not more surface
+ on another plugin — and why it would be usable by anyone running dsh remotely.
 - `dsh-tenant-account` is who is signed in, how to sign out, and the onboarding
   steps a deployment with its own sign-in page has already said. None of it
   means anything without the gateway.

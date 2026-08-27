@@ -685,6 +685,32 @@ check 'and carry an expiry' 1 \
   "$(psql 'SELECT (count(*) = 0)::int FROM refresh_tokens WHERE expires_at <= now()')"
 
 echo
+echo '=== 16b. The browser a tenant'"'"'s agent drives ==='
+#
+# The image carries an engine and the CLI Playwright ships for agents; the
+# entrypoint starts one and writes the other'"'"'s configuration. None of that is
+# visible from outside the sandbox, and all of it is what decides whether an
+# agent asked for a page can produce one.
+BROWSER=$(sandbox_run_script "$(sandbox_handles_of "$ALICE" | head -1)" verify-sandbox-browser.sh \
+  "BROWSER_URL='${VERIFY_BROWSER_URL:-https://www.baidu.com}'")
+browser_fact() { printf '%s\n' "$BROWSER" | sed -n "s/^$1=//p" | head -1; }
+
+check 'the browser answers the protocol its client speaks' 1 "$(browser_fact cdp)"
+# Loopback, and this is the check that keeps it there. A CDP port drives the
+# browser as the tenant; on any other address it would be a remote control
+# anything on the network could pick up.
+check 'and only from inside the machine' 127.0.0.1:9222 "$(browser_fact bound)"
+# The half that holds without CubeEgress in front of it: an agent talked into
+# fetching an internal address gets nothing.
+check 'private addresses stay refused' refused "$(browser_fact private)"
+check 'the CLI an agent was taught is installed' yes "$(browser_fact cli)"
+check 'and its configuration names the browser' 1 "$(browser_fact config)"
+check 'the skill is in the catalog dsh reads' yes "$(browser_fact skill)"
+# The whole chain in one command, which is the only one of these a tenant would
+# ever type.
+check 'and a page opens through all of it' 1 "$(browser_fact opened)"
+
+echo
 echo '=== 17. A backend that died leaves the machine, and a way back in ==='
 #
 # The state under test cannot be produced by killing dsh here. Under Docker the

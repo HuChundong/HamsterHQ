@@ -1,16 +1,18 @@
 /**
  * The right-hand panel, browser half.
  *
- * Three kinds of thing and nothing else: the workspace's files, a shell in the
- * sandbox, and the page the agent is building. See `docs/artifact-panel.zh.md`
- * for the product judgement that bounds the list — the bound is what keeps
- * this from growing into an IDE, and it is a decision rather than a backlog.
+ * Four kinds of thing and nothing else: the workspace's files, a shell in the
+ * sandbox, the page the agent is building, and the browser it is reading. See
+ * `docs/artifact-panel.zh.md` for the product judgement that bounds the list —
+ * the bound is what keeps this from growing into an IDE, and it is a decision
+ * rather than a backlog.
  *
  * Everything it shows comes from the sandbox over the gateway's panel routes:
  * `/sandbox/fs/*` to list and change, `/sandbox/raw/*` for bytes, a ticketed
  * `/sandbox/preview/*` for pages that must fetch their own assets, a WebSocket
- * for the terminal, and an event stream for what changed. Nothing here polls;
- * the workspace says when it moved.
+ * for the terminal, and an event stream for what changed. Nothing here polls
+ * for what the workspace can announce; the browser preview is the exception,
+ * and `browser-pane.js` says why it earns it.
  *
  * Two structural choices, both forced:
  *
@@ -62,13 +64,15 @@
  * - `file-view.js`     a file on show: its body, its path, the panes beside it
  * - `terminal-pane.js` a shell in the panel
  * - `canvas.js`        the page the agent is building
- * - `tools.js`         the three things a tenant opens for themselves
+ * - `browser-pane.js`  the sandbox's browser, watched
+ * - `tools.js`         the four things a tenant opens for themselves
  *
  * This file is what is left: the panel itself, the toggle in the app's header,
  * the pane that puts a tree beside a file, and the wiring that mounts them.
  */
 import terminalCss from '@xterm/xterm/css/xterm.css'
 import { basename, insideWorkspace } from './api.js'
+import { BrowserPane, setBrowserPlane } from './browser-pane.js'
 import { Canvas } from './canvas.js'
 import {
   ANCHOR, DEFAULT_WIDTH, DRAGGING, HEADER_HEIGHT_VAR, MAX_FRACTION, MIN_WIDTH, NS, WIDTH_VAR,
@@ -519,14 +523,19 @@ window.__ModuleLoader__.load({
                 ? h(Canvas, null)
                 : active.id === 'terminal'
                   ? h(TerminalPane, null)
-                  : h(Placeholder, { tab: active })),
+                  : active.id === 'browser'
+                    ? h(BrowserPane, null)
+                    : h(Placeholder, { tab: active })),
         h(RowActions, null),
         h(AskDialog, null),
       ))
     }
 
     return {
-      inject: ['slots', 'workspaces', 'sessions', 'locale'],
+      // `connection` is the RPC channel registry, which the browser-preview
+      // pane calls `/browser` through; everything else here goes through the
+      // gateway's own panel routes and needs no service for it.
+      inject: ['slots', 'workspaces', 'sessions', 'locale', 'connection'],
 
       /**
        * Mount the browser half.
@@ -534,6 +543,7 @@ window.__ModuleLoader__.load({
        */
       apply(ctx) {
         setPlugin(ctx)
+        setBrowserPlane(ctx.connection)
 
         // Before any seat renders, or a seat renders its keys.
         ctx.effect(

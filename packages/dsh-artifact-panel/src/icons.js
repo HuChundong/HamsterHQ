@@ -123,6 +123,10 @@ const glyphs = () => (TABLE ??= {
   copy: primitives.IconCopyOutline16,
   refresh: primitives.IconRefreshOutline16,
   terminal: extracted.terminal,
+  // The browser-preview TAB: a window frame, not the globe — the globe
+  // already marks an .html file in the tree, and a tool and a file sharing
+  // one mark is what `brush` was introduced to end.
+  window: extracted.window,
   shrink: extracted.shrink,
   file: extracted.file,
   image: extracted.image,

@@ -609,6 +609,86 @@ Not taken at all: database drivers, because one deployment's databases are not
 another's; and a compiler, because every wheel here is prebuilt for this
 platform and a source build is the one thing a tenant has to arrange itself.
 
+## The browser in the sandbox
+
+An agent that cannot open a page can only describe the web second-hand, so the
+sandbox carries a browser: chrome-headless-shell, the UI-less Chromium build
+that Playwright itself pins. It is installed at image build by the bundled
+Playwright inside the pinned `@playwright/cli`, so the engine is exactly the
+build that CLI version expects and the two cannot drift apart. The download
+host is npmmirror, because this repository is built from inside China where
+Playwright's default CDN is the step that fails — the same reason OfficeCLI
+arrives from a CDN.
+
+It replaced Obscura, an independent 30 MB engine chosen for memory, and the
+replacement was decided by measurement rather than preference. Two things
+were measured that no configuration could fix. Obscura rasterizes text only
+from the Liberation fonts embedded in its binary: fonts mounted into
+`/usr/share/fonts` and `~/.fonts` changed nothing, the binary carries no font
+flag or environment variable, and so every Chinese page screenshots as rows
+of boxes — for a deployment whose tenants write Chinese, every screenshot and
+PDF was illegible while every command still reported success. And its task
+budget refuses heavy pages outright: Wikipedia's main page failed to open
+with "autonomous browser task exceeded its task budget". Chromium draws with
+the image's own fontconfig stack — the wqy-microhei installed for matplotlib
+now serves the browser too — and its screenshots are what the panel's browser
+tab shows, polled about once a second over the `/browser` channel
+`dsh-sandbox-host` registers. The memory argument that chose Obscura was real and its
+price is now paid knowingly: roughly 100 MB idle against 30, and 300–500 MB
+with a heavy page open, out of a sandbox's 2–4 GB.
+
+What an agent types is not the protocol but `playwright-cli`, Playwright's own
+CLI for coding agents. That choice buys two things at once. It is the interface
+an agent already knows, and it ships the skill that teaches it — so this
+repository writes no skill of its own, the same arrangement OfficeCLI is under
+and for the same reason: a copy kept here would age silently against the pinned
+version.
+
+The two halves are joined by a configuration file, and that file is the whole
+trick. `playwright-cli open` means "launch a browser" everywhere else; here it
+has to mean "use the one already running", which is what `cdpEndpoint` says.
+The CLI resolves its configuration as `.playwright/cli.config.json` relative to
+the working directory and has no environment variable for it, so the entrypoint
+writes it into the tenant's workspace on every boot — rewritten rather than
+created once, so an image that moves the port cannot leave a volume pointing at
+the old answer.
+
+The browser is running before any tenant arrives. `sandbox/start-browser.sh`
+is the template's start command, and the ready command holds the snapshot
+until the CDP port answers — so a restored sandbox meets a browser already
+listening, and none of the launch is spent inside a tenant's cold start. The
+entrypoint runs the same script: against a listening port it is the check and
+nothing more, and under plain Docker, where no snapshot exists, it is the
+launch. Freezing a running process into the template is exactly what the
+backend cannot have, and the browser passes the test the backend failed:
+nothing about it is only knowable when a tenant arrives. Which is also why
+its profile lives on the machine's own disk rather than the tenant's mount —
+no mount exists when the template is made, a mount arriving later must not
+shadow a running browser's files, and Chromium's profile is precisely the
+many-small-files workload the mount is worst at. The price, paid knowingly:
+cookies do not survive a rebuild, the working set's fate rather than the
+files'.
+
+The browser listens on loopback, and that is load-bearing: a CDP port drives
+the browser as the tenant, so anything that can reach it reads what they read
+and posts as them. What the engine swap gave up is the other fence, and the
+regression is recorded here rather than smoothed over. A browser inside a
+sandbox is the classic way to reach what a tenant cannot address — an agent
+can be talked into fetching an internal endpoint, and the request leaves from
+in here rather than from whoever asked for it. Obscura refused private and
+loopback ranges inside the engine; Chromium has no such switch. Under
+CubeSandbox that fence is CubeEgress, outside the sandbox. Under plain Docker
+nothing enforces it now, and this paragraph is the only place that says so.
+
+`verify/probe-browser-conformance.mjs` still runs the skill's whole command
+table against a fixture served inside the sandbox — written for an independent
+engine, kept because it is what catches a Chromium build that stops answering
+something the skill teaches. It also holds the image's fonts to account: two
+screenshots of pages differing only in their Chinese characters must differ as
+bytes, because the previous engine passed that whole table while
+screenshotting Chinese as tofu. Run the probe when `PLAYWRIGHT_CLI_VERSION`
+moves, which is what pins the browser.
+
 ## The model plane
 
 A deployment names one model route and every tenant spends their own key on it.

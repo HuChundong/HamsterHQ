@@ -592,6 +592,27 @@ export const CSS = `
     font-size: 12px;
   }
 
+  /* The browser preview: one frame, letterboxed rather than cropped. The
+     frame keeps the page's own aspect, so a panel narrower than the page
+     shows all of it smaller instead of a corner of it actual-size. */
+  .${NS}-shot-box {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    height: 100%;
+    overflow: auto;
+    padding: 10px;
+    box-sizing: border-box;
+    background: var(--dsw-alias-bg-layer-1);
+  }
+  .${NS}-shot {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    border: 1px solid var(--dsw-alias-border-l1);
+  }
+
   /* The row menu and the questions it leads to. Both are drawn at the
      panel's level rather than inside the column a row lives in, so neither
      is clipped by that column's scrolling. */

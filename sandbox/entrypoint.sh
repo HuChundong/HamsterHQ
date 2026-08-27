@@ -135,6 +135,30 @@ if [ -x /usr/local/bin/dsh-agent ]; then
   /usr/local/bin/dsh-agent serve "$WORKSPACE" >/dev/null 2>&1 &
 fi
 
+# The browser, warm where the runtime allows it. Under CubeSandbox the
+# template's start command already ran this same script and the snapshot was
+# held until the port answered, so a restored sandbox meets a running browser
+# and this call returns on its first check — none of the launch is spent in a
+# tenant's cold start. Under plain Docker no snapshot exists and this call is
+# the one that starts it. The script carries the reasoning (the port check,
+# loopback, the lost private-network fence, where the profile lives); it is
+# its own file because the template's start command must be able to run it
+# with no tenant in sight.
+#
+# Not waited on: a sandbox whose browser died should keep serving its tenant.
+/app/sandbox/start-browser.sh || true
+
+# `playwright-cli` resolves its configuration as `.playwright/cli.config.json`
+# relative to the working directory, and there is no environment variable for
+# it — so the file has to be where the agent starts, which is the workspace.
+# Rewritten every boot rather than created once: an image that changes where
+# the browser listens must not leave a tenant's volume pointing at the old
+# answer.
+if [ -f /opt/playwright-cli.config.json ]; then
+  mkdir -p "$WORKSPACE/.playwright"
+  cp /opt/playwright-cli.config.json "$WORKSPACE/.playwright/cli.config.json"
+fi
+
 # The tunnel is a plugin in the composition above, not a second process, so
 # there is one thing to wait on and nothing to keep in step with it.
 wait "$DSH_PID"
