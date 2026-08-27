@@ -135,15 +135,14 @@ if [ -x /usr/local/bin/dsh-agent ]; then
   /usr/local/bin/dsh-agent serve "$WORKSPACE" >/dev/null 2>&1 &
 fi
 
-# The browser, warm where the runtime allows it. Under CubeSandbox the
-# template's start command already ran this same script and the snapshot was
-# held until the port answered, so a restored sandbox meets a running browser
-# and this call returns on its first check — none of the launch is spent in a
-# tenant's cold start. Under plain Docker no snapshot exists and this call is
-# the one that starts it. The script carries the reasoning (the port check,
-# loopback, the lost private-network fence, where the profile lives); it is
-# its own file because the template's start command must be able to run it
-# with no tenant in sight.
+# The browser, started here because the platform offers nowhere earlier:
+# cubemastercli template create-from-image takes no start or ready command,
+# so it cannot be baked running into the template. The launch rides this boot
+# instead — backgrounded inside the script, so the backend never waits on it
+# — and the script is idempotent behind a port check, so a backend restarted
+# through envd meets the browser running and this call returns at once. The
+# script carries its own reasoning (loopback, the lost private-network fence,
+# where the profile lives).
 #
 # Not waited on: a sandbox whose browser died should keep serving its tenant.
 /app/sandbox/start-browser.sh || true

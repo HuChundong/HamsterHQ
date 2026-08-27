@@ -26,12 +26,15 @@ The image therefore declares no `CMD`. `cube-entrypoint.sh` waits on envd, and
 the gateway starts each tenant's backend through envd's process API with the
 identity that only exists at creation.
 
-The rule is a test, not a ban. The sandbox's browser is frozen into the
-snapshot deliberately — the template's start command launches it and the ready
-command holds the snapshot until its port answers — because it passes where
-the backend failed: no identity, no mount, a profile on the machine's own
-disk. Nothing about it arrives with a tenant, so its launch happens once, at
-template creation, instead of inside every cold start.
+The rule is a test, not a ban — but passing it buys nothing the CLI cannot
+spend. The sandbox's browser passes where the backend failed (no identity, no
+mount, a profile on the machine's own disk) and was designed to be frozen
+into the snapshot by a template start command, its port held by a ready
+command. The runbook shipped `create-from-image` with `--start-cmd` and
+`--ready-cmd` on the strength of E2B's `template build` having them; the CLI
+has neither, and nothing in this repository had ever run that command to find
+out. The browser launches with each tenant's backend instead, backgrounded,
+and the script keeps the tenant-free shape a template hook would need.
 
 **Corollary that cost a second round:** `POST /templates/{id}` does not pick up
 a new image. Pointing an existing template at one leaves every sandbox restoring

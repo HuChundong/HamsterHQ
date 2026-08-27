@@ -653,21 +653,22 @@ writes it into the tenant's workspace on every boot — rewritten rather than
 created once, so an image that moves the port cannot leave a volume pointing at
 the old answer.
 
-The browser is running before any tenant arrives. `sandbox/start-browser.sh`
-is the template's start command, and the ready command holds the snapshot
-until the CDP port answers — so a restored sandbox meets a browser already
-listening, and none of the launch is spent inside a tenant's cold start. The
-entrypoint runs the same script: against a listening port it is the check and
-nothing more, and under plain Docker, where no snapshot exists, it is the
-launch. Freezing a running process into the template is exactly what the
-backend cannot have, and the browser passes the test the backend failed:
-nothing about it is only knowable when a tenant arrives. Which is also why
-its profile lives on the machine's own disk rather than the tenant's mount —
-no mount exists when the template is made, a mount arriving later must not
-shadow a running browser's files, and Chromium's profile is precisely the
-many-small-files workload the mount is worst at. The price, paid knowingly:
-cookies do not survive a rebuild, the working set's fate rather than the
-files'.
+The browser starts with the tenant's backend, because the platform offers
+nowhere earlier: `cubemastercli template create-from-image` takes no start or
+ready command, so a running browser cannot be baked into the template the way
+its first design assumed — the runbook briefly documented those two flags on
+the strength of E2B's `template build` having them, and the CLI has neither.
+What remains of that design is deliberate. `sandbox/start-browser.sh` is
+idempotent behind a port check, so a backend restarted through envd meets the
+browser running rather than spawning a second; the launch is backgrounded, so
+the backend never waits on it; and the script knows no tenant — no identity,
+no mount, a profile on the machine's own disk — which is what a template
+start hook would require, so if the CLI grows one, it points here and nothing
+changes. The profile's home is also its own argument: a mount arriving after
+the browser must not shadow its files, and Chromium's profile is precisely
+the many-small-files workload the mount is worst at. The price, paid
+knowingly: cookies do not survive a rebuild, the working set's fate rather
+than the files'.
 
 The browser listens on loopback, and that is load-bearing: a CDP port drives
 the browser as the tenant, so anything that can reach it reads what they read
