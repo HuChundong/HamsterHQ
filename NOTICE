@@ -17,17 +17,20 @@ In-tree redistributed material
 Copyright holder: Copyright (C) 2026 Tencent. Author: Tencent Inc.
 License: Apache License 2.0.
 
-Location and use: vendor/cubesandbox-sdk-0.3.0+pr1485.tgz. The gateway
-uses this package to create and reclaim CubeSandbox sandboxes.
+Location and use: vendor/cubesandbox-sdk-0.3.0+pr1485+bytes.tgz. The
+gateway uses this package to create and reclaim CubeSandbox sandboxes.
 
 Origin: built from the sdk/node tree of TencentCloud/CubeSandbox at
 revision 9c4837ec, with the change from
-https://github.com/TencentCloud/CubeSandbox/pull/1485.
+https://github.com/TencentCloud/CubeSandbox/pull/1485, and a second
+change in this tree: files.read honours format: 'bytes' and returns a
+Uint8Array instead of decoding the file as UTF-8.
 
-This is a modified version of the upstream package. The modification is
-that commands.run no longer sends a Connect-Timeout-Ms header that has
-already expired. Apache License 2.0 section 4(b) requires that this
-modification be stated prominently.
+This is a modified version of the upstream package. The modifications
+are that commands.run no longer sends a Connect-Timeout-Ms header that
+has already expired, and that files.read can return a file's bytes
+unaltered. Apache License 2.0 section 4(b) requires that these
+modifications be stated prominently.
 
 The tarball does not contain a LICENSE file. The full upstream LICENSE,
 including the third-party appendix, is licenses/CubeSandbox-LICENSE.txt.

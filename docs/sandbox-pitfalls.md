@@ -561,6 +561,25 @@ fails loudly next time. And when mounting a resource somewhere has no effect,
 stop trying new locations and ask whether the consumer reads the filesystem
 at all; `strings` answered in one minute what four mounts did not.
 
+## A file's bytes are not a string's opinion of them
+
+The panel's image viewer drew a broken glyph over files that were fine. The
+wrong conclusion, reached first and shipped: the e2b client's `files.read`
+defaults to text, so asking for `format: 'bytes'` on the shared `readFile`
+would fix it. That default is real, and the docker path did need the flag.
+It changed nothing on the production runtime. The CubeSandbox client this
+deployment actually speaks already received `format: 'bytes'` and ignored
+it — `read` has no such option, and always does `resp.text()`. Measured
+against a tenant's sandbox: a 70-byte PNG arrived as 86 bytes, its `0x89`
+magic byte as `EF BF BD`.
+
+The official client cannot return a file's bytes. The rule for that is an
+upstream issue and a documented limitation, not a second protocol written
+out beside it. The limitation lives in the vendored copy
+(`vendor/cubesandbox-sdk-0.3.0+pr1485+bytes.tgz`): the same `read` honours
+`format: 'bytes'` and returns a `Uint8Array`. Do not add a fetch of
+`/files` next to it.
+
 ## What generalizes
 
 - **A snapshot cannot hold what is only knowable later.** Everything
