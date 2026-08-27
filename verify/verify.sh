@@ -691,18 +691,27 @@ echo '=== 16b. The browser a tenant'"'"'s agent drives ==='
 # entrypoint starts one and writes the other'"'"'s configuration. None of that is
 # visible from outside the sandbox, and all of it is what decides whether an
 # agent asked for a page can produce one.
+#
+# The environment rides in as a prelude, read off the backend process like
+# everything else in section 6 — envd'"'"'s exec shell has none of it, and the
+# first run against a real CubeSandbox deployment reported the CLI'"'"'s
+# configuration missing and the skill absent when both were in place: the
+# fragment had asked an empty shell about the backend'"'"'s variables.
 BROWSER=$(sandbox_run_script "$(sandbox_handles_of "$ALICE" | head -1)" verify-sandbox-browser.sh \
-  "BROWSER_URL='${VERIFY_BROWSER_URL:-https://www.baidu.com}'")
+  "PATH='$BACKEND_PATH'; WORKSPACE='$(fact cwd)'; DSH_BUNDLED_SKILL_DIR='$BACKEND_SKILLS'
+   BROWSER_URL='${VERIFY_BROWSER_URL:-https://www.baidu.com}'")
 browser_fact() { printf '%s\n' "$BROWSER" | sed -n "s/^$1=//p" | head -1; }
 
 check 'the browser answers the protocol its client speaks' 1 "$(browser_fact cdp)"
 # Loopback, and this is the check that keeps it there. A CDP port drives the
 # browser as the tenant; on any other address it would be a remote control
 # anything on the network could pick up.
+#
+# What is deliberately NOT checked beside it: that private addresses are
+# refused. That fence was Obscura'"'"'s, inside the engine, and it left with the
+# engine — the fragment and "The browser in the sandbox" in docs/design.md
+# carry the account of where the fence now stands.
 check 'and only from inside the machine' 127.0.0.1:9222 "$(browser_fact bound)"
-# The half that holds without CubeEgress in front of it: an agent talked into
-# fetching an internal address gets nothing.
-check 'private addresses stay refused' refused "$(browser_fact private)"
 check 'the CLI an agent was taught is installed' yes "$(browser_fact cli)"
 check 'and its configuration names the browser' 1 "$(browser_fact config)"
 check 'the skill is in the catalog dsh reads' yes "$(browser_fact skill)"
