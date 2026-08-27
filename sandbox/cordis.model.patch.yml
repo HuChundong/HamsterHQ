@@ -66,6 +66,14 @@
     # dispatched. It is JSON because it is a set that grows, and a variable per
     # switch would be a new variable in three files every time it does.
     #
+    # `MODEL_INPUT` lists the modalities the model accepts — `text,image` for
+    # a multimodal one. It exists because pi-ai assumes text alone for a model
+    # its catalog does not describe, and this route's provider id is the
+    # deployment's own, so the catalog never describes it. The symptom of
+    # leaving it unset on a multimodal deployment is not a degraded answer but
+    # a refusal before the request leaves: the adapter checks the declaration,
+    # not the model.
+    #
     providers: !!js >-
       ({ [process.env.MODEL_PROVIDER_ID]: {
           api: process.env.MODEL_API || 'openai-completions',
@@ -76,6 +84,10 @@
           models: [{
             id: process.env.MODEL_ID,
             name: process.env.MODEL_NAME || process.env.MODEL_ID,
+            ...(process.env.MODEL_INPUT
+              ? { input: process.env.MODEL_INPUT.split(",")
+                    .map((m) => m.trim()).filter(Boolean) }
+              : {}),
             ...(process.env.MODEL_REASONING_EFFORTS
               ? { reasoningEfforts: Object.fromEntries(
                     process.env.MODEL_REASONING_EFFORTS.split(",")

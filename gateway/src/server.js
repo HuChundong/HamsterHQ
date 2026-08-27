@@ -230,6 +230,7 @@ const sandboxOptions = {
       MODEL_NAME: process.env.MODEL_NAME ?? '',
       MODEL_API: process.env.MODEL_API ?? '',
       MODEL_COMPAT: process.env.MODEL_COMPAT ?? '',
+      MODEL_INPUT: process.env.MODEL_INPUT ?? '',
       MODEL_REASONING_EFFORTS: process.env.MODEL_REASONING_EFFORTS ?? '',
       MODEL_DEFAULT_EFFORT: process.env.MODEL_DEFAULT_EFFORT ?? '',
     }
