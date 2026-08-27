@@ -54,7 +54,11 @@ Two rules the markup itself carries:
 - **Asset URLs come from `asset()`**, never written out. `src/page-assets.js`
   hashes the contents of `assets/` at boot and throws there if a file is
   missing, so a missing asset stops the process instead of 404ing later. A
-  hand-written path is served by nothing.
+  hand-written path is served by nothing. An asset served out of an npm
+  package goes through `serveFromPackage()`, called by the page that draws
+  with it — never resolved inside `page-assets.js`, which the console's image
+  imports without the gateway's dependencies. `check-images.sh` loads the
+  console's pages against exactly that image.
 
 Adding a page means adding it to `scripts/check-pages.mjs` in every UI state it
 has, because that check renders pages rather than reading them — state is what
