@@ -143,6 +143,9 @@ async function cubeSandbox(handle) {
     files: {
       list: async (path) => await sandbox.files.list(path),
       stat: async (path) => await sandbox.files.stat(path),
+      // format bytes is this tree's addition to the vendored client:
+      // upstream's read always decodes as UTF-8, and a PNG's 0x89 arrived
+      // as the replacement character. vendor/README.md carries the rest.
       read: async (path) => await sandbox.files.read(path, { format: 'bytes', user: ENVD_USER }),
       write: async (path, content) => await sandbox.files.write(path, content, { user: ENVD_USER }),
       rename: async (from, to) => await sandbox.files.rename(from, to),
