@@ -767,10 +767,26 @@ window.__ModuleLoader__.load({
           setAsking(false)
           return
         }
-        // Reloaded rather than left to recover. The frontend holds an event
-        // socket to a backend that has just been removed, and the shortest
-        // honest path to a working page is to ask for it again — which is also
-        // what builds the replacement sandbox.
+        // Reloaded rather than left to recover: the frontend still holds an
+        // event socket to a backend that has just been removed. But reloading
+        // the instant the release returns races the cold start — the page opens
+        // /api/events.mux while the tunnel is still dialling, the browser aborts
+        // that upgrade (nginx 499), and the harness does not reopen it. REST
+        // keeps working, so the UI looks alive while streaming messages never
+        // arrive until a second refresh. Waiting on host.describe first builds
+        // the replacement and blocks until it has dialled in, so the reload
+        // opens the event sockets against a tunnel that is already there.
+        try {
+          await fetch('/api/host.describe', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+          })
+        } catch {
+          // Reload anyway: the old socket is dead either way, and the next
+          // page load is what recovery and a second attempt both need.
+        }
         globalThis.location.reload()
       }
 

@@ -441,7 +441,7 @@ wheel 都有对应平台的预编译版，而从源码构建是唯一需要租�
 `/usr/local/bin/headless-shell` 背后的二进制由镜像构建时的 `BROWSER_SOURCE` 决定：
 
 - **`playwright`**（默认，CI 构建用）—— chrome-headless-shell，Playwright 自己固定版本的无界面 Chromium，由固定版本的 `@playwright/cli` 内置的那份 Playwright 安装，所以引擎正好是这个 CLI 版本所期待的构建。下载源是 npmmirror，因为这个仓库在中国境内构建，Playwright 默认的 CDN 正是会失败的那一步——和 OfficeCLI 走 CDN 是同一个原因。
-- **`antidetect`**（带有补丁二进制的生产主机构建用）——在别处编好的完整 Chromium，带反爬补丁（`navigator.webdriver` 恒为 false、产品名里没有 `Headless`、关掉自动化与坏 flag 的 infobar、用 SwiftShader 在无 GPU 的机器上伪装 WebGL 指纹）。构建镜像前，主机从 `anti-detect-chrome:v3` 把 `/opt/chrome` 抽到 `sandbox/browser-engine/`（见 [docs/cubesandbox.zh.md](cubesandbox.zh.md)）；git 里这个目录只有占位——329 MB 从不入库。那张镜像里一并带着的 VNC / noVNC / horust 栈刻意不取：这套部署已经有面板经 `/browser` 轮询截图，而 2–4 GB 的沙箱也养不起 TigerVNC。
+- **`antidetect`**（带有补丁二进制的生产主机构建用）——在别处编好的完整 Chromium，带反爬补丁（`navigator.webdriver` 恒为 false、产品名里没有 `Headless`、关掉自动化与坏 flag 的 infobar）。构建镜像前，主机从 `anti-detect-chrome:v3` 把 `/opt/chrome` 抽到 `sandbox/browser-engine/`（见 [docs/cubesandbox.zh.md](cubesandbox.zh.md)）；git 里这个目录只有占位——329 MB 从不入库。那张镜像里一并带着的 VNC / noVNC / horust 栈刻意不取：这套部署已经有面板经 `/browser` 轮询截图，而 2–4 GB 的沙箱也养不起 TigerVNC。没有那套显示，ANGLE+SwiftShader 同样打不开 X，所以 `browser-flags` 保留 `--disable-gpu`——webdriver/UA 补丁仍然生效，换掉的只是 WebGL 指纹伪装，换来的是 GPU 进程不再崩溃循环。
 
 它取代了 Obscura——一个为内存而选的 30 MB 独立引擎——而这次替换是量出来的，不是
 偏好。量出了两件配置无法修复的事。Obscura 光栅化文字只用内嵌在二进制里的

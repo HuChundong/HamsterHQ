@@ -624,14 +624,16 @@ is chosen at image build by `BROWSER_SOURCE`:
 - **`antidetect`** (what a production host with the patched binary builds) —
   a full Chromium compiled elsewhere with the anti-detect patches
   (`navigator.webdriver` always false, no `Headless` in the product string,
-  automation and bad-flag infobars off, SwiftShader WebGL for a GPU
-  fingerprint on a machine that has none). The host extracts `/opt/chrome`
+  automation and bad-flag infobars off). The host extracts `/opt/chrome`
   from `anti-detect-chrome:v3` into `sandbox/browser-engine/` before the
   image build (see [docs/cubesandbox.md](cubesandbox.md)); the directory in
   git holds only a placeholder — 329 MB never lands here. The VNC / noVNC /
   horust stack that image also carried is deliberately not taken: this
   deployment already has a panel that polls screenshots over `/browser`, and
-  a sandbox of 2–4 GB cannot also afford TigerVNC.
+  a sandbox of 2–4 GB cannot also afford TigerVNC. Without that display,
+  ANGLE+SwiftShader cannot open an X server either, so `browser-flags` keeps
+  `--disable-gpu` — the webdriver/UA patches still apply; only the WebGL
+  fingerprint disguise is traded for a GPU process that does not crash-loop.
 
 It replaced Obscura, an independent 30 MB engine chosen for memory, and the
 replacement was decided by measurement rather than preference. Two things
