@@ -169,22 +169,6 @@ COPY packages/dsh-artifact-panel/build.mjs ./
 COPY packages/dsh-artifact-panel/src ./src
 RUN npm run build
 
-# ---------------------------------------------------------------- browser ----
-# Optional engine source for a deployment that ships an anti-detect Chromium
-# built elsewhere. The default is a public busybox so CI never needs a local
-# image: the RUN below creates an empty /opt/chrome, and the sandbox stage
-# discards it when BROWSER_SOURCE=playwright. A production build that wants
-# the patched binary passes `--build-arg ANTIDETECT_IMAGE=anti-detect-chrome:v3`
-# together with `BROWSER_SOURCE=antidetect`. The binary itself is never in
-# this repository — 329 MB, and already on the machine that builds for tenants.
-#
-# ARG before FROM is the only way to parameterise a base image; every compose
-# target that shares this Dockerfile must pass ANTIDETECT_IMAGE or BuildKit
-# can see a blank name when baking several targets at once.
-ARG ANTIDETECT_IMAGE=busybox:1.36
-FROM ${ANTIDETECT_IMAGE} AS antidetect-browser
-RUN mkdir -p /opt/chrome
-
 # ---------------------------------------------------------------- sandbox ----
 FROM node:24-slim AS sandbox
 
@@ -385,9 +369,10 @@ RUN set -eux; \
 #   antidetect   (production)  — a full Chromium built elsewhere with the
 #                  anti-detect patches (navigator.webdriver false, no
 #                  Headless in the UA, automation infobars off, SwiftShader
-#                  WebGL). Arrives through `COPY --from` the stage above;
-#                  the binary is never in this tree. "The browser in the
-#                  sandbox" in docs/design.md carries the rest.
+#                  WebGL). The binary is copied from sandbox/browser-engine/
+#                  which a production host fills from anti-detect-chrome:v3
+#                  before the build (see docs/cubesandbox.md). The directory
+#                  in git holds only a placeholder — 329 MB never lands here.
 #
 # Either way the binary is reached as `/usr/local/bin/headless-shell`, so
 # the start script, the image check and the conformance probe do not care
@@ -402,11 +387,10 @@ RUN npm install -g --no-audit --no-fund "@playwright/cli@${PLAYWRIGHT_CLI_VERSIO
  && rm -rf /root/.npm \
  && playwright-cli --help > /dev/null
 
-# Candidate tree from the stage above. Empty under the stub (CI); the full
-# `/opt/chrome` under `anti-detect-chrome:v3` (production). Selected or
-# discarded by the RUN below — COPY always happens so the Dockerfile has one
-# shape, and an absent chrome binary is what keeps CI from needing the image.
-COPY --from=antidetect-browser /opt/chrome /tmp/chrome-candidate
+# Candidate tree from the build context. Empty under CI (placeholder only);
+# the full /opt/chrome contents under a production host that ran the extract
+# step in docs/cubesandbox.md. Selected or discarded by the RUN below.
+COPY sandbox/browser-engine /tmp/chrome-candidate
 
 ARG BROWSER_SOURCE=playwright
 ARG PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright

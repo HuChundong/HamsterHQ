@@ -8,10 +8,15 @@
 `cubemastercli`。
 
 ```sh
-# 带反爬 Chromium 的生产构建必须显式给出这两个参数：CI 保持 Dockerfile 默认
-# （Playwright 的 shell）。前一个模板别名不要动——模板是快照，正在服务租户的那
-# 个就是回滚目标。只有新模板 READY 之后，才把 CUBE_TEMPLATE_ID 指到新别名。
-BROWSER_SOURCE=antidetect ANTIDETECT_IMAGE=anti-detect-chrome:v3 \
+# 带反爬 Chromium 的生产构建先把二进制抽进构建上下文——从不入库。CI 保持
+# sandbox/browser-engine/ 的占位，构建 Playwright 的 shell。前一个模板别名不要
+# 动——模板是快照，正在服务租户的那个就是回滚目标。只有新模板 READY 之后，才把
+# CUBE_TEMPLATE_ID 指到新别名。
+cid=$(docker create anti-detect-chrome:v3)
+rm -rf sandbox/browser-engine && mkdir -p sandbox/browser-engine
+docker cp "$cid:/opt/chrome/." sandbox/browser-engine/
+docker rm "$cid"
+BROWSER_SOURCE=antidetect \
   docker compose -f compose.yml -f compose.cube.yml --profile build build
 
 # 沙箱镜像要通过 CubeSandbox 拉得到的 registry 抵达它，而不是本地 Docker 守护进程。

@@ -625,13 +625,13 @@ is chosen at image build by `BROWSER_SOURCE`:
   a full Chromium compiled elsewhere with the anti-detect patches
   (`navigator.webdriver` always false, no `Headless` in the product string,
   automation and bad-flag infobars off, SwiftShader WebGL for a GPU
-  fingerprint on a machine that has none). The binary arrives through
-  `COPY --from` an image that already has it (`anti-detect-chrome:v3` on
-  the host that builds for tenants); it is never committed — 329 MB, and
-  already on that machine. The VNC / noVNC / horust stack that image also
-  carried is deliberately not taken: this deployment already has a panel
-  that polls screenshots over `/browser`, and a sandbox of 2–4 GB cannot
-  also afford TigerVNC.
+  fingerprint on a machine that has none). The host extracts `/opt/chrome`
+  from `anti-detect-chrome:v3` into `sandbox/browser-engine/` before the
+  image build (see [docs/cubesandbox.md](cubesandbox.md)); the directory in
+  git holds only a placeholder — 329 MB never lands here. The VNC / noVNC /
+  horust stack that image also carried is deliberately not taken: this
+  deployment already has a panel that polls screenshots over `/browser`, and
+  a sandbox of 2–4 GB cannot also afford TigerVNC.
 
 It replaced Obscura, an independent 30 MB engine chosen for memory, and the
 replacement was decided by measurement rather than preference. Two things
