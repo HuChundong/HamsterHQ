@@ -10,7 +10,15 @@
  * session list, so a control there would mean either taking the region slot
  * and re-rendering the session list ourselves, or patching the harness. Both
  * are the thing the root AGENTS.md forbids, so this asks upstream for a seat
- * instead and sits at the foot meanwhile, above the sandbox row.
+ * instead and sits at the foot meanwhile, above the sandbox row. The shell
+ * lays the footer.action list out in a row; the CSS below forces that
+ * container into a column when this control is present, so order alone is
+ * not left to imply a stack the harness does not draw.
+ *
+ * The foot control is drawn as a quiet row beside the sandbox status — not as
+ * a second New Session elevated button. Theme colours come from verified
+ * --dsw-alias tokens (the same set dsh-sandbox-host and dsh-tenant-account
+ * consume); no Theme API override and no harness CSS-module class names.
  *
  * It reads the gateway rather than the sandbox, at `/schedule`. That is not
  * for tidiness: a tenant asking why last night's task did not happen is asking
@@ -218,35 +226,45 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * The sidebar control, matched to the shell's own New Session button.
+     * Footer seat and dialog chrome, restated against verified alias tokens.
      *
-     * Its class there is a content-hashed CSS-module name private to the
-     * sidebar bundle, so the shape is restated against the theme tokens
-     * declared on body — 38px tall, 12px radius, elevated fill over an l2
-     * border — and both themes follow without this file naming that private
-     * class. The collapsed rule is the same restatement of what the sidebar
-     * does at 56px: the label goes, the frame goes, and what is left is a 36px
-     * icon square.
+     * The open control matches the sandbox status row (quiet wash, not an
+     * elevated New Session card). Dialog colours and buttons match the
+     * tenant-account profile dialog. Collapsed rail: 36px icon only.
      * (No backticks in this CSS: the file is a template literal.)
      */
     const CSS = `
-      .${U}-open {
-        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-        box-sizing: border-box; width: 100%; height: 38px; margin: 0 0 8px; padding: 8px 16px;
-        border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
-        border-radius: 12px;
-        background: var(--dsw-alias-button-elevated-fill, #fff);
-        color: var(--dsw-alias-label-primary, inherit);
-        font-family: inherit; font-size: 14px; font-weight: 500; line-height: 22px;
-        cursor: pointer;
+      /* The shell's footerActions is display:flex with no direction, so every
+         sidebar.footer.action seat lands in a row. :has keys off this plugin's
+         own data mark rather than the sidebar's hashed module name. */
+      div:has(> [data-dsh-footer-stack]) {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
       }
-      .${U}-open:hover { background: var(--dsw-alias-button-floating-hover, rgb(241 243 245)); }
+      .${U}-open {
+        display: flex; align-items: center; gap: 8px;
+        box-sizing: border-box; width: 100%; margin: 0 0 4px; padding: 8px;
+        border: none; border-radius: 12px;
+        background: transparent;
+        color: var(--dsw-alias-label-primary);
+        font-family: var(--dsw-font-family);
+        font-size: 13px; font-weight: 500; line-height: 18px;
+        text-align: left; cursor: pointer;
+      }
+      .${U}-open:hover { background: var(--dsw-alias-interactive-bg-hover); }
       .${U}-open[data-wide='false'] {
         width: 36px; height: 36px; margin: 0 0 4px; padding: 0; gap: 0;
-        border-color: transparent; background: transparent;
+        justify-content: center;
       }
-      .${U}-open[data-wide='false']:hover { background: var(--dsw-alias-interactive-bg-hover); }
-      .${U}-open-label { white-space: nowrap; overflow: hidden; }
+      .${U}-open-icon {
+        flex: none; display: inline-flex; align-items: center; justify-content: center;
+        color: var(--dsw-alias-label-tertiary);
+      }
+      .${U}-open-label {
+        min-width: 0; white-space: nowrap; overflow: hidden;
+        color: var(--dsw-alias-label-secondary);
+      }
 
       .${U}-mask {
         position: fixed; inset: 0; z-index: 1100;
@@ -264,10 +282,21 @@ window.__ModuleLoader__.load({
         font-family: var(--dsw-font-family);
         color: var(--dsw-alias-label-primary);
       }
-      .${U}-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .${U}-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
       .${U}-heading { font-size: 15px; font-weight: 500; }
+      .${U}-dismiss {
+        flex: none; width: 28px; height: 28px; padding: 0;
+        border: none; border-radius: 8px;
+        background: transparent; color: var(--dsw-alias-label-tertiary);
+        font-family: var(--dsw-font-family); font-size: 18px; line-height: 1;
+        cursor: pointer;
+      }
+      .${U}-dismiss:hover {
+        background: var(--dsw-alias-interactive-bg-hover);
+        color: var(--dsw-alias-label-primary);
+      }
       .${U}-what {
-        margin: 8px 0 14px;
+        margin: 4px 0 14px;
         color: var(--dsw-alias-label-secondary);
         font-size: 12px; line-height: 18px;
       }
@@ -287,19 +316,19 @@ window.__ModuleLoader__.load({
         overflow-wrap: anywhere;
       }
       .${U}-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
-      .${U}-dot[data-state='ok'] { background: var(--dsw-alias-state-success-primary, #12a150); }
-      .${U}-dot[data-state='failed'] { background: var(--dsw-alias-state-error-primary, #ec1313); }
-      .${U}-dot[data-state='lost'] { background: var(--dsw-alias-state-warning-primary, #d98e00); }
+      .${U}-dot[data-state='ok'] { background: var(--dsw-alias-state-success-primary); }
+      .${U}-dot[data-state='failed'] { background: var(--dsw-alias-state-error-primary); }
+      .${U}-dot[data-state='lost'] { background: var(--dsw-alias-state-warn-label); }
       .${U}-dot[data-state='running'] { background: var(--dsw-alias-state-business-primary); }
       .${U}-item-actions { display: flex; flex: none; gap: 6px; }
       .${U}-quiet {
         padding: 0 8px; height: 26px;
         border: 1px solid transparent; border-radius: 8px;
         background: transparent; color: var(--dsw-alias-label-secondary);
-        font-family: inherit; font-size: 12px; cursor: pointer;
+        font-family: var(--dsw-font-family); font-size: 12px; cursor: pointer;
       }
       .${U}-quiet:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
-      .${U}-quiet[data-danger='true'] { color: var(--dsw-alias-state-error-primary, #ec1313); }
+      .${U}-quiet[data-danger='true'] { color: var(--dsw-alias-state-error-primary); }
       .${U}-note { padding: 18px 0; color: var(--dsw-alias-label-secondary); font-size: 13px; }
       .${U}-form { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
       .${U}-label { color: var(--dsw-alias-label-secondary); font-size: 12px; }
@@ -307,7 +336,7 @@ window.__ModuleLoader__.load({
         width: 100%; box-sizing: border-box; padding: 7px 10px;
         border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px;
         background: transparent; color: var(--dsw-alias-label-primary);
-        font-family: inherit; font-size: 13px;
+        font-family: var(--dsw-font-family); font-size: 13px;
       }
       .${U}-area { min-height: 84px; resize: vertical; line-height: 20px; }
       .${U}-input:focus, .${U}-area:focus, .${U}-select:focus {
@@ -315,13 +344,13 @@ window.__ModuleLoader__.load({
       }
       .${U}-pair { display: flex; gap: 8px; }
       .${U}-hint { color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; }
-      .${U}-problem { color: var(--dsw-alias-state-error-primary, #ec1313); font-size: 12px; line-height: 18px; }
+      .${U}-problem { color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; }
       .${U}-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
       .${U}-button {
         height: 32px; padding: 0 14px;
         border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px;
         background: transparent; color: var(--dsw-alias-label-primary);
-        font-family: inherit; font-size: 13px; cursor: pointer;
+        font-family: var(--dsw-font-family); font-size: 13px; cursor: pointer;
       }
       .${U}-button:hover { background: var(--dsw-alias-interactive-bg-hover); }
       .${U}-button[data-primary='true'] {
@@ -565,7 +594,6 @@ window.__ModuleLoader__.load({
             // outside it is somebody selecting text, not somebody leaving.
             onMouseDown: (event) => { if (event.target === event.currentTarget) onClose() },
           },
-          React.createElement('style', null, CSS),
           React.createElement(
             'div',
             { className: `${U}-dialog`, role: 'dialog', 'aria-modal': 'true' },
@@ -573,6 +601,17 @@ window.__ModuleLoader__.load({
               'div',
               { className: `${U}-head` },
               React.createElement('div', { className: `${U}-heading` }, t('title')),
+              React.createElement(
+                'button',
+                {
+                  type: 'button',
+                  className: `${U}-dismiss`,
+                  title: t('close'),
+                  'aria-label': t('close'),
+                  onClick: onClose,
+                },
+                '\u00d7',
+              ),
             ),
             body,
           ),
@@ -770,16 +809,24 @@ window.__ModuleLoader__.load({
         null,
         React.createElement('style', null, CSS),
         React.createElement(
-          'button',
-          {
-            type: 'button',
-            className: `${U}-open`,
-            'data-wide': String(wide !== false),
-            title: t('open'),
-            onClick: () => setOpen(true),
-          },
-          React.createElement(Glyph, { size: wide === false ? 18 : 14 }),
-          wide === false ? null : React.createElement('span', { className: `${U}-open-label` }, t('open')),
+          'div',
+          { 'data-dsh-footer-stack': '' },
+          React.createElement(
+            'button',
+            {
+              type: 'button',
+              className: `${U}-open`,
+              'data-wide': String(wide !== false),
+              title: t('open'),
+              onClick: () => setOpen(true),
+            },
+            React.createElement(
+              'span',
+              { className: `${U}-open-icon` },
+              React.createElement(Glyph, { size: wide === false ? 18 : 16 }),
+            ),
+            wide === false ? null : React.createElement('span', { className: `${U}-open-label` }, t('open')),
+          ),
         ),
         open ? React.createElement(Dialog, { onClose: () => setOpen(false) }) : null,
       )
@@ -801,8 +848,9 @@ window.__ModuleLoader__.load({
 
         // `sidebar.footer.action` is a list slot sorted by `order`, and
         // `dsh-sandbox-host` holds 100 with the sandbox row. Below that number
-        // is above it on screen, which is where this belongs: a control the
-        // tenant presses sits over a readout they only glance at.
+        // is first in the list; the column CSS above turns that into above on
+        // screen. A control the tenant presses sits over a readout they only
+        // glance at.
         ctx.effect(
           () => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register(
             { name: 'sidebar.footer.action', id: 'scheduled-tasks', order: 50 },
