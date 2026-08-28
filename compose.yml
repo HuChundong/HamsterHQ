@@ -33,7 +33,7 @@ services:
         # a deployment with the anti-detect Chromium image sets both:
         #   BROWSER_SOURCE=antidetect ANTIDETECT_IMAGE=anti-detect-chrome:v3
         BROWSER_SOURCE: ${BROWSER_SOURCE:-playwright}
-        ANTIDETECT_IMAGE: ${ANTIDETECT_IMAGE:-antidetect-stub}
+        ANTIDETECT_IMAGE: ${ANTIDETECT_IMAGE:-busybox:1.36}
     image: hamsterhq-web:latest
     # The user-facing entry: static bytes are answered here from disk, and only
     # the session-bearing surface is proxied to the gateway.
@@ -115,6 +115,9 @@ services:
       args:
         DSH_VERSION:
         NPM_REGISTRY: ${NPM_REGISTRY:-}
+        # Shared Dockerfile: FROM ${ANTIDETECT_IMAGE} is parsed for every
+        # target, so leave the name blank and BuildKit refuses the whole bake.
+        ANTIDETECT_IMAGE: ${ANTIDETECT_IMAGE:-busybox:1.36}
     image: hamsterhq-gateway:latest
     depends_on:
       postgres:
@@ -221,7 +224,7 @@ services:
         AGENT_PYTHON_PACKAGES:
         TZ: ${DEPLOYMENT_TZ:-UTC}
         BROWSER_SOURCE: ${BROWSER_SOURCE:-playwright}
-        ANTIDETECT_IMAGE: ${ANTIDETECT_IMAGE:-antidetect-stub}
+        ANTIDETECT_IMAGE: ${ANTIDETECT_IMAGE:-busybox:1.36}
     image: hamsterhq-sandbox:latest
     profiles: [build]
     networks: [hamsterhq-net]
@@ -241,6 +244,7 @@ services:
       target: admin
       args:
         DSH_VERSION:
+        ANTIDETECT_IMAGE: ${ANTIDETECT_IMAGE:-busybox:1.36}
     image: hamsterhq-admin:latest
     depends_on:
       postgres:

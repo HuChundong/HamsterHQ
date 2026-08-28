@@ -171,16 +171,19 @@ RUN npm run build
 
 # ---------------------------------------------------------------- browser ----
 # Optional engine source for a deployment that ships an anti-detect Chromium
-# built elsewhere. CI has no such image: the stub stage is an empty /opt/chrome
-# and is the default `ANTIDETECT_IMAGE`. A production build that wants the
-# patched binary passes `--build-arg ANTIDETECT_IMAGE=anti-detect-chrome:v3`
+# built elsewhere. The default is a public busybox so CI never needs a local
+# image: the RUN below creates an empty /opt/chrome, and the sandbox stage
+# discards it when BROWSER_SOURCE=playwright. A production build that wants
+# the patched binary passes `--build-arg ANTIDETECT_IMAGE=anti-detect-chrome:v3`
 # together with `BROWSER_SOURCE=antidetect`. The binary itself is never in
 # this repository — 329 MB, and already on the machine that builds for tenants.
-FROM busybox:1.36 AS antidetect-stub
-RUN mkdir -p /opt/chrome
-
-ARG ANTIDETECT_IMAGE=antidetect-stub
+#
+# ARG before FROM is the only way to parameterise a base image; every compose
+# target that shares this Dockerfile must pass ANTIDETECT_IMAGE or BuildKit
+# can see a blank name when baking several targets at once.
+ARG ANTIDETECT_IMAGE=busybox:1.36
 FROM ${ANTIDETECT_IMAGE} AS antidetect-browser
+RUN mkdir -p /opt/chrome
 
 # ---------------------------------------------------------------- sandbox ----
 FROM node:24-slim AS sandbox
