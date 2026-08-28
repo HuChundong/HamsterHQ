@@ -40,6 +40,8 @@ for check in \
   scripts/check-forwarded.mjs \
   scripts/check-env-defaults.mjs \
   scripts/check-entitlements.mjs \
+  scripts/check-scheduler-boundary.mjs \
+  scripts/check-rules.mjs \
   scripts/check-totp.mjs \
   scripts/check-service-env.mjs \
   scripts/check-paging.mjs \

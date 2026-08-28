@@ -62,3 +62,13 @@
 - insert:
     - id: artifact-panel
       name: dsh-artifact-panel
+
+# The tenant's scheduled tasks. Its host half holds the timers, because the
+# firing has to happen where the agent is; the durable list is the gateway's,
+# because a sandbox is reclaimed minutes after its tenant closes the tab.
+#
+# Mounted even where no gateway is reachable: it goes inert rather than
+# throwing, so a composition run without one keeps its backend.
+- insert:
+    - id: scheduled-tasks
+      name: dsh-scheduled-tasks

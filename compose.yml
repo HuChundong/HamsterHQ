@@ -153,10 +153,16 @@ services:
       # they have. Set it to the development mailbox below and mail arrives on
       # this machine instead; nothing else about signing in changes.
       EMAIL_API_URL: ${EMAIL_API_URL:-}
-      # What the operator's console presents when it reports an account change.
-      # Unset means every such call is refused, which is the safe default for a
-      # deployment that has not deployed a console.
+      # What the operator's console presents when it reports an account change,
+      # and what the scheduler presents when it asks for a machine. Unset means
+      # every such call is refused, which is the safe default for a deployment
+      # that has deployed neither.
       INTERNAL_SHARED_SECRET: ${INTERNAL_SHARED_SECRET:-}
+      # Where the scheduler is. Empty is a deployment without scheduled tasks,
+      # and it is a supported shape rather than a broken one: the gateway
+      # answers 501 to the schedule plane and the shell hides its control,
+      # instead of offering a button that fails.
+      SCHEDULER_INTERNAL_URL: ${SCHEDULER_INTERNAL_URL:-http://scheduler:8092}
       REFRESH_TTL_SECONDS: ${REFRESH_TTL_SECONDS:-2592000}
       # Whether an invite is needed to register. `open` lets anyone who can
       # receive mail in, which is what a deployment on a reachable address
@@ -279,6 +285,47 @@ services:
       INTERNAL_SHARED_SECRET: ${INTERNAL_SHARED_SECRET:-}
     ports:
       - "127.0.0.1:8091:8091"
+    restart: unless-stopped
+    networks: [hamsterhq-net]
+
+  # The clock behind scheduled tasks.
+  #
+  # No ports. Not one, not bound to loopback — nothing outside this network
+  # reaches it, and that is its whole authentication story alongside the shared
+  # secret: it is told a username by the one component that can prove one, and
+  # it has no way to check and no need to.
+  #
+  # It is also the only service here that cannot reach a sandbox. It asks the
+  # gateway to wake a tenant's machine and is told nothing about what happens
+  # inside it — the task, its prompt and its outcome travel between the sandbox
+  # and this service through the gateway's relay, which reads them only far
+  # enough to forward.
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: scheduler
+    image: hamsterhq-scheduler:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-dsh}:${POSTGRES_PASSWORD:?set a database password}@postgres:5432/${POSTGRES_DB:-dsh}
+      # How it asks for a machine, and what it presents when it does. With the
+      # secret unset it wakes nobody and says so at startup rather than
+      # failing one occurrence at a time.
+      GATEWAY_INTERNAL_URL: ${GATEWAY_INTERNAL_URL:-http://gateway:8080}
+      INTERNAL_SHARED_SECRET: ${INTERNAL_SHARED_SECRET:-}
+      # How often the sweep runs, how far ahead of an occurrence a machine is
+      # asked for, and how long an occurrence may sit unclaimed before it is
+      # written off as missed. The lead must stay under the gateway's
+      # SANDBOX_DEPARTED_TTL_MS: a machine started earlier than that, with no
+      # browser attached and nothing running, is reclaimed by the idle sweep
+      # before its own task arrives.
+      SCHEDULER_TICK_MS: ${SCHEDULER_TICK_MS:-15000}
+      SCHEDULER_WAKE_LEAD_MS: ${SCHEDULER_WAKE_LEAD_MS:-30000}
+      SCHEDULER_MISS_AFTER_MS: ${SCHEDULER_MISS_AFTER_MS:-600000}
+      SCHEDULER_RUN_DEADLINE_MS: ${SCHEDULER_RUN_DEADLINE_MS:-3600000}
     restart: unless-stopped
     networks: [hamsterhq-net]
 

@@ -1,0 +1,10 @@
+{
+  "name": "hamsterhq-scheduler",
+  "private": true,
+  "type": "module",
+  "description": "The clock: when a tenant's scheduled task is due, and the wake that gets a machine there.",
+  "dependencies": {
+    "cron-parser": "^5.10.0",
+    "pg": "^8.16.0"
+  }
+}

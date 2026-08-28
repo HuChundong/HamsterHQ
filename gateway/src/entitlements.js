@@ -48,7 +48,7 @@ import { DEFAULT_PLAN, normalizePlan } from './plans.js'
  * Every field an entitlement record carries, for the check to hold this file
  * to its own rule. A name added here has to be read somewhere.
  */
-export const FIELDS = ['machine', 'idleTtlMs']
+export const FIELDS = ['machine', 'idleTtlMs', 'maxScheduledTasks', 'minScheduleIntervalSeconds', 'maxScheduledRunsPerDay']
 
 /**
  * What each tier is allowed.
@@ -63,11 +63,29 @@ export const FIELDS = ['machine', 'idleTtlMs']
  *   and that is one line here rather than a change to the runtime.
  * - `idleTtlMs` is how long an idle sandbox is kept while a browser is still
  *   attached to it.
+ *
+ * The three schedule fields are the first numbers in this file that are
+ * numbers rather than `undefined`, and they are here because they are the
+ * first thing a tenant can do that spends money while nobody is watching. The
+ * scheduler enforces them; the gateway resolves them and carries them, which
+ * is the read this file's own rule requires.
+ *
+ * - `maxScheduledTasks` is how many a tenant may hold at once.
+ * - `minScheduleIntervalSeconds` is the shortest gap between two occurrences,
+ *   and it is not a latency limit. Waking a machine is seconds; this is about
+ *   residency. A task that recurs faster than the gateway's departed TTL
+ *   (`SANDBOX_DEPARTED_TTL_MS`, five minutes) keeps a machine alive
+ *   permanently, because it becomes busy again before the idle sweep reaches
+ *   it. The free floor sits well above that so no free schedule can hold a
+ *   machine on its own; the paid floor sits at the TTL, where holding one is a
+ *   choice somebody made rather than a side effect of a number they picked.
+ * - `maxScheduledRunsPerDay` bounds the spend when a rule is legal but
+ *   enthusiastic.
  */
 const BY_PLAN = {
-  free: { machine: undefined, idleTtlMs: undefined },
-  pro: { machine: undefined, idleTtlMs: undefined },
-  team: { machine: undefined, idleTtlMs: undefined },
+  free: { machine: undefined, idleTtlMs: undefined, maxScheduledTasks: 5, minScheduleIntervalSeconds: 900, maxScheduledRunsPerDay: 48 },
+  pro: { machine: undefined, idleTtlMs: undefined, maxScheduledTasks: 20, minScheduleIntervalSeconds: 300, maxScheduledRunsPerDay: 480 },
+  team: { machine: undefined, idleTtlMs: undefined, maxScheduledTasks: 50, minScheduleIntervalSeconds: 300, maxScheduledRunsPerDay: 1440 },
 }
 
 /**
@@ -80,7 +98,7 @@ const BY_PLAN = {
  * all.
  *
  * @param {{plan?: string}|undefined} account - the account, or nothing.
- * @returns {{machine: string|undefined, idleTtlMs: number|undefined}} what they are allowed.
+ * @returns {{machine: string|undefined, idleTtlMs: number|undefined, maxScheduledTasks: number, minScheduleIntervalSeconds: number, maxScheduledRunsPerDay: number}} what they are allowed.
  */
 export function entitlementsOf(account) {
   const plan = normalizePlan(account?.plan)

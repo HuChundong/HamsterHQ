@@ -2,7 +2,7 @@
 
 English | [中文](AGENTS.zh.md)
 
-Five plugins and three packages that are not. Which plugin a change belongs in,
+Six plugins and three packages that are not. Which plugin a change belongs in,
 the four installation rules that fail on the first `import`, and why the
 directory name is the package name are in the [root file](../AGENTS.md).
 

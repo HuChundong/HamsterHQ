@@ -36,12 +36,16 @@ jobs:
       # working copy that has ever run install in those directories keeps an
       # untracked `node_modules` and passes without them, so this is a gate that
       # only a clean checkout can fail.
+      # `scheduler/` is installed for the same reason: `check-rules.mjs`
+      # imports its rule arithmetic, which imports the cron parser, and Node
+      # resolves that from beside the importing file.
       - name: Install
         run: |
           npm ci --no-audit --no-fund
           npm --prefix packages/dsh-artifact-panel ci --no-audit --no-fund
           npm --prefix gateway ci --no-audit --no-fund
           npm --prefix admin ci --no-audit --no-fund
+          npm --prefix scheduler ci --no-audit --no-fund
 
       - name: Checks
         run: npm run check

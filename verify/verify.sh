@@ -527,6 +527,22 @@ for script in verify-ws.mjs verify-turn.mjs verify-isolation.mjs; do
     gateway node "/app/$script" || NODE_FAIL=1
 done
 
+# A scheduled task, from a tenant with no sandbox.
+#
+# Last of the node suites and on its own, because it is the only one that
+# deliberately destroys a machine and then waits minutes for the deployment to
+# build another — everything above would be slower and no more certain for
+# running after it. It skips itself where no scheduler is deployed.
+echo
+echo '=== 11. A scheduled task wakes a destroyed sandbox and runs ==='
+echo '     (minutes, on purpose: it waits for a cold machine to come back)'
+if docker compose cp verify-schedule.mjs gateway:/app/verify-schedule.mjs > /dev/null 2>&1; then
+  docker compose exec -T -e GATEWAY=http://localhost:8080 -e "VERIFY_ALICE=$ALICE" \
+    gateway node /app/verify-schedule.mjs || NODE_FAIL=1
+else
+  echo '  SKIP: could not copy the suite into the gateway container'
+fi
+
 # A status code cannot tell a working page from a blank one. This drives a real
 # Chromium because the two failures that actually reached a person — a broken
 # inline script and a missing boot manifest — were invisible to every check

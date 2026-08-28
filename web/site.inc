@@ -84,6 +84,18 @@ location /browser/ {
   proxy_buffering off;
 }
 
+# A tenant's scheduled tasks, read and written from the shell's own dialog.
+#
+# It goes to the gateway rather than through `/api` into the sandbox, and that
+# is the point of the plane: the list has to answer when the machine is not
+# running, which is exactly when somebody asks why last night's task did not
+# happen. Small JSON both ways, so none of the tunnel's timeouts apply.
+location /schedule/ {
+  proxy_pass http://$gateway_upstream;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
 # `X-Forwarded-Proto` decides whether the gateway marks its token cookies
 # `Secure`. It is trustworthy only because nothing but this nginx can reach the
 # gateway's port.
