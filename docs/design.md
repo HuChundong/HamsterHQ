@@ -636,11 +636,12 @@ is chosen at image build by `BROWSER_SOURCE`:
   fingerprint disguise is traded for a GPU process that does not crash-loop.
   The Linux build of that binary also freezes a coherent Windows desktop
   identity at compile time (classic UA, Client Hints platform/version,
-  `navigator.platform`, hardwareConcurrency, deviceMemory), because sites
-  that fence off Linux read those surfaces below any page script. Language
-  and timezone stay with the process (`--lang=zh-CN`, `TZ=Asia/Shanghai` in
-  `start-browser.sh`) so they stay aligned with that identity without a
-  second Chromium rebuild when a deployment changes locale.
+  reduced `navigator.platform` in `NavigatorBase`, hardwareConcurrency,
+  deviceMemory), because sites that fence off Linux read those surfaces
+  below any page script. Language and timezone stay with the process
+  (`--lang=zh-CN`, `TZ=Asia/Shanghai` in `start-browser.sh`) so they stay
+  aligned with that identity without a second Chromium rebuild when a
+  deployment changes locale.
 
 It replaced Obscura, an independent 30 MB engine chosen for memory, and the
 replacement was decided by measurement rather than preference. Two things
