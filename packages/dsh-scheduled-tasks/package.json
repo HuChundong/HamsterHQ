@@ -1,0 +1,20 @@
+{
+  "name": "dsh-scheduled-tasks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A tenant's scheduled tasks: the timers that fire them inside the sandbox, the tools that write them, and the panel that shows them.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "slots"
+      ],
+      "platform": "web"
+    }
+  }
+}

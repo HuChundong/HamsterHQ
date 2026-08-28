@@ -47,6 +47,7 @@ import { DIAL_IN_TIMEOUT_MS, SandboxManager } from './sandboxes.js'
 import { Secrets, nameProblem } from './secrets.js'
 import { SendLimit } from './send-limit.js'
 import { Settings } from './settings.js'
+import { BODY_LIMIT as SCHEDULE_BODY_LIMIT, relay, route as scheduleRoute, schedulerConfigured, tenantMay } from './schedules.js'
 import { REPORT_PATH, knowsLiveness, knowsVersion, livenessChanged, receiveReport } from './stats.js'
 import { handleSignIn } from './sign-in.js'
 import { Tokens, signedOutCookies } from './tokens.js'
@@ -481,6 +482,53 @@ async function handleRequest(req, res) {
     return
   }
 
+  // A sandbox asking about its own tenant's scheduled tasks: the list to hold
+  // timers for, the claim that decides who runs an occurrence, and what came
+  // of one.
+  //
+  // Beside the report route and authenticated the same way, for the same
+  // reason — it carries no session, only the pair the tunnel is dialled with.
+  // The tenant is resolved HERE from that pair and put on the relayed call;
+  // the sandbox never names one, so a tenant who is root inside their own
+  // machine cannot reach another's schedule with it.
+  if (path.startsWith('/_sandbox/schedule/')) {
+    const sandboxId = req.headers['x-sandbox-id']
+    const token = req.headers['x-sandbox-token']
+    if (typeof sandboxId !== 'string' || typeof token !== 'string' || !sandboxes.authorize(sandboxId, token)) {
+      res.writeHead(401)
+      res.end()
+      return
+    }
+    const username = sandboxes.ownerOf(sandboxId)
+    if (username === undefined) {
+      res.writeHead(401)
+      res.end()
+      return
+    }
+    const target = scheduleRoute(req.method ?? 'GET', path.slice('/_sandbox/schedule'.length))
+    if (target === undefined) {
+      res.writeHead(404, { 'Content-Type': 'application/json' })
+      res.end('{"ok":false,"code":"not_found"}')
+      return
+    }
+    // Read the body whatever happens next: an unread one breaks the keep-alive
+    // this path takes many times an hour.
+    const body = await readBody(req, SCHEDULE_BODY_LIMIT)
+    let payload = {}
+    try { payload = JSON.parse(body?.toString('utf8') ?? '{}') } catch { payload = {} }
+
+    const account = await accounts.read(username)
+    const answer = await relay({
+      ...target,
+      username,
+      entitlements: entitlementsOf(account),
+      payload,
+    })
+    res.writeHead(answer.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify(answer.value))
+    return
+  }
+
   if (path === '/login' && req.method === 'GET') {
     // Never cached: the page carries its own styles inline, so a cached copy
     // survives a redeploy and shows the previous design to anyone who has been
@@ -620,6 +668,64 @@ async function handleRequest(req, res) {
 
     res.writeHead(204)
     res.end()
+    return
+  }
+
+  // The scheduler asking for a machine, and that is the entire message.
+  //
+  // No task, no occurrence, no prompt: the gateway is not told what is about
+  // to happen inside the sandbox and does not need to be. Everything about the
+  // task reaches the plugin from the scheduler, through the relay above, after
+  // the machine is up — which is why this route can stay this small and why
+  // nothing here has to change when a rule kind is added.
+  //
+  // `ensure` and not "start": a sandbox that is already running is the common
+  // case for a tenant with frequent tasks, and then this is a no-op and the
+  // plugin's own timer fires the occurrence. Waking is an optimisation for the
+  // cold case, never the thing that decides a run happens.
+  //
+  // Same shared secret and the same 404 as the route above: this is not on the
+  // tenant surface by accident either.
+  if (path === '/_internal/wake' && req.method === 'POST') {
+    const expected = process.env.INTERNAL_SHARED_SECRET ?? ''
+    if (expected === '' || req.headers['x-internal-secret'] !== expected) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' })
+      res.end('not found')
+      return
+    }
+    const body = await readBody(req, 4096)
+    let asked
+    try { asked = JSON.parse(body?.toString('utf8') ?? '{}') } catch { asked = {} }
+    const username = typeof asked.username === 'string' ? asked.username : ''
+    if (username === '') {
+      res.writeHead(400, { 'Content-Type': 'text/plain' })
+      res.end('no tenant')
+      return
+    }
+
+    // A suspended account keeps its rows and its schedule; what it does not
+    // keep is a machine. Checked here rather than in the scheduler, because
+    // "may this account have a sandbox" is a runtime question and the
+    // scheduler makes no commercial judgements of its own.
+    const account = await accounts.read(username)
+    if (account === undefined || account.disabled) {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end('{"ok":false,"code":"no_account"}')
+      return
+    }
+
+    try {
+      await sandboxes.ensure(username, account.id)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end('{"ok":true}')
+    } catch (error) {
+      // Answered rather than thrown: the scheduler has a sweep that writes off
+      // an occurrence nobody claimed, and a failure here is one of the ways
+      // that happens. A 500 would make it look like a bug in the caller.
+      console.error(`gateway: waking ${username} for a scheduled task failed: ${error.message}`)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end('{"ok":false,"code":"wake_failed"}')
+    }
     return
   }
 
@@ -855,6 +961,58 @@ async function handleRequest(req, res) {
     console.log(`gateway: ${caller.email} restarted their sandbox`)
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
     res.end('{"ok":true}')
+    return
+  }
+
+  // A tenant's own scheduled tasks, from their own shell.
+  //
+  // Served here rather than through the sandbox for the same reason `/secrets`
+  // is: the list has to be readable when the machine is not running, and a
+  // tenant asking why last night's task did not happen is asking exactly then.
+  // It also keeps the shell's dialog one hop from its answer instead of three.
+  //
+  // `tenantMay` is what stops this being the same surface the sandbox gets:
+  // claiming an occurrence and reporting a run are the plugin's acts, taken
+  // because a timer fired, and a browser that could claim could spend a run
+  // that was never due.
+  if (path.startsWith('/schedule/')) {
+    const caller = await callerOf(req, res)
+    if (caller === undefined) {
+      res.writeHead(401, { 'Content-Type': 'application/json' })
+      res.end('{}')
+      return
+    }
+    if (!schedulerConfigured()) {
+      // 501 and not 503: nothing is broken, this deployment simply does not
+      // run a scheduler, and the shell hides its controls on this answer
+      // rather than showing a button that will never work.
+      res.writeHead(501, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      res.end('{"ok":false,"code":"no_scheduler"}')
+      return
+    }
+    const target = scheduleRoute(req.method ?? 'GET', path.slice('/schedule'.length))
+    if (target === undefined || !tenantMay(target.path)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' })
+      res.end('{"ok":false,"code":"not_found"}')
+      return
+    }
+    const body = await readBody(req, SCHEDULE_BODY_LIMIT)
+    if (body === undefined) {
+      res.writeHead(413, { 'Content-Type': 'application/json' })
+      res.end('{"ok":false,"code":"body_too_long"}')
+      return
+    }
+    let payload = {}
+    try { payload = JSON.parse(body.toString('utf8') || '{}') } catch { payload = {} }
+
+    const answer = await relay({
+      ...target,
+      username: caller.email,
+      entitlements: entitlementsOf(await accounts.read(caller.email)),
+      payload,
+    })
+    res.writeHead(answer.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+    res.end(JSON.stringify(answer.value))
     return
   }
 

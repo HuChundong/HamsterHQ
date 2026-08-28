@@ -80,13 +80,25 @@ adapter=$(docker run --rm --entrypoint node "$SANDBOX" -e "
 " 2>/dev/null || echo error)
 check 'the sandbox-host plugin loads' loaded "$adapter"
 
+# The schedule plugin, which imports `@deepseek-ai/dsh-tools` for `defineTool`.
+# That is a peer of the harness rather than a dependency it declares, so it
+# resolves only if the profile is where the registry mounted it from — which is
+# exactly the installation rule that fails on the first import and never at
+# build time.
+scheduled=$(docker run --rm --entrypoint node "$SANDBOX" -e "
+  import('$PROFILE/node_modules/dsh-scheduled-tasks/index.js')
+    .then((m) => console.log(['apply', 'inject', 'name'].every((k) => k in m) ? 'loaded' : 'incomplete'))
+    .catch((error) => console.log('failed: ' + error.message))
+" 2>/dev/null || echo error)
+check 'the scheduled-tasks plugin loads' loaded "$scheduled"
+
 # Resolved through `dsh.client.main` rather than assumed to be `client.js`,
 # because one of these is BUILT: the panel bundles xterm and ships
 # `lib/client.js`, which is gitignored and produced during the image build. A
 # check that opened `client.js` would have read the package's other half, or
 # nothing, and passed either way — while the registry served a 404 and the
 # panel simply never appeared.
-for half in dsh-sandbox-host dsh-tenant-account dsh-artifact-panel; do
+for half in dsh-sandbox-host dsh-tenant-account dsh-artifact-panel dsh-scheduled-tasks; do
   parsed=$(docker run --rm --entrypoint node "$SANDBOX" -e "
     const { readFileSync } = require('fs')
     const path = require('path')

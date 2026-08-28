@@ -106,30 +106,32 @@ derived from the tunnel URL: deriving `http` from `ws` is right until a
 deployment puts the tunnel behind a path or a second hostname, and then it is
 wrong in a way that appears only in production.
 
-**Waking — the gateway pushes, over the tunnel.** When an occurrence enters the
-scheduler's horizon it calls the gateway once: this tenant, this occurrence, due
-at this instant. The gateway answers `accepted` immediately and then, on its own
-timer, starts the machine early enough to be ready — how early is its knowledge
-and not the scheduler's, because it is a fact about the runtime and changes when
-the runtime does. Once the sandbox has dialled in, the gateway sends one new
-down-frame on the existing tunnel, which `dsh-gateway-tunnel` re-emits as a
-cordis event. Adding a frame kind is safe by construction: the sandbox already
-ignores tags it does not know, "so the gateway can add frame kinds without a
-lockstep sandbox-image rebuild".
+**Waking — the scheduler asks the gateway for a machine, and that is the entire
+message.** `POST /_internal/wake` carries a username. No task, no occurrence, no
+prompt, no instruction about what should happen next. The gateway calls
+`ensure()` and answers.
 
-It is a push and not a poll for the reason the metrics plane is: polling per
-sandbox is what the push model replaced, and two thousand sandboxes make a poll
-a load problem.
+An earlier draft had the gateway also push a frame down the tunnel to say "this
+occurrence is due", and dropping it removed a whole mechanism: the tunnel
+protocol needs no new frame kind, `dsh-gateway-tunnel` needs no change, and the
+gateway never learns what a tenant's task says. Everything that idea bought is
+already covered by the plugin fetching on startup — because the wake is what
+makes a startup happen.
 
-**Running — the plugin pulls, then reports.** The nudge carries no prompt. On
-receiving it — and also once on its own startup, which is what recovers work
-missed while the machine was down — the plugin calls back through the gateway
-for the occurrences that are its own, runs them, and reports each outcome the
-same way. So the gateway never carries a tenant's task content, and the
-sandbox's "catch up after a restart" path is the same code as its "you have work
-now" path rather than a second mechanism exercised less often.
+**Running — the plugin pulls, then reports.** On starting, the plugin fetches
+the tenant's whole list and holds its own timers for as long as it lives. So a
+tenant with frequent tasks costs one wake and then nothing: the machine stays up
+because it keeps becoming busy, and the server is not involved again until it
+goes away. That is not a special case in the code — waking an already-running
+sandbox is a no-op, and the plugin's timer was going to fire either way.
 
-The lead time has one hard constraint: it must stay under
+The same fetch is what recovers work missed while the machine was down, which is
+why it is the startup path rather than a second mechanism exercised less often.
+The plugin re-reads on four occasions and each is the others' backstop: at
+startup, after a task is written, after every run, and on a slow heartbeat that
+catches a change made from another tab.
+
+The lead the scheduler wakes on has one hard constraint: it must stay under
 `SANDBOX_DEPARTED_TTL_MS`, five minutes by default. A machine started earlier
 than that, with no browser attached and no agent running, is reclaimed by the
 idle sweep before its own task arrives.
@@ -177,22 +179,24 @@ silently moves a class of tasks from warm to a cold start on every run. Two
 knobs that were never meant to interact end up deciding the cost and the latency
 of a feature neither of them names.
 
-Two corrections, and neither is a new mechanism so much as a rule about an
-existing one.
+The correction is not a mechanism. **Destroying a machine stays exactly what it
+is today** — idle, no browser attached, timeout — and no part of this feature
+touches it. A rule was drafted where the gateway released a sandbox as soon as a
+scheduled run finished, to stop each run leaking a departed TTL of machine time.
+It was dropped, and the reason is worth keeping: the gateway would have had to
+know that a run had finished, which means knowing a run had started, which is
+the first crack in "the gateway only wakes". Five minutes of machine time is
+cheaper than that.
 
-**Whatever woke a machine puts it back.** When a scheduled run finishes the
-gateway releases the sandbox immediately rather than leaving it to the sweep,
-guarded by the two signals `presenceOf` already returns — a machine with a
-browser attached, or an agent still working, is left alone. Without this every
-run leaks a full departed TTL of machine time, which for an hourly task is five
-wasted minutes in every sixty.
-
-**The shortest allowed interval is derived from what waking costs**, not copied
-from upstream. With the floor above the departed TTL no schedule can hold a
-machine warm on its own, there is one regime rather than two, and the cost of a
-task can be worked out from its rule. The floor is therefore a deployment's own
-number, tied to its runtime's start time, and not the five minutes the harness's
-scheduler happens to use.
+**The shortest allowed interval is about residency, not latency.** Waking is
+seconds here — the gateway calls `ensure()` and a sandbox dials in well inside
+its own timeout — so the floor is not paying for the wake. What it decides is
+whether a schedule can hold a machine permanently: an interval under the
+departed TTL means the sandbox is busy again before the idle sweep reaches it,
+and the tenant has a resident machine they never asked for and would not think
+to account for. `entitlements.js` therefore puts the free floor well above the
+TTL and the paid floor at it, so holding a machine is a choice somebody made
+rather than a side effect of a number they picked.
 
 **Below the floor is not a scheduled task.** Work that has to happen every thirty
 seconds wants a process, not a schedule, and dsh already has one: `ctx.jobs` is
@@ -261,35 +265,71 @@ what is scheduled; a tenant whose sandbox is gone should not have to start one.
 | Sub-minute schedules | Waking a machine takes tens of seconds; a schedule finer than the wake is a promise with no mechanism |
 | Triggers other than time | A webhook or a file-change trigger is a different subject with a different failure model, and would fold into this one before either was finished |
 
-## What has to change
+## What it is made of
 
-- `scheduler/` — a new directory and image: `src/server.js` (an internal API, no
-  public surface), `src/db.js` (its own tables), `src/clock.js` (the sweep),
-  `src/rules.js` (cron, interval, and absolute-time arithmetic), and its own
-  `AGENTS.md` pair. One dependency for cron parsing, in this service only.
-- `gateway/src/` — a relay route authorized by the sandbox pair, a
-  `/_internal/*` trigger endpoint on the shared-secret pattern that answers 404
-  rather than 403 to a wrong secret, the pending-wake timer, and the tenant's
-  page.
+- `scheduler/` — its own directory and image: `src/server.js` (an internal API,
+  no public surface), `src/db.js` (its own tables), `src/clock.js` (the sweep),
+  `src/rules.js` (the arithmetic). One dependency for cron parsing, in this
+  service only, and nothing that could reach a sandbox.
+- `gateway/src/schedules.js` — the relay, plus two routes in `server.js`:
+  `/schedule/*` for a tenant's browser and `/_sandbox/schedule/*` for their
+  sandbox. `/_internal/wake` is the third, on the shared-secret pattern that
+  answers 404 rather than 403 to a wrong secret.
 - `packages/dsh-scheduled-tasks` — the sixth plugin. A new package rather than
   surface on an existing one: take the gateway away and none of it works, which
   rules out `dsh-sandbox-host`, and it is not who is signed in, which rules out
   `dsh-tenant-account`.
-- `packages/tunnel-protocol` and `packages/dsh-gateway-tunnel` — one down-frame
-  kind, re-emitted as an event. The tunnel's subject stays transport.
-- `compose.yml`, the `Dockerfile`, and `scripts/check-service-env.mjs`, which
-  follows the gateway's and the console's import chains today and has to learn a
-  third.
+- Nothing in `packages/tunnel-protocol` or `packages/dsh-gateway-tunnel`. The
+  transport was going to grow a frame kind and does not have to.
+
+Two decisions inside the plugin that the shape above does not force:
+
+**One timer, not one per task.** It arms the earliest occurrence and recomputes
+after it fires. A timer per task is a set to keep in step with every edit, and
+the first missed cancellation is a task that goes on firing after it was
+deleted. The wait is split against Node's 32-bit timer range and the wall clock
+is re-read after every wake — a delay past that range fires IMMEDIATELY rather
+than late, which would make a monthly task run every tick until the month
+arrived.
+
+**Runs are serialized.** Two turns writing one workspace is a fight nobody asked
+for, and a scheduled task is never in a hurry.
+
+## What happens when the plugin cannot reach the server
+
+It stops firing, after two missed refreshes.
+
+This is the counter-intuitive one. An offline plugin still holds a perfectly
+good list, and running from it looks like resilience — but a task the tenant
+deleted an hour ago is still in that list, and every occurrence of it spends
+model tokens on work nobody wants any more. Firing needs an authorisation recent
+enough to be worth acting on, not a copy that was once true.
+
+Reporting is the other direction and has no such problem, so an outcome is
+retried rather than dropped.
 
 ## How it is verified
 
-`scripts/` cannot decide most of this, because every interesting claim needs a
-running deployment. Two things it can decide, and both are cheap: that
-`gateway/src` contains no cron dependency and no query naming a scheduler table,
-and that the new service's environment is declared everywhere it is read.
+Two gates decide from the tree alone.
 
-The acceptance suite gets `verify/verify-schedule.mjs`, and its shape is fixed
-by what is worth proving: create a task at the shortest interval the deployment
-allows, **destroy the sandbox**, and then wait. A pass means the machine came
-back on its own and the turn ran. Anything that does not destroy the sandbox
-first proves only the easy half.
+`scripts/check-scheduler-boundary.mjs` holds the split: no cron dependency and
+no scheduler table name anywhere under `gateway/src`, and nothing in the
+scheduler's dependencies that could reach a sandbox. Nobody moves a scheduler
+wholesale — somebody adds one convenient query, or imports a parser to show a
+next occurrence without a round trip, and each is one line that looks harmless
+in review.
+
+`scripts/check-rules.mjs` holds the arithmetic, which it can because
+`src/rules.js` is pure. Its cases are the failures that do not announce
+themselves: nine in the morning has to stay nine in the morning across both
+daylight-saving boundaries, and an interval series has to stay on its creation
+anchor and jump straight past a gap rather than replaying it. A rule that throws
+is found in a minute; a rule that runs a tenant's morning report an hour early
+for half the year is found in March, by them.
+
+The rest needs a running deployment. `verify/verify-schedule.mjs`, and its shape
+is fixed by what is worth proving: create a task, **destroy the sandbox**, and
+then wait. A pass means the machine came back on its own and the turn ran.
+Anything that does not destroy the sandbox first proves only the easy half — and
+that half is the one a deployment with frequent tasks exercises constantly,
+while the cold path is the one that rots.

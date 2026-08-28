@@ -65,6 +65,15 @@ const WANTED = {
   // The operator's console, whose sections are administrators, users and
   // invite codes: everyone who has an account, not one being configured.
   people: 'users',
+  // The sidebar's scheduled-tasks control. A calendar with a clock on it,
+  // because both halves are load-bearing: the tasks behind it are dated (a
+  // cron rule, a day of the week) AND timed, and a bare clock would say
+  // "later today" about a thing that mostly means "every Monday". The
+  // harness's own set has no drawing for either half — its nearest names,
+  // `IconQueueOutline14` and `IconChecklistOutline14`, draw a queue and a
+  // checklist, which is what a matching name looks like when the meaning does
+  // not match.
+  schedule: 'calendar-clock',
 
   // The console's sidebar. One per section, and each is the section's subject
   // rather than a decoration for its name: a code that admits somebody is a

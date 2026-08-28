@@ -28,10 +28,20 @@ import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
-/** The services this applies to, and where each one's code starts. */
+/**
+ * The services this applies to, and where each one's code starts.
+ *
+ * The scheduler shares no module with either of the others — it is the one
+ * service here that carries none of the gateway's source — so today it can
+ * only disagree about the two variables it names outright,
+ * `GATEWAY_INTERNAL_URL` and `INTERNAL_SHARED_SECRET`. It is listed anyway:
+ * the console was in exactly that position on the day it was split out, and
+ * the first module it came to share is what this check exists to catch.
+ */
 const SERVICES = [
   { service: 'admin', roots: ['admin'] },
   { service: 'gateway', roots: ['gateway/src'] },
+  { service: 'scheduler', roots: ['scheduler/src'] },
 ]
 
 /**

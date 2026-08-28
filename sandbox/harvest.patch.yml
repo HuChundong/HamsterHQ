@@ -38,6 +38,13 @@
     - id: artifact-panel
       name: dsh-artifact-panel
 
+# The scheduled-tasks control in the sidebar's foot, and the dialog behind it.
+# Its host half is inert here for the same reason `sandbox-host`'s is — there
+# is no gateway to reach — and its client half is the point.
+- insert:
+    - id: scheduled-tasks
+      name: dsh-scheduled-tasks
+
 # This deployment's own mark and name, in the three slots the shipped brand
 # plugin fills. Written because the shipped one fills them with DeepSeek's
 # whale and wordmark, which this deployment has no right to wear: its brand

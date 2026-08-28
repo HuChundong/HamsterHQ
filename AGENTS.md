@@ -44,7 +44,7 @@ prevent — and the first one is only here because upstream is closed to it.
 ## Everything added to DSH is a cordis plugin
 
 Which plugin a change belongs in is decided by one question: **take the
-gateway away — is this still needed?** Five plugins sit on that question
+gateway away — is this still needed?** Six plugins sit on that question
 today:
 
 - `dsh-gateway-tunnel` carries a sandbox's `/api` traffic out to the gateway.
@@ -60,13 +60,16 @@ today:
   means anything without the gateway.
 - `dsh-artifact-panel` is the workspace beside the conversation — files,
   viewers, a terminal and a canvas.
+- `dsh-scheduled-tasks` is a tenant's schedule: the tools that write one, the
+  timers that fire it, and the control in the sidebar's foot. The durable list
+  is the gateway's, so none of it survives the gateway's removal.
 - `dsh-brand` is this deployment's marks inside the shell.
 
 The other three packages in `packages/` are not plugins: `dsh-icons` and
 `dsh-ground` serve surfaces that have no module table, and `tunnel-protocol`
 is the frame both ends of the tunnel speak.
 
-A change that fits none of the five is a sign the question above has a new
+A change that fits none of the six is a sign the question above has a new
 answer, not that one of them should grow a second subject —
 `dsh-gateway-logout` was renamed when it had three.
 
@@ -198,7 +201,7 @@ bytes to the original.
 
 ```
 Dockerfile              every image, one npm install
-gateway/  web/  sandbox/  admin/    one directory per image
+gateway/  web/  sandbox/  admin/  scheduler/   one directory per image
 packages/               npm packages this repository owns
 integrations/           stands alone; could leave without changing a line here
 verify/                 the acceptance suite — needs a deployment

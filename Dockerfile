@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# The three images this deployment runs, from one context.
+# Every image this deployment runs, from one context.
 #
 # DSH itself is installed from npm rather than built here. It is a dependency of
 # this project, not part of it: nothing in this repository patches the harness,
@@ -8,11 +8,13 @@
 # version bump plus the acceptance run.
 #
 # Stages:
-#   deps     one npm install, shared by everything below
-#   sandbox  one tenant's dsh, beside this project's three plugins
-#   shell    boot the composition once and save what it serves
-#   web      nginx over the frontend build and that shell
-#   gateway  the authenticating front door; no harness code at all
+#   deps       one npm install, shared by everything below
+#   sandbox    one tenant's dsh, beside this project's own plugins
+#   shell      boot the composition once and save what it serves
+#   web        nginx over the frontend build and that shell
+#   gateway    the authenticating front door; no harness code at all
+#   admin      the operator's console; its own service, its own credential
+#   scheduler  the clock behind scheduled tasks; no way to reach a sandbox
 
 # The harness version this deployment runs. A build argument rather than a
 # lockfile entry, so a deployment can move between published versions without
@@ -556,6 +558,7 @@ RUN npm install --omit=dev --no-audit --no-fund --install-links \
       /src/packages/dsh-sandbox-host \
       /src/packages/dsh-tenant-account \
       /src/packages/dsh-artifact-panel \
+      /src/packages/dsh-scheduled-tasks \
       /src/packages/dsh-brand \
   && rm -rf /root/.npm /src
 
@@ -817,3 +820,28 @@ ENV DSH_VERSION=${DSH_VERSION}
 ENV ADMIN_PORT=8091
 EXPOSE 8091
 CMD ["node", "admin/server.js"]
+
+# ------------------------------------------------------------- scheduler ----
+# The clock, built as its own image because it needs a strictly smaller set of
+# privileges than anything else here. It wants a database, a wall clock, and
+# one way to say "wake this tenant" — no Docker socket, no tenant credentials,
+# no browser surface, and no way to reach a sandbox at all.
+#
+# That is the same argument the console won, and it has a second half: the
+# scheduler is the part of this deployment that will keep changing — zones,
+# daylight saving, the edges of cron expressions, catch-up policy — and the
+# gateway is the sign-in path. A component that changes often should not share
+# a process with the one whose failure signs everybody out.
+#
+# It carries none of the gateway's source, which is the separation showing up
+# somewhere it can be checked: its whole dependency list is `pg` and a cron
+# parser, and it knows a tenant only as an opaque username the gateway proved.
+FROM node:24-alpine AS scheduler
+ENV NODE_ENV=production
+WORKDIR /app
+COPY scheduler/package.json ./
+RUN npm install --omit=dev --no-audit --no-fund && rm -rf /root/.npm
+COPY scheduler/src ./src
+ENV SCHEDULER_PORT=8092
+EXPOSE 8092
+CMD ["node", "src/server.js"]

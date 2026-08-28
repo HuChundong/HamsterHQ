@@ -80,6 +80,7 @@ for (const [name, glyph] of Object.entries(icons)) {
 const COPIES = [
   { file: 'packages/dsh-tenant-account/client.js', constant: 'DRAWN', glyphs: ['signout'] },
   { file: 'packages/dsh-sandbox-host/client.js', constant: 'SANDBOX_GLYPH', glyphs: ['sandbox'] },
+  { file: 'packages/dsh-scheduled-tasks/client.js', constant: 'DRAWN', glyphs: ['schedule'] },
 ]
 
 /**

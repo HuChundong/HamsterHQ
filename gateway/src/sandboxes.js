@@ -204,6 +204,29 @@ export class SandboxManager {
   }
 
   /**
+   * Whose machine a sandbox is.
+   *
+   * For the routes a sandbox calls on its own behalf rather than a browser's.
+   * They authenticate with `authorize` and then need a tenant, and this is the
+   * only place that mapping exists — asking the sandbox would be asking the
+   * thing being identified to name itself.
+   *
+   * Read from this instance's cache rather than the table, which is what makes
+   * it a lookup and not a query on a path taken per scheduled run. The cache
+   * is written through on every change, and a sandbox this instance has no
+   * record of is one whose token `authorize` has already refused.
+   *
+   * @param {string} sandboxId - the gateway's id for the sandbox.
+   * @returns {string | undefined} the owning account's address, or nothing.
+   */
+  ownerOf(sandboxId) {
+    for (const [username, record] of this.byUser) {
+      if (record.sandboxId === sandboxId) return username
+    }
+    return undefined
+  }
+
+  /**
    * Return the user's sandbox, starting one if they have none.
    *
    * Two identities come back and they are not interchangeable. `sandboxId` is
