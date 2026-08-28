@@ -10,6 +10,17 @@
 # all, --single-process, is deliberately absent: one misbehaving page then
 # takes the whole browser and its CDP port with it, and the agent loses the
 # tool rather than the tab.
+#
+# The binary behind /usr/local/bin/headless-shell may be Playwright's
+# chrome-headless-shell or a full Chromium with anti-detect patches; these
+# flags are the intersection both builds accept. --disable-gpu is absent on
+# purpose: the anti-detect build paints WebGL through SwiftShader, and that
+# flag would turn the disguise off. Headless shell ignores the WebGL flags.
+
+# No display server in the sandbox. The anti-detect Chromium's UA patches
+# rewrite HeadlessChrome to Chrome even with this set, so the page does not
+# learn it is headless from the product string.
+--headless=new
 
 # The container grants no unprivileged user namespaces for Chromium's own
 # sandbox, and the isolation boundary is the tenant's machine itself.
@@ -19,8 +30,14 @@
 # renderers crash on pages that are merely large.
 --disable-dev-shm-usage
 
-# There is no GPU, and saying so stops the search for one.
---disable-gpu
+# Software WebGL, the way the anti-detect build disguises the GPU fingerprint
+# on a machine that has none. ANGLE + SwiftShader; the ICD path is set by the
+# start script when /opt/chrome carries the library. Headless shell accepts
+# these and does nothing useful with them.
+--enable-webgl
+--use-gl=angle
+--use-angle=swiftshader
+--ignore-gpu-blocklist
 
 # Fewer processes. Site isolation gives every cross-site iframe its own
 # renderer — defence in depth against renderer exploits, priced in processes,
@@ -45,9 +62,7 @@
 --disk-cache-size=104857600
 
 # Idle work for a browser nobody updates or reports on: no component
-# updates, no phoning home, no crash uploader. Headless shell already lacks
-# the rest of desktop Chrome's background surface — extensions, sync,
-# translate — so those need no flags.
+# updates, no phoning home, no crash uploader.
 --disable-background-networking
 --disable-component-update
 --disable-breakpad

@@ -8,14 +8,24 @@
 `cubemastercli`。
 
 ```sh
-docker compose -f compose.yml -f compose.cube.yml --profile build build
+# 带反爬 Chromium 的生产构建先把二进制抽进构建上下文——从不入库。CI 保持
+# sandbox/browser-engine/ 的占位，构建 Playwright 的 shell。前一个模板别名不要
+# 动——模板是快照，正在服务租户的那个就是回滚目标。只有新模板 READY 之后，才把
+# CUBE_TEMPLATE_ID 指到新别名。
+cid=$(docker create anti-detect-chrome:v3)
+rm -rf sandbox/browser-engine && mkdir -p sandbox/browser-engine
+docker cp "$cid:/opt/chrome/." sandbox/browser-engine/
+docker rm "$cid"
+BROWSER_SOURCE=antidetect \
+  docker compose -f compose.yml -f compose.cube.yml --profile build build
 
 # 沙箱镜像要通过 CubeSandbox 拉得到的 registry 抵达它，而不是本地 Docker 守护进程。
 docker tag hamsterhq-sandbox:latest 127.0.0.1:5000/hamsterhq-sandbox:$TAG
 docker push 127.0.0.1:5000/hamsterhq-sandbox:$TAG
 
 # 每次都建新模板，而不是更新旧的：模板是创建那一刻拍下的快照，把已有模板指向新镜像，
-# 每个沙箱还原的仍是它原来那份快照。把 CUBE_TEMPLATE_ID 指向别名。
+# 每个沙箱还原的仍是它原来那份快照。把 CUBE_TEMPLATE_ID 指向别名。保留前一个别名——
+# 回滚就是再指回去然后 `up -d`。
 #
 # 这里没有任何东西预启动沙箱的浏览器：create-from-image 不接受 start 或 ready 命令，
 # 所以浏览器改为随每个租户的后端一起启动——后台方式，租户等待的任何东西都不等它。

@@ -9,7 +9,18 @@ withholding depends on. It assumes a CubeSandbox installation, a registry it
 can pull from, and `cubemastercli` on the host.
 
 ```sh
-docker compose -f compose.yml -f compose.cube.yml --profile build build
+# Production builds that ship the anti-detect Chromium extract it into the
+# build context first — the binary is never in git. CI leaves
+# sandbox/browser-engine/ as the placeholder and builds Playwright's shell.
+# The previous template alias is left alone — a template is a snapshot, and
+# the one already serving tenants is the rollback target. Point
+# CUBE_TEMPLATE_ID at the new alias only after the new template is READY.
+cid=$(docker create anti-detect-chrome:v3)
+rm -rf sandbox/browser-engine && mkdir -p sandbox/browser-engine
+docker cp "$cid:/opt/chrome/." sandbox/browser-engine/
+docker rm "$cid"
+BROWSER_SOURCE=antidetect \
+  docker compose -f compose.yml -f compose.cube.yml --profile build build
 
 # The sandbox image reaches CubeSandbox through a registry it can pull from,
 # not through the local Docker daemon.
@@ -19,7 +30,8 @@ docker push 127.0.0.1:5000/hamsterhq-sandbox:$TAG
 # A new template each time, not an update to the old one: a template is a
 # snapshot taken when it is created, and pointing an existing one at a new
 # image leaves every sandbox restoring the snapshot it already had. Set
-# CUBE_TEMPLATE_ID to the alias.
+# CUBE_TEMPLATE_ID to the alias. Keep the previous alias — rolling back is
+# pointing CUBE_TEMPLATE_ID at it again and `up -d`.
 #
 # Nothing here pre-starts the sandbox's browser: create-from-image takes no
 # start or ready command, so the browser launches with each tenant's backend

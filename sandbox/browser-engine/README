@@ -1,0 +1,4 @@
+# Placeholder so COPY sandbox/browser-engine always has a source.
+# A production host that builds with BROWSER_SOURCE=antidetect fills this
+# directory from anti-detect-chrome:v3 first — see docs/cubesandbox.md.
+# The binary is never committed.

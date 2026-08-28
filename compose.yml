@@ -29,6 +29,10 @@ services:
         # Valueless on purpose: unset, the Dockerfile's own full list stands.
         AGENT_PYTHON_PACKAGES:
         TZ: ${DEPLOYMENT_TZ:-UTC}
+        # The sandbox stage's browser. Default is Playwright's shell (CI);
+        # a deployment that filled sandbox/browser-engine/ from the
+        # anti-detect image sets BROWSER_SOURCE=antidetect (docs/cubesandbox.md).
+        BROWSER_SOURCE: ${BROWSER_SOURCE:-playwright}
     image: hamsterhq-web:latest
     # The user-facing entry: static bytes are answered here from disk, and only
     # the session-bearing surface is proxied to the gateway.
@@ -215,6 +219,7 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-}
         AGENT_PYTHON_PACKAGES:
         TZ: ${DEPLOYMENT_TZ:-UTC}
+        BROWSER_SOURCE: ${BROWSER_SOURCE:-playwright}
     image: hamsterhq-sandbox:latest
     profiles: [build]
     networks: [hamsterhq-net]

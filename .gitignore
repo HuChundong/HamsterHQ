@@ -20,3 +20,8 @@ compose.local.yml
 # by the image build. The thing to read is the source.
 packages/dsh-artifact-panel/lib/
 packages/dsh-artifact-panel/node_modules/
+
+# Anti-detect Chromium tree extracted before an antidetect sandbox build.
+# The README placeholder stays; everything else is host-local.
+sandbox/browser-engine/**
+!sandbox/browser-engine/README
