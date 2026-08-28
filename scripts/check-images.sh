@@ -182,9 +182,8 @@ check 'the officecli skill is where dsh will look' ok "$skill"
 # naming that port. A CLI with no configuration launches a Chromium this image
 # deliberately does not carry, and says so only at the moment a tenant asked
 # for a page.
-# 'Chrom', not 'Chrome': the binary announces itself as "Chromium 152...",
-# while its CDP endpoint says "HeadlessChrome/152..." — this check reads the
-# former and was first written against the latter.
+# 'Chrom' matches both engines this image may ship: Playwright's shell
+# announces "Chromium …", and so does the anti-detect full build.
 browser=$(docker run --rm --entrypoint /usr/local/bin/headless-shell "$SANDBOX" --version 2>/dev/null | head -1 | grep -c 'Chrom' || echo 0)
 check 'the browser engine runs' 1 "$browser"
 

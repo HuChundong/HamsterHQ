@@ -169,6 +169,19 @@ COPY packages/dsh-artifact-panel/build.mjs ./
 COPY packages/dsh-artifact-panel/src ./src
 RUN npm run build
 
+# ---------------------------------------------------------------- browser ----
+# Optional engine source for a deployment that ships an anti-detect Chromium
+# built elsewhere. CI has no such image: the stub stage is an empty /opt/chrome
+# and is the default `ANTIDETECT_IMAGE`. A production build that wants the
+# patched binary passes `--build-arg ANTIDETECT_IMAGE=anti-detect-chrome:v3`
+# together with `BROWSER_SOURCE=antidetect`. The binary itself is never in
+# this repository — 329 MB, and already on the machine that builds for tenants.
+FROM busybox:1.36 AS antidetect-stub
+RUN mkdir -p /opt/chrome
+
+ARG ANTIDETECT_IMAGE=antidetect-stub
+FROM ${ANTIDETECT_IMAGE} AS antidetect-browser
+
 # ---------------------------------------------------------------- sandbox ----
 FROM node:24-slim AS sandbox
 
@@ -358,51 +371,66 @@ RUN set -eux; \
 
 # ---- the browser, and the way an agent asks it for a page -----------------
 #
-# Two halves that only make sense together: chrome-headless-shell is the
-# engine, and `playwright-cli` is what an agent types. The CLI is Playwright's
-# own, which matters twice — it is the interface a coding agent already knows,
-# and it ships the skill that teaches it, so this repository does not write
-# one.
+# Two halves that only make sense together: the engine, and `playwright-cli`
+# as what an agent types. The CLI is Playwright's own, which matters twice —
+# it is the interface a coding agent already knows, and it ships the skill
+# that teaches it, so this repository does not write one. The engine is one
+# of two builds, chosen at image build by `BROWSER_SOURCE`:
+#
+#   playwright   (default, CI) — chrome-headless-shell, installed by the
+#                  CLI's own bundled Playwright so the two cannot drift.
+#   antidetect   (production)  — a full Chromium built elsewhere with the
+#                  anti-detect patches (navigator.webdriver false, no
+#                  Headless in the UA, automation infobars off, SwiftShader
+#                  WebGL). Arrives through `COPY --from` the stage above;
+#                  the binary is never in this tree. "The browser in the
+#                  sandbox" in docs/design.md carries the rest.
+#
+# Either way the binary is reached as `/usr/local/bin/headless-shell`, so
+# the start script, the image check and the conformance probe do not care
+# which build filled that name.
 #
 # The CLI, pinned, and told not to fetch browsers on its own schedule. The
-# engine is installed one step below by this CLI's own bundled Playwright, so
-# the two cannot drift apart; the variable stays set at runtime so nothing a
-# tenant runs starts a 150 MB download into their volume for a browser this
-# image already carries.
+# variable stays set at runtime so nothing a tenant runs starts a 150 MB
+# download into their volume for a browser this image already carries.
 ARG PLAYWRIGHT_CLI_VERSION=0.1.18
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm install -g --no-audit --no-fund "@playwright/cli@${PLAYWRIGHT_CLI_VERSION}" \
  && rm -rf /root/.npm \
  && playwright-cli --help > /dev/null
 
-# The engine: chrome-headless-shell, the UI-less Chromium build Playwright
-# itself pins. It replaced Obscura, and what decided the replacement is in
-# "The browser in the sandbox" in docs/design.md; the short form is that
-# Obscura rasterizes text only from the Liberation fonts embedded in its
-# binary — no system font is ever read, so every Chinese page screenshots as
-# boxes for a deployment whose tenants write Chinese — and that its task
-# budget refuses heavy pages outright. Chromium draws through the image's own
-# fontconfig stack (the wqy-microhei above) and answers the full protocol,
-# including the screencast the panel's preview consumes. The memory cost is
-# real and accepted: roughly 100 MB idle against Obscura's 30, and 300-500 MB
-# with a heavy page open, in a sandbox of 2-4 GB.
-#
-# Installed by the CLI's own bundled Playwright rather than by a second pinned
-# version, so the browser build is exactly the one the CLI expects. The
-# download host is npmmirror because this repository is built from inside
-# China, where Playwright's default CDN is the step that fails — the same
-# reason OfficeCLI arrives from a CDN and the base images from Docker Hub.
-# The path is outside any home because HOME at runtime is the tenant's volume.
+# Candidate tree from the stage above. Empty under the stub (CI); the full
+# `/opt/chrome` under `anti-detect-chrome:v3` (production). Selected or
+# discarded by the RUN below — COPY always happens so the Dockerfile has one
+# shape, and an absent chrome binary is what keeps CI from needing the image.
+COPY --from=antidetect-browser /opt/chrome /tmp/chrome-candidate
+
+ARG BROWSER_SOURCE=playwright
 ARG PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 RUN set -eux; \
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD= \
-    PLAYWRIGHT_DOWNLOAD_HOST="$PLAYWRIGHT_DOWNLOAD_HOST" \
-      node /usr/local/lib/node_modules/@playwright/cli/node_modules/playwright/cli.js \
-      install --only-shell chromium; \
-    shell_bin="$(find "$PLAYWRIGHT_BROWSERS_PATH" -type f \( -name headless_shell -o -name chrome-headless-shell \) | head -1)"; \
-    test -n "$shell_bin"; \
-    ln -s "$shell_bin" /usr/local/bin/headless-shell; \
+    case "$BROWSER_SOURCE" in \
+      antidetect) \
+        test -x /tmp/chrome-candidate/chrome; \
+        mv /tmp/chrome-candidate /opt/chrome; \
+        ln -s /opt/chrome/chrome /usr/local/bin/headless-shell; \
+        ln -s /opt/chrome/chrome /usr/local/bin/chrome; \
+        ;; \
+      playwright) \
+        rm -rf /tmp/chrome-candidate; \
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD= \
+        PLAYWRIGHT_DOWNLOAD_HOST="$PLAYWRIGHT_DOWNLOAD_HOST" \
+          node /usr/local/lib/node_modules/@playwright/cli/node_modules/playwright/cli.js \
+          install --only-shell chromium; \
+        shell_bin="$(find "$PLAYWRIGHT_BROWSERS_PATH" -type f \( -name headless_shell -o -name chrome-headless-shell \) | head -1)"; \
+        test -n "$shell_bin"; \
+        ln -s "$shell_bin" /usr/local/bin/headless-shell; \
+        ;; \
+      *) \
+        echo "BROWSER_SOURCE must be playwright or antidetect, got: $BROWSER_SOURCE" >&2; \
+        exit 1; \
+        ;; \
+    esac; \
     /usr/local/bin/headless-shell --version
 
 # The skill that tells an agent how to drive it, written by the CLI itself for

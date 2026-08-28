@@ -612,13 +612,26 @@ platform and a source build is the one thing a tenant has to arrange itself.
 ## The browser in the sandbox
 
 An agent that cannot open a page can only describe the web second-hand, so the
-sandbox carries a browser: chrome-headless-shell, the UI-less Chromium build
-that Playwright itself pins. It is installed at image build by the bundled
-Playwright inside the pinned `@playwright/cli`, so the engine is exactly the
-build that CLI version expects and the two cannot drift apart. The download
-host is npmmirror, because this repository is built from inside China where
-Playwright's default CDN is the step that fails — the same reason OfficeCLI
-arrives from a CDN.
+sandbox carries a browser. The binary behind `/usr/local/bin/headless-shell`
+is chosen at image build by `BROWSER_SOURCE`:
+
+- **`playwright`** (default, what CI builds) — chrome-headless-shell, the
+  UI-less Chromium Playwright itself pins, installed by the bundled Playwright
+  inside the pinned `@playwright/cli` so the engine is exactly the build that
+  CLI version expects. The download host is npmmirror, because this repository
+  is built from inside China where Playwright's default CDN is the step that
+  fails — the same reason OfficeCLI arrives from a CDN.
+- **`antidetect`** (what a production host with the patched binary builds) —
+  a full Chromium compiled elsewhere with the anti-detect patches
+  (`navigator.webdriver` always false, no `Headless` in the product string,
+  automation and bad-flag infobars off, SwiftShader WebGL for a GPU
+  fingerprint on a machine that has none). The binary arrives through
+  `COPY --from` an image that already has it (`anti-detect-chrome:v3` on
+  the host that builds for tenants); it is never committed — 329 MB, and
+  already on that machine. The VNC / noVNC / horust stack that image also
+  carried is deliberately not taken: this deployment already has a panel
+  that polls screenshots over `/browser`, and a sandbox of 2–4 GB cannot
+  also afford TigerVNC.
 
 It replaced Obscura, an independent 30 MB engine chosen for memory, and the
 replacement was decided by measurement rather than preference. Two things
@@ -688,7 +701,7 @@ something the skill teaches. It also holds the image's fonts to account: two
 screenshots of pages differing only in their Chinese characters must differ as
 bytes, because the previous engine passed that whole table while
 screenshotting Chinese as tofu. Run the probe when `PLAYWRIGHT_CLI_VERSION`
-moves, which is what pins the browser.
+moves, or when `BROWSER_SOURCE` switches the binary.
 
 ## The model plane
 

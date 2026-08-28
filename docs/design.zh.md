@@ -437,12 +437,11 @@ wheel 都有对应平台的预编译版，而从源码构建是唯一需要租�
 
 ## 沙箱里的浏览器
 
-不能打开网页的 agent，只能转述别人说的网。所以沙箱里带一个浏览器：
-chrome-headless-shell，Playwright 自己固定版本的无界面 Chromium 构建。它在镜像
-构建时由固定版本的 `@playwright/cli` 内置的那份 Playwright 安装，所以引擎正好是
-这个 CLI 版本所期待的构建，两者不可能各自漂移。下载源是 npmmirror，因为这个仓库
-在中国境内构建，Playwright 默认的 CDN 正是会失败的那一步——和 OfficeCLI 走 CDN
-是同一个原因。
+不能打开网页的 agent，只能转述别人说的网。所以沙箱里带一个浏览器。
+`/usr/local/bin/headless-shell` 背后的二进制由镜像构建时的 `BROWSER_SOURCE` 决定：
+
+- **`playwright`**（默认，CI 构建用）—— chrome-headless-shell，Playwright 自己固定版本的无界面 Chromium，由固定版本的 `@playwright/cli` 内置的那份 Playwright 安装，所以引擎正好是这个 CLI 版本所期待的构建。下载源是 npmmirror，因为这个仓库在中国境内构建，Playwright 默认的 CDN 正是会失败的那一步——和 OfficeCLI 走 CDN 是同一个原因。
+- **`antidetect`**（带有补丁二进制的生产主机构建用）——在别处编好的完整 Chromium，带反爬补丁（`navigator.webdriver` 恒为 false、产品名里没有 `Headless`、关掉自动化与坏 flag 的 infobar、用 SwiftShader 在无 GPU 的机器上伪装 WebGL 指纹）。二进制通过 `COPY --from` 一张已经带它的镜像进来（给租户构建的那台机器上的 `anti-detect-chrome:v3`）；从不入库——329 MB，而且已经在那台机器上。那张镜像里一并带着的 VNC / noVNC / horust 栈刻意不取：这套部署已经有面板经 `/browser` 轮询截图，而 2–4 GB 的沙箱也养不起 TigerVNC。
 
 它取代了 Obscura——一个为内存而选的 30 MB 独立引擎——而这次替换是量出来的，不是
 偏好。量出了两件配置无法修复的事。Obscura 光栅化文字只用内嵌在二进制里的
@@ -491,7 +490,7 @@ CubeSandbox 下这道栅栏是 CubeEgress，在沙箱外面。在纯 Docker 下�
 的完整命令表——它为一个独立引擎而写，留下来是因为它能抓住某个不再应答 skill 所教
 命令的 Chromium 构建。它同时把镜像的字体也纳入问责：两张只有中文字符不同的页面截
 图，字节必须不同——因为上一个引擎通过了整张命令表，同时把中文截成豆腐块。
-`PLAYWRIGHT_CLI_VERSION` 变动时跑一次这个探针，浏览器的版本就固定在它上面。
+`PLAYWRIGHT_CLI_VERSION` 变动时，或 `BROWSER_SOURCE` 切换二进制时，跑一次这个探针。
 
 ## 模型平面
 

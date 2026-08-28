@@ -1,12 +1,14 @@
 /**
  * How much of what `playwright-cli` asks for the sandbox's browser answers.
  *
- * The engine is chrome-headless-shell now, so the command table should answer
- * in full — but "should" is the same kind of claim as "E2B compatible", and
- * this repository does not build on that word either. So the commands the
+ * The engine behind `/usr/local/bin/headless-shell` is either Playwright's
+ * chrome-headless-shell or a full Chromium with anti-detect patches — both
+ * answer the same CDP, and the command table should answer in full either
+ * way. "Should" is the same kind of claim as "E2B compatible", and this
+ * repository does not build on that word either. So the commands the
  * bundled skill tells an agent to use are run, one at a time, against a page
  * whose contents are known, and each is recorded as answering, differing, or
- * missing. The probe kept its shape across the engine swap on purpose: it was
+ * missing. The probe kept its shape across engine swaps on purpose: it was
  * written for an independent engine and it is what would catch the next one,
  * or a Chromium build that stopped answering something the skill teaches.
  *
@@ -18,10 +20,10 @@
  * Two screenshots that differ only in their Chinese characters must differ as
  * bytes; tofu boxes are the same box every time.
  *
- * Run it when `PLAYWRIGHT_CLI_VERSION` moves, which is what pins the browser.
- * What it prints is the list a person decides about — not every divergence is
- * worth blocking an upgrade, and the ones that are should be named in docs
- * rather than discovered by a tenant.
+ * Run it when `PLAYWRIGHT_CLI_VERSION` moves, or when `BROWSER_SOURCE`
+ * switches the binary. What it prints is the list a person decides about —
+ * not every divergence is worth blocking an upgrade, and the ones that are
+ * should be named in docs rather than discovered by a tenant.
  *
  * Hermetic on purpose. The fixture is served from inside the sandbox, so the
  * result says something about the browser rather than about the network that
@@ -136,12 +138,18 @@ const FLAGS = fs.readFileSync('/app/sandbox/browser-flags', 'utf8')
   .split('\n')
   .map((line) => line.trim())
   .filter((line) => line !== '' && !line.startsWith('#'))
+// Same ICD path the start script exports when the anti-detect tree is in the
+// image — without it SwiftShader finds no loader and WebGL flags are noise.
+const browserEnv = { ...process.env }
+if (fs.existsSync('/opt/chrome/vk_swiftshader_icd.json')) {
+  browserEnv.VK_ICD_FILENAMES = '/opt/chrome/vk_swiftshader_icd.json'
+}
 const browser = spawn('/usr/local/bin/headless-shell', [
   ...FLAGS,
   `--remote-debugging-port=${String(CDP_PORT)}`,
   `--user-data-dir=${path.join(work, 'profile')}`,
   `--disk-cache-dir=${path.join(work, 'cache')}`,
-], { stdio: 'ignore', detached: true })
+], { stdio: 'ignore', detached: true, env: browserEnv })
 
 /** Give the engine and the fixture a moment to bind; both do in well under a second. */
 await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -218,7 +226,7 @@ function refFor(snapshotOutput, needle) {
 }
 
 const base = `http://127.0.0.1:${String(FIXTURE_PORT)}`
-console.log(`\n=== what the sandbox's browser answers (chrome-headless-shell ${version()}) ===\n`)
+console.log(`\n=== what the sandbox's browser answers (${version()}) ===\n`)
 
 // The title is a marker rather than a name: a port that turns out to be
 // serving something else — a leftover from an earlier run, a tenant's own dev

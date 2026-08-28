@@ -51,6 +51,15 @@ done < /app/sandbox/browser-flags
 # profile is exactly the many-small-files workload a network filesystem is
 # worst at. The price is that a rebuilt sandbox starts with a fresh browser —
 # cookies are working set, not files.
+#
+# VK_ICD_FILENAMES points SwiftShader at the ICD the anti-detect image ships
+# beside the binary. Absent under the Playwright shell build — the directory
+# is not there — and that is fine: the WebGL flags then find nothing and the
+# shell still serves pages.
+if [ -f /opt/chrome/vk_swiftshader_icd.json ]; then
+  export VK_ICD_FILENAMES=/opt/chrome/vk_swiftshader_icd.json
+fi
+
 setsid nohup /usr/local/bin/headless-shell "${flags[@]}" \
   --remote-debugging-port=9222 \
   --user-data-dir=/tmp/browser-profile \
