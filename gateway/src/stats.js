@@ -18,6 +18,8 @@
 
 
 
+import { currentDeploymentVersion } from './sandbox-version.js'
+
 /**
  * How long a stream waits before trying to attach again.
  *
@@ -65,12 +67,54 @@ function shape(raw) {
 let isLive = () => false
 
 /**
+ * Short version stamped on a sandbox at create time, or undefined when unknown.
+ *
+ * @type {(sandboxId: string) => string | null | undefined}
+ */
+let versionOf = () => undefined
+
+/**
  * Say who knows whether a sandbox is up, and hear about it when that changes.
  *
  * @param {(sandboxId: string) => boolean} predicate - answers whether a sandbox is connected.
  */
 export function knowsLiveness(predicate) {
   isLive = predicate
+}
+
+/**
+ * Say who knows which template version a sandbox was created from.
+ *
+ * @param {(sandboxId: string) => string | null | undefined} lookup - the short version for that id.
+ */
+export function knowsVersion(lookup) {
+  versionOf = lookup
+}
+
+/**
+ * Attach template version fields onto a stats object for the browser.
+ *
+ * @param {string} sandboxId - the sandbox.
+ * @param {object | undefined} stats - shaped metrics, or undefined before the first report.
+ * @returns {object | undefined} stats with version and currentVersion, or undefined.
+ */
+function withVersion(sandboxId, stats) {
+  const version = versionOf(sandboxId)
+  const currentVersion = currentDeploymentVersion()
+  if (stats === undefined) {
+    // Still answer versions before the first metrics sample, so Settings can
+    // show "stale" without waiting for the rings.
+    return {
+      id: sandboxId,
+      version: version === undefined ? null : version,
+      currentVersion,
+    }
+  }
+  return {
+    ...stats,
+    version: version === undefined ? null : version,
+    currentVersion,
+  }
 }
 
 /**
@@ -91,7 +135,7 @@ export function livenessChanged(sandboxId) {
  * @param {object} entry - its record.
  */
 function publish(sandboxId, entry) {
-  const reading = { ok: isLive(sandboxId), stats: entry.stats }
+  const reading = { ok: isLive(sandboxId), stats: withVersion(sandboxId, entry.stats) }
   entry.last = reading
   for (const reader of entry.readers) reader(reading)
 }
@@ -220,7 +264,7 @@ function watchSandbox(sandboxId, onReading) {
   // The figures beside it may be a few seconds old, and that is the honest
   // shape of the thing: the state is current, the measurements are as recent
   // as the last one that arrived.
-  onReading({ ok: isLive(sandboxId), stats: entry.stats })
+  onReading({ ok: isLive(sandboxId), stats: withVersion(sandboxId, entry.stats) })
   return () => {
     const current = reported.get(sandboxId)
     if (current === undefined) return

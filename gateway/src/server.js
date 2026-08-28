@@ -47,7 +47,7 @@ import { DIAL_IN_TIMEOUT_MS, SandboxManager } from './sandboxes.js'
 import { Secrets, nameProblem } from './secrets.js'
 import { SendLimit } from './send-limit.js'
 import { Settings } from './settings.js'
-import { REPORT_PATH, knowsLiveness, livenessChanged, receiveReport } from './stats.js'
+import { REPORT_PATH, knowsLiveness, knowsVersion, livenessChanged, receiveReport } from './stats.js'
 import { handleSignIn } from './sign-in.js'
 import { Tokens, signedOutCookies } from './tokens.js'
 import { TunnelServer } from './tunnel-server.js'
@@ -295,6 +295,7 @@ const tunnels = new TunnelServer(
   },
 )
 knowsLiveness((sandboxId) => tunnels.has(sandboxId))
+knowsVersion((sandboxId) => sandboxes.versionOf(sandboxId))
 const browserSockets = new WebSocketServer({ noServer: true })
 
 /**

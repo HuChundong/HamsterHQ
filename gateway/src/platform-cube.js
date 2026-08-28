@@ -42,7 +42,7 @@ import { Sandbox, Volume } from '@cubesandbox/sdk'
  * The SDK reads `CUBE_TEMPLATE_ID` itself; this is here because the gateway
  * prints it at boot and a tier will one day choose a different one.
  */
-export const TEMPLATE = process.env.CUBE_TEMPLATE_ID ?? 'dsh-sandbox'
+export const TEMPLATE = process.env.CUBE_TEMPLATE_ID ?? 'hamsterhq-sandbox'
 
 /**
  * How long CubeSandbox keeps a sandbox alive without being told otherwise.

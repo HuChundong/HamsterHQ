@@ -29,11 +29,13 @@
  * Names the gateway sets itself, which a tenant may not.
  *
  * The first three are the sandbox's identity and its way back to the gateway.
- * The rest describe the deployment's own model route: letting a tenant replace
- * the endpoint, the credential, or the name that ties them together would turn
- * their agent's traffic somewhere the deployment did not choose — and under
- * egress injection it would be pointing the deployment's credential at an
- * endpoint of the tenant's choosing, which is worse.
+ * `SANDBOX_VERSION` is the date-shaped stamp this deployment puts on every
+ * machine it creates. The rest describe the deployment's own model route:
+ * letting a tenant replace the endpoint, the credential, or the name that ties
+ * them together would turn their agent's traffic somewhere the deployment did
+ * not choose — and under egress injection it would be pointing the
+ * deployment's credential at an endpoint of the tenant's choosing, which is
+ * worse.
  *
  * What is deliberately NOT reserved is any provider's own name. A tenant who
  * wants to spend their own DeepSeek key, or their own anything, sets it here
@@ -45,6 +47,7 @@ const RESERVED = new Set([
   'SANDBOX_ID',
   'SANDBOX_TOKEN',
   'GATEWAY_TUNNEL_URL',
+  'SANDBOX_VERSION',
 ])
 
 /**

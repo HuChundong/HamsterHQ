@@ -33,6 +33,7 @@ import { hostname } from 'node:os'
 import process from 'node:process'
 import { startBackend } from './envd.js'
 import { selectRuntime } from './runtimes.js'
+import { DEPLOYMENT_TEMPLATE, shortVersionFromTemplate } from './sandbox-version.js'
 
 /** The sandbox runtime in use — CubeSandbox, or the Docker simulation. */
 const runtime = selectRuntime()
@@ -96,11 +97,13 @@ export class SandboxManager {
     this.db = options.db
     /**
      * This instance's cache of the table, so the common path does not query.
-     * @type {Map<string, {sandboxId: string, token: string, handle: string, accountId: string, lastUsedAt: number, flushedAt: number}>}
+     * @type {Map<string, {sandboxId: string, token: string, handle: string, accountId: string, version: string|null, lastUsedAt: number, flushedAt: number}>}
      */
     this.byUser = new Map()
     /** @type {Map<string, string>} */
     this.tokenBySandbox = new Map()
+    /** Short version recorded for each sandbox id, for /sandbox/stats. @type {Map<string, string|null>} */
+    this.versionBySandbox = new Map()
     /** In-flight creations, so concurrent first requests share one sandbox. @type {Map<string, Promise<{sandboxId: string, token: string, handle: string}>>} */
     this.creating = new Map()
     this.timer = setInterval(() => { void this.reapIdle() }, REAP_INTERVAL_MS)
@@ -131,11 +134,13 @@ export class SandboxManager {
    * @param {object} row - a `sandboxes` row.
    */
   #remember(row, entitlements = {}) {
+    const version = row.version ?? null
     this.byUser.set(row.username, {
       sandboxId: row.sandbox_id,
       token: row.token,
       handle: row.handle,
       accountId: row.account_id,
+      version,
       lastUsedAt: new Date(row.last_used_at).getTime(),
       flushedAt: Date.now(),
       // When this machine's backend was last asked to start, and whether it
@@ -157,6 +162,7 @@ export class SandboxManager {
       entitlements,
     })
     this.tokenBySandbox.set(row.sandbox_id, row.token)
+    this.versionBySandbox.set(row.sandbox_id, version)
   }
 
   /**
@@ -167,7 +173,19 @@ export class SandboxManager {
   async #erase(username, sandboxId) {
     this.byUser.delete(username)
     this.tokenBySandbox.delete(sandboxId)
+    this.versionBySandbox.delete(sandboxId)
     await this.db.query('DELETE FROM sandboxes WHERE username = $1 AND sandbox_id = $2', [username, sandboxId])
+  }
+
+  /**
+   * The short version stamped on a sandbox when it was created.
+   *
+   * @param {string} sandboxId - the gateway's id for the sandbox.
+   * @returns {string | null | undefined} the version, null when unknown, undefined when no such sandbox.
+   */
+  versionOf(sandboxId) {
+    if (!this.versionBySandbox.has(sandboxId)) return undefined
+    return this.versionBySandbox.get(sandboxId)
   }
 
   /**
@@ -253,12 +271,15 @@ export class SandboxManager {
     // the console reaches the next sandbox started rather than the next
     // restart.
     const entitlements = await this.options.entitlementsFor?.(username) ?? {}
+    const templateAlias = entitlements.machine ?? DEPLOYMENT_TEMPLATE
+    const version = shortVersionFromTemplate(templateAlias)
 
     const handle = await runtime.create({ username, accountId, machine: entitlements.machine }, {
       ...await this.options.secrets(username),
       SANDBOX_ID: sandboxId,
       SANDBOX_TOKEN: token,
       GATEWAY_TUNNEL_URL: this.options.gatewayTunnelUrl,
+      ...(version !== null ? { SANDBOX_VERSION: version } : {}),
       ...await this.options.env(username),
     })
 
@@ -268,11 +289,11 @@ export class SandboxManager {
     // keeping their sandbox. The loser destroys the machine it just built
     // rather than leaving a second one mounted on the same volume.
     const { rows } = await this.db.query(
-      `INSERT INTO sandboxes (username, account_id, sandbox_id, handle, token, gateway_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO sandboxes (username, account_id, sandbox_id, handle, token, gateway_id, version)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (username) DO NOTHING
        RETURNING *`,
-      [username, accountId, sandboxId, handle, token, GATEWAY_ID],
+      [username, accountId, sandboxId, handle, token, GATEWAY_ID, version],
     )
     if (rows.length === 0) {
       this.tokenBySandbox.delete(sandboxId)
@@ -338,6 +359,9 @@ export class SandboxManager {
       SANDBOX_ID: record.sandboxId,
       SANDBOX_TOKEN: record.token,
       GATEWAY_TUNNEL_URL: this.options.gatewayTunnelUrl,
+      ...(record.version !== null && record.version !== undefined
+        ? { SANDBOX_VERSION: record.version }
+        : {}),
       ...await this.options.env(username),
     })
   }
@@ -369,6 +393,7 @@ export class SandboxManager {
       handle: record.handle,
       startedAt: record.startedAt,
       dialled: record.dialled,
+      version: record.version ?? null,
     }
   }
 
