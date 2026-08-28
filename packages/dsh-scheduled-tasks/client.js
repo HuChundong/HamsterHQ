@@ -11,9 +11,9 @@
  * and re-rendering the session list ourselves, or patching the harness. Both
  * are the thing the root AGENTS.md forbids, so this asks upstream for a seat
  * instead and sits at the foot meanwhile, above the sandbox row. The shell
- * lays the footer.action list out in a row; the CSS below forces that
- * container into a column when this control is present, so order alone is
- * not left to imply a stack the harness does not draw.
+ * lays the footer.action list out in a row; SlotOutlet is display:contents, so
+ * a CSS column on the wrong ancestor is a no-op. The control walks to the real
+ * flex row and columns it, and each seat claims a full line.
  *
  * The foot control is drawn as a quiet row beside the sandbox status — not as
  * a second New Session elevated button. Theme colours come from verified
@@ -234,13 +234,17 @@ window.__ModuleLoader__.load({
      * (No backticks in this CSS: the file is a template literal.)
      */
     const CSS = `
-      /* The shell's footerActions is display:flex with no direction, so every
-         sidebar.footer.action seat lands in a row. :has keys off this plugin's
-         own data mark rather than the sidebar's hashed module name. */
-      div:has(> [data-dsh-footer-stack]) {
-        flex-direction: column;
-        align-items: stretch;
+      /* SlotOutlet wraps list seats in display:contents, so seats participate
+         in footerActions flex layout as siblings. A CSS :has on the contents
+         wrapper cannot set flex-direction (no box). useStackFooterColumn walks
+         past contents ancestors and columns the real flex row. This mark only
+         claims a full row once that parent is a column. */
+      [data-dsh-footer-stack] {
+        display: block;
+        box-sizing: border-box;
         width: 100%;
+        flex: none;
+        align-self: stretch;
       }
       .${U}-open {
         display: flex; align-items: center; gap: 8px;
@@ -779,6 +783,45 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Column the real footerActions flex row.
+     *
+     * SlotOutlet is display:contents, so this mark's DOM parent is that
+     * invisible wrapper; walking past contents ancestors reaches the shell
+     * row that actually lays scheduled-tasks beside the sandbox status.
+     *
+     * @param {HTMLElement | null} mark - the data-dsh-footer-stack node.
+     * @returns {() => void} restore the previous inline styles.
+     */
+    const stackFooterColumn = (mark) => {
+      if (mark === null) return () => {}
+      let el = mark.parentElement
+      while (el !== null) {
+        const shown = window.getComputedStyle(el)
+        if (shown.display === 'contents') {
+          el = el.parentElement
+          continue
+        }
+        if (shown.display === 'flex' || shown.display === 'inline-flex') {
+          const previous = {
+            flexDirection: el.style.flexDirection,
+            alignItems: el.style.alignItems,
+            width: el.style.width,
+          }
+          el.style.flexDirection = 'column'
+          el.style.alignItems = 'stretch'
+          el.style.width = '100%'
+          return () => {
+            el.style.flexDirection = previous.flexDirection
+            el.style.alignItems = previous.alignItems
+            el.style.width = previous.width
+          }
+        }
+        el = el.parentElement
+      }
+      return () => {}
+    }
+
+    /**
      * The sidebar seat.
      *
      * It renders nothing at all until the gateway has said this deployment has
@@ -793,6 +836,7 @@ window.__ModuleLoader__.load({
       const t = useT()
       const [open, setOpen] = React.useState(false)
       const [available, setAvailable] = React.useState(null)
+      const stackRef = React.useRef(null)
 
       React.useEffect(() => {
         let live = true
@@ -802,15 +846,22 @@ window.__ModuleLoader__.load({
         return () => { live = false }
       }, [])
 
+      // After mount: the slot anchor is display:contents, so only a walk up the
+      // live tree reaches the flex row that still lays seats horizontally.
+      React.useLayoutEffect(() => {
+        if (available !== true) return undefined
+        return stackFooterColumn(stackRef.current)
+      }, [available])
+
       if (available !== true) return null
 
       return React.createElement(
         React.Fragment,
         null,
-        React.createElement('style', null, CSS),
         React.createElement(
           'div',
-          { 'data-dsh-footer-stack': '' },
+          { 'data-dsh-footer-stack': '', ref: stackRef },
+          React.createElement('style', null, CSS),
           React.createElement(
             'button',
             {
@@ -848,9 +899,9 @@ window.__ModuleLoader__.load({
 
         // `sidebar.footer.action` is a list slot sorted by `order`, and
         // `dsh-sandbox-host` holds 100 with the sandbox row. Below that number
-        // is first in the list; the column CSS above turns that into above on
-        // screen. A control the tenant presses sits over a readout they only
-        // glance at.
+        // is first in the list; stackFooterColumn turns the shell's row into a
+        // column so each seat takes a full line. A control the tenant presses
+        // sits over a readout they only glance at.
         ctx.effect(
           () => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register(
             { name: 'sidebar.footer.action', id: 'scheduled-tasks', order: 50 },
