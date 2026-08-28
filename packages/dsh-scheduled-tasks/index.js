@@ -139,8 +139,20 @@ export function apply(ctx, config) {
   let readAt = 0
   /** Cancels the armed timer, when one is armed. @type {(() => void) | undefined} */
   let disarm
-  /** Occurrences this process has already claimed, as `id@instant`. @type {Set<string>} */
-  const claimed = new Set()
+  /**
+   * Occurrences this process has already claimed, as `id@instant`.
+   *
+   * It exists only to bridge the moment between a timer firing and the refresh
+   * that follows the claim: until the server's advanced `next_run_at` is read
+   * back, the local list still offers the occurrence that was just taken, and
+   * arming it again would spend a round trip to be told `already_claimed`.
+   *
+   * Pruned on every refresh, because a sandbox that lives for a week and holds
+   * a five-minute task would otherwise accumulate two thousand keys nothing
+   * ever reads. What is kept is what the freshly read list could still offer.
+   * @type {Set<string>}
+   */
+  let claimed = new Set()
   /** Runs are serialized through this: two turns writing one workspace is a fight nobody asked for. */
   let queue = Promise.resolve()
   let disposed = false
@@ -197,6 +209,11 @@ export function apply(ctx, config) {
     }
     tasks = Array.isArray(answer.value.tasks) ? answer.value.tasks : []
     readAt = Date.now()
+    // Only the keys this list could still offer are worth remembering. A claim
+    // the server has already accounted for comes back as an advanced
+    // `next_run_at`, and the key that guarded it can never match again.
+    const live = new Set(tasks.map((task) => `${task.id}@${task.nextRunAt}`))
+    claimed = new Set([...claimed].filter((key) => live.has(key)))
     arm()
     return true
   }
@@ -347,10 +364,18 @@ export function apply(ctx, config) {
     // Watching for the turn to end has to be armed BEFORE the prompt: the
     // agent can go running and idle again inside a fast turn, and a listener
     // attached afterwards would wait for a transition that already happened.
-    const finished = whenTurnEnds(sessionId)
-    await rpc('session.prompt', { sessionId, mode: 'queue', content: [{ type: 'text', text: prompt }] })
+    const watch = whenTurnEnds(sessionId)
+    try {
+      await rpc('session.prompt', { sessionId, mode: 'queue', content: [{ type: 'text', text: prompt }] })
+    } catch (error) {
+      // A prompt that never landed leaves nothing to wait for, and the watcher
+      // would otherwise hold its listener and a half-hour timer until a turn
+      // that will not happen times out.
+      watch.abandon()
+      throw error
+    }
 
-    const ended = await finished
+    const ended = await watch.finished
     return {
       status: ended === 'timeout' ? 'failed' : 'ok',
       detail: ended === 'timeout' ? 'the turn did not finish within the run timeout' : null,
@@ -367,25 +392,31 @@ export function apply(ctx, config) {
    * sandbox.
    *
    * @param {string} sessionId - the session to watch.
-   * @returns {Promise<'ended' | 'timeout'>} how it stopped.
+   * @returns {{finished: Promise<'ended' | 'timeout'>, abandon: () => void}} the wait, and a way to stop waiting.
    */
-  const whenTurnEnds = (sessionId) => new Promise((resolve) => {
+  const whenTurnEnds = (sessionId) => {
     let started = false
     let settled = false
-    /**
-     * Settle once, whatever gets there first.
-     * @param {'ended' | 'timeout'} how - the outcome.
-     */
-    const settle = (how) => {
-      if (settled) return
-      settled = true
-      off?.()
-      cancelTimeout?.()
-      resolve(how)
-    }
+    /** @type {(how: 'ended' | 'timeout') => void} */
+    let settle
+    /** @type {(() => void) | undefined} */
+    let off
+    /** @type {(() => void) | undefined} */
+    let cancelTimeout
+
+    const finished = new Promise((resolve) => {
+      settle = (how) => {
+        if (settled) return
+        settled = true
+        off?.()
+        cancelTimeout?.()
+        resolve(how)
+      }
+    })
+
     const cancel = ctx.setTimeout(() => { settle('timeout') }, RUN_TIMEOUT_MS)
-    const cancelTimeout = typeof cancel === 'function' ? cancel : undefined
-    const off = ctx.on('agent/status', ({ agent, status }) => {
+    cancelTimeout = typeof cancel === 'function' ? cancel : undefined
+    const stop = ctx.on('agent/status', ({ agent, status }) => {
       if (agent?.session?.id !== sessionId) return
       if (status === 'running') {
         started = true
@@ -395,7 +426,10 @@ export function apply(ctx, config) {
       // existence, not the work finishing.
       if (started) settle('ended')
     })
-  })
+    off = typeof stop === 'function' ? stop : undefined
+
+    return { finished, abandon: () => { settle('timeout') } }
+  }
 
   // The tools. They decide nothing: every rule is validated where the rule
   // lives, so a limit changed in the console applies to the next call without
