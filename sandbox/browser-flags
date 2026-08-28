@@ -78,3 +78,10 @@
 --mute-audio
 --hide-scrollbars
 --window-size=1280,800
+
+# Locale matches the anti-detect binary's frozen Windows identity (zh-CN).
+# The binary itself freezes UA / Client Hints / navigator.platform / hardware
+# at compile time; language still comes from the process, so it is stated
+# here beside the other launch constants.
+--lang=zh-CN
+--accept-lang=zh-CN,zh,en-US,en

@@ -60,6 +60,11 @@ if [ -f /opt/chrome/vk_swiftshader_icd.json ]; then
   export VK_ICD_FILENAMES=/opt/chrome/vk_swiftshader_icd.json
 fi
 
+# Timezone is not a Chromium compile flag: ICU reads the process environment.
+# Asia/Shanghai matches the frozen zh-CN Windows identity the anti-detect
+# binary reports for UA and Client Hints.
+export TZ="${TZ:-Asia/Shanghai}"
+
 setsid nohup /usr/local/bin/headless-shell "${flags[@]}" \
   --remote-debugging-port=9222 \
   --user-data-dir=/tmp/browser-profile \
