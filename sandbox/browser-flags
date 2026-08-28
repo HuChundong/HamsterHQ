@@ -13,9 +13,7 @@
 #
 # The binary behind /usr/local/bin/headless-shell may be Playwright's
 # chrome-headless-shell or a full Chromium with anti-detect patches; these
-# flags are the intersection both builds accept. --disable-gpu is absent on
-# purpose: the anti-detect build paints WebGL through SwiftShader, and that
-# flag would turn the disguise off. Headless shell ignores the WebGL flags.
+# flags are the intersection both builds accept.
 
 # No display server in the sandbox. The anti-detect Chromium's UA patches
 # rewrite HeadlessChrome to Chrome even with this set, so the page does not
@@ -30,10 +28,17 @@
 # renderers crash on pages that are merely large.
 --disable-dev-shm-usage
 
-# Software WebGL, the way the anti-detect build disguises the GPU fingerprint
-# on a machine that has none. ANGLE + SwiftShader; the ICD path is set by the
-# start script when /opt/chrome carries the library. Headless shell accepts
-# these and does nothing useful with them.
+# No X display here (engine-only; no TigerVNC). ANGLE + SwiftShader still try
+# to open the default X display, the GPU process exits in a loop, and
+# libvulkan.so.1 is not in the image. --disable-gpu stops that thrash.
+# The anti-detect binary keeps its webdriver / UA patches either way; WebGL
+# fingerprint disguise is what this flag gives up. Headless shell ignores it.
+--disable-gpu
+
+# Kept for a future stack that does have a display or a Vulkan ICD. With
+# --disable-gpu above they are inert; without it they are how the anti-detect
+# build would paint WebGL. The ICD path is still set by the start script when
+# /opt/chrome carries the library.
 --enable-webgl
 --use-gl=angle
 --use-angle=swiftshader
@@ -73,3 +78,10 @@
 --mute-audio
 --hide-scrollbars
 --window-size=1280,800
+
+# Locale matches the anti-detect binary's frozen Windows identity (zh-CN).
+# The binary itself freezes UA / Client Hints / navigator.platform / hardware
+# at compile time; language still comes from the process, so it is stated
+# here beside the other launch constants.
+--lang=zh-CN
+--accept-lang=zh-CN,zh,en-US,en

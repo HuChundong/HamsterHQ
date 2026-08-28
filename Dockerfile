@@ -587,12 +587,20 @@ RUN npm install --omit=dev --no-audit --no-fund --install-links \
 #   2  volume at /mnt, workspace and DSH_HOME as real directories under it
 ENV SANDBOX_LAYOUT_VERSION=2
 
+# Readable build stamp for operators and the Settings → Sandbox UI. Date-shaped
+# (YYYY-MM-DD or YYYY-MM-DD.N), never a git hash: the same string is the image
+# tag, the Cube template alias suffix, and CUBE_TEMPLATE_ID's trailing part.
+# Default `dev` is what CI and a laptop build without an explicit version get.
+ARG SANDBOX_VERSION=dev
+ENV SANDBOX_VERSION=$SANDBOX_VERSION
+RUN printf '%s\n' "$SANDBOX_VERSION" > /app/sandbox/VERSION
+
 # The tenant's harness state, on the mount beside their files. Set HERE, after
 # everything that composes a profile has run against the image's own home and
 # before this file records what the backend will start with.
 ENV DSH_HOME=/mnt/dsh
 
-RUN for name in PATH DSH_BIN DSH_HOME IMAGE_DSH_HOME MOUNT WORKSPACE SANDBOX_LAYOUT_VERSION HOME DSH_PERMISSION_MODE NODE_ENV \
+RUN for name in PATH DSH_BIN DSH_HOME IMAGE_DSH_HOME MOUNT WORKSPACE SANDBOX_LAYOUT_VERSION SANDBOX_VERSION HOME DSH_PERMISSION_MODE NODE_ENV \
                 NODE_EXTRA_CA_CERTS TZ VIRTUAL_ENV MPLBACKEND MPLCONFIGDIR \
                 OFFICECLI_SKIP_UPDATE DSH_BUNDLED_SKILL_DIR \
                 PLAYWRIGHT_BROWSERS_PATH PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD; do \

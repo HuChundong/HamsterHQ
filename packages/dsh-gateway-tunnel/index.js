@@ -147,7 +147,9 @@ export function apply(ctx) {
     })
     request.on('error', (error) => {
       ctx.logger?.warn?.(`gateway-tunnel: ${frame.method} ${frame.path} failed: ${error.message}`)
-      send({ t: 'reserr', id: frame.id, message: error.message })
+      // Path travels with the failure so the gateway log names the request,
+      // not only the Node errno — "socket hang up" alone is not actionable.
+      send({ t: 'reserr', id: frame.id, message: `${frame.method} ${frame.path}: ${error.message}` })
       requests.delete(frame.id)
     })
     requests.set(frame.id, request)

@@ -507,8 +507,12 @@ window.__ModuleLoader__.load({
         'disk.title': '磁盘 {value}',
 
         'row.id': '标识',
+        'row.version': '版本',
         'row.status': '状态',
         'row.usage': '用量',
+        'version.unknown': '未知',
+        'version.stale': '部署已是 {current}。Restart 后升级到该版本。',
+        'version.current': '与当前部署一致',
         yours: '这台机器只属于你：会话、工作区与文件都不与其他用户共享。闲置一段时间后它会被回收，下次打开时重新创建。',
 
         'config.reading': '读取中…',
@@ -554,8 +558,12 @@ window.__ModuleLoader__.load({
         'disk.title': 'Disk {value}',
 
         'row.id': 'ID',
+        'row.version': 'Version',
         'row.status': 'State',
         'row.usage': 'Usage',
+        'version.unknown': 'Unknown',
+        'version.stale': 'Deployment is on {current}. Restart to upgrade.',
+        'version.current': 'Matches the current deployment',
         yours: 'This machine is yours alone: its sessions, workspace and files are shared with nobody. It is reclaimed after a period of inactivity and built again the next time you open it.',
 
         'config.reading': 'Reading…',
@@ -1517,6 +1525,37 @@ window.__ModuleLoader__.load({
           'code',
           { style: { ...secondary, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' } },
           stats?.id ?? t('status.unknown'),
+        )),
+        row(t('row.version'), React.createElement(
+          'div',
+          { style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
+          React.createElement(
+            'code',
+            {
+              style: { ...secondary, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
+              title: stats?.currentVersion
+                ? `deployment ${stats.currentVersion}`
+                : undefined,
+            },
+            stats?.version ?? t('version.unknown'),
+          ),
+          stats?.version
+            && stats?.currentVersion
+            && stats.version !== stats.currentVersion
+            ? React.createElement(
+              'span',
+              { style: { ...secondary, fontSize: '12px' } },
+              t('version.stale', { current: stats.currentVersion }),
+            )
+            : (stats?.version
+              && stats?.currentVersion
+              && stats.version === stats.currentVersion
+              ? React.createElement(
+                'span',
+                { style: { ...secondary, fontSize: '12px' } },
+                t('version.current'),
+              )
+              : null),
         )),
         row(t('row.status'), React.createElement(
           'div',

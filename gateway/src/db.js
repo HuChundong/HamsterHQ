@@ -227,6 +227,11 @@ CREATE TABLE IF NOT EXISTS model_keys (
 -- and therefore holds its tunnel, which is what routing will need when there
 -- is more than one instance; writing it now costs nothing and means the table
 -- does not have to change then.
+--
+-- version is the short date-shaped stamp (YYYY-MM-DD or YYYY-MM-DD.N) taken
+-- from the Cube template alias at create time. Null for sandboxes created
+-- before the column existed. Settings - Sandbox shows it beside the id so a
+-- tenant can tell whether Restart would pick up a newer template.
 CREATE TABLE IF NOT EXISTS sandboxes (
   username     text        PRIMARY KEY REFERENCES accounts(email) ON DELETE CASCADE ON UPDATE CASCADE,
   account_id   text        NOT NULL,
@@ -234,6 +239,7 @@ CREATE TABLE IF NOT EXISTS sandboxes (
   handle       text        NOT NULL,
   token        text        NOT NULL,
   gateway_id   text        NOT NULL,
+  version      text,
   created_at   timestamptz NOT NULL DEFAULT now(),
   last_used_at timestamptz NOT NULL DEFAULT now()
 );
@@ -273,6 +279,11 @@ export async function connect() {
   pool.on('error', (error) => { console.error(`gateway: postgres: ${error.message}`) })
 
   await pool.query(SCHEMA)
+
+  // Existing deployments already have sandboxes without version: ADD COLUMN is
+  // a no-op once applied, and CREATE TABLE IF NOT EXISTS never reshapes a live
+  // table. Null version means a machine created before this column existed.
+  await pool.query('ALTER TABLE sandboxes ADD COLUMN IF NOT EXISTS version text')
 
   const sweep = setInterval(() => {
     void pool.query('DELETE FROM challenges WHERE expires_at < now()')
