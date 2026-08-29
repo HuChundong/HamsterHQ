@@ -52,7 +52,12 @@ profile and saw it on a second Cube VM, then incorrectly looked complete; a
 real cookie was absent because Chrome had not committed it before the first VM
 was destroyed. Reclaim now asks the browser to `Browser.close` and waits a
 bounded interval. Acceptance has to read a real persistent cookie after a
-second cold restore, not infer login persistence from an arbitrary file.
+second cold restore, not infer login persistence from an arbitrary file. CDP
+disappearing is not the flush boundary either: `Browser.close` drops that
+socket before the profile-owning process releases its SQLite databases, and a
+network filesystem may still have completed writes in its client cache. The
+stop path therefore waits for non-zombie Chrome processes and performs a
+bounded filesystem sync before reclamation.
 
 The first version of that stronger probe made a worse mistake: it tested
 `:5900` with a bare TCP connection every 500 ms. Xvnc counts a client that

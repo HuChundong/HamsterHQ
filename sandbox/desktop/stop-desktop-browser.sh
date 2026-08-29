@@ -29,12 +29,38 @@ node --input-type=module -e '
   })
 ' || true
 
+cdp_closed=false
 for _ in $(seq 1 20); do
   if ! curl -fsS --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
-    exit 0
+    cdp_closed=true
+    break
   fi
   sleep 0.25
 done
 
-echo "stop-desktop-browser: Chrome did not stop cleanly" >&2
-exit 1
+if [ "$cdp_closed" != true ]; then
+  echo "stop-desktop-browser: Chrome did not close CDP" >&2
+  exit 1
+fi
+
+# Browser.close drops CDP before Chrome's profile-owning process has finished
+# committing its SQLite stores. Wait for every non-zombie Chrome process; PID 1
+# may leave reaped children visible in a container, but zombies hold no files.
+chrome_running() {
+  ps -u desktop -o stat=,comm= \
+    | awk '$2 == "chrome" && $1 !~ /^Z/ { found=1 } END { exit found ? 0 : 1 }'
+}
+for _ in $(seq 1 40); do
+  chrome_running || break
+  sleep 0.25
+done
+if chrome_running; then
+  echo "stop-desktop-browser: Chrome did not finish profile shutdown" >&2
+  exit 1
+fi
+
+# JuiceFS may still hold completed writes in its client cache after Chrome has
+# exited. Bounded sync makes the volume hand-off durable without making a
+# stalled storage backend prevent sandbox reclamation forever.
+profile="${CHROME_PROFILE_DIR:-/mnt/browser-profile}"
+timeout 5 sync -f "$profile" 2>/dev/null || true
