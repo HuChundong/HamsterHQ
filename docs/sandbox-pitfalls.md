@@ -95,32 +95,26 @@ Two constraints came out of trying to be clever with it:
   request carries the placeholder, so a tenant configuring their own key would
   not have it overwritten. `ngx.req.clear_header` always runs first, so by the
   time the rule can look, there is nothing left to look at.
-- **Only ports 80 and 443 are intercepted at all.** CubeEgress is fed by a
-  TPROXY rule that selects on ingress interface and destination port and
-  nothing else — `iif cube-dev` plus `tcp dport 80/443`, in
-  `CubeEgress/scripts/cube-proxy-iptables-init.sh`. A model endpoint on any
-  other port never reaches the rule engine, so no rule can inject into it: the
-  request goes out with the placeholder and the provider answers 401. This is
-  the whole of why a model server at `host:3000` cannot be served by egress
-  injection, and it is not visible from anything the rule API accepts — the
-  rule is taken, stored, and never consulted. An endpoint on a custom port has
-  to carry its own credential inside the sandbox.
-- **Interception also depends on WHERE the endpoint is, and silently.** The
-  TPROXY rule hands the packet to a transparent socket, and that handover only
-  survives for destinations the host routes plainly. A LOCAL address of the
-  host does not: the `local` routing table is consulted at priority 0, ahead of
-  the policy rule at 7999 that steers intercepted packets, so the packet is
-  delivered to the host instead — and nothing answers, because the transparent
-  socket was the only thing that would have. Measured against this deployment:
-  the SYN arrives on `cube-dev`, the TPROXY rule's counter increments, no
-  SYN-ACK is ever sent, and CubeEgress logs nothing at all. The same is true of
-  an address added to a dummy interface, and of a Docker bridge address, which
-  Docker's isolation chains drop. A Kubernetes pod address works, and so does a
-  veth peer in a namespace of one's own. A deployment whose model is on the
-  host it runs on has to make one of those and point `MODEL_BASE_URL` at it;
-  what that takes is a network namespace, a veth pair, an address, and a
-  forwarder, and it is host plumbing rather than anything this project can
-  ship — the address, the range and the upstream are all one deployment's.
+- **A host-LOCAL destination never reaches CubeEgress.** The host `local`
+  routing table is priority 0, ahead of the TPROXY policy rule. Measured for
+  this machine's own LAN address (`192.168.2.192`): an L7-only rule refuses the
+  SYN in ~2 ms and the TPROXY counter does not move; listing the same IP in
+  `allowOut` opens a plain SNAT path that answers without inject. Docker bridge
+  addresses still time out even with `allowOut`. The model relay
+  (`10.201.0.2` in a netns) is non-LOCAL and is what inject actually hits —
+  including custom ports such as `:8088` once the path below is healthy.
+- **Do not list an injected host in `allowOut`.** An L7 allow rule opens that
+  destination on its own. A matching `allowOut` entry installs SNAT beside it
+  and can steal the flow before MITM; `gateway/src/egress.js` therefore adds
+  the private model host to `allowOut` only when it is not injecting.
+- **Host `CONNMARK --restore-mark` can wipe CubeEgress marks.** A Clash/mihomo
+  coexistence script on this host used to restore connection marks for every
+  ESTABLISHED packet in mangle PREROUTING. That overwrote CubeSandbox's L7
+  marks (`0xce010000` / `0xce020000`) with 0: the SYN still hit TPROXY, HTTP
+  data never reached cube-egress nginx (client retransmits, then RST), and
+  inject audit stopped. Narrow the restore to the WAN mark only
+  (`connmark match 0x1234`), or exclude `cube-dev`. mihomo TUN itself was
+  disabled at the time; the damage was the iptables side-effect, not TUN.
 - **A plaintext endpoint can be injected into, and pays for it.** The rule the
   gateway builds carries an SNI only for `https` — there is no handshake to
   read one from otherwise — and CubeSandbox's own rule builder makes the same

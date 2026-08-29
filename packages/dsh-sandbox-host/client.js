@@ -1207,19 +1207,13 @@ window.__ModuleLoader__.load({
     /**
      * Subscribe to the sandbox's own numbers.
      *
-     * An event stream from the gateway, which samples each sandbox once and
-     * hands the reading to everyone watching it. This replaced a poll from
-     * every open tab: the cost used to grow with tabs, which is the wrong
-     * thing for it to grow with, and it went on being paid by tabs sitting in
-     * the background with nobody looking at them.
-     *
-     * The numbers themselves now come from envd's own `/metrics` rather than
-     * from a reader inside the sandbox — the same plane the panel's files come
-     * over, and one implementation of "what is this machine doing" instead of
-     * two.
-     *
-     * `EventSource` reconnects by itself, which is what a status bar should do
-     * after the gateway restarts: come back, without anything here noticing.
+     * The stream carries metrics and a liveness bit, but the bar must not wait
+     * on that bit arriving in order. The tunnel dials after the API plane is
+     * up, SSE can blip, and a quiet `ok: false` used to leave the row on
+     * "connecting" until some later push — while the machine was already
+     * usable. So this hook owns the probe: while the sandbox is not running it
+     * closes and reopens `/sandbox/stats` on an exponential backoff, and only
+     * resets that backoff when a frame says `ok: true`.
      *
      * @returns {{status: string, stats: object|null}} the reading, as the bar draws it.
      */
@@ -1243,7 +1237,38 @@ window.__ModuleLoader__.load({
       const [state, setState] = React.useState({ status: 'claiming', stats: null })
 
       React.useEffect(() => {
-        const source = new EventSource('/sandbox/stats')
+        const BASE_MS = 1000
+        const MAX_MS = 15000
+        let source
+        let timer
+        let delay = BASE_MS
+        let stopped = false
+
+        const clearTimer = () => {
+          if (timer === undefined) return
+          clearTimeout(timer)
+          timer = undefined
+        }
+
+        const closeSource = () => {
+          if (source === undefined) return
+          source.removeEventListener('message', onMessage)
+          source.removeEventListener('error', onError)
+          source.close()
+          source = undefined
+        }
+
+        /** Re-open the stream after backoff — a fresh attach re-resolves. */
+        const scheduleReopen = () => {
+          if (stopped || timer !== undefined) return
+          const wait = delay
+          delay = Math.min(delay * 2, MAX_MS)
+          timer = setTimeout(() => {
+            timer = undefined
+            open()
+          }, wait)
+        }
+
         const onMessage = (event) => {
           let reading
           try { reading = JSON.parse(event.data) } catch { return }
@@ -1259,21 +1284,42 @@ window.__ModuleLoader__.load({
             window.location.assign('/recovery')
             return
           }
-          // Any other failure means the same thing to a person: their sandbox
-          // is not answering. Which HTTP status it was is a detail for a log.
-          setState((current) => (reading.ok === true
-            ? { status: 'running', stats: reading.stats }
-            : { status: 'starting', stats: current.stats }))
-        }
-        const onError = () => {
+          if (reading.ok === true) {
+            delay = BASE_MS
+            clearTimer()
+            setState({ status: 'running', stats: reading.stats ?? null })
+            return
+          }
           setState((current) => ({ status: 'starting', stats: current.stats }))
+          // Do not sit on this generation waiting for a dial-in push: probe
+          // again on a backoff. The open stream may still deliver `ok: true`
+          // first, which cancels the timer above.
+          scheduleReopen()
         }
-        source.addEventListener('message', onMessage)
-        source.addEventListener('error', onError)
+
+        const onError = () => {
+          // Connecting blips fire error with readyState still CONNECTING;
+          // only a closed stream needs us to take the probe over.
+          if (source !== undefined && source.readyState !== EventSource.CLOSED) return
+          setState((current) => ({ status: 'starting', stats: current.stats }))
+          closeSource()
+          scheduleReopen()
+        }
+
+        const open = () => {
+          if (stopped) return
+          clearTimer()
+          closeSource()
+          source = new EventSource('/sandbox/stats')
+          source.addEventListener('message', onMessage)
+          source.addEventListener('error', onError)
+        }
+
+        open()
         return () => {
-          source.removeEventListener('message', onMessage)
-          source.removeEventListener('error', onError)
-          source.close()
+          stopped = true
+          clearTimer()
+          closeSource()
         }
       }, [])
 

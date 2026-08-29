@@ -465,7 +465,10 @@ function serveStream(req, res, attach) {
  * @param {() => Promise<boolean>} failed - whether this caller's machine is up with no backend on it.
  */
 export function serveStats(req, res, resolve, failed) {
-  serveStream(req, res, async (send, retry) => {
+  // `retry` is owned by the browser now: it reopens the stream on backoff when
+  // the sandbox is not live. Keeping a server-side detach on `ok: false` was
+  // what missed the dial-in push.
+  serveStream(req, res, async (send) => {
     /**
      * Say a sandbox is not answering, and whether it is worth going to look.
      *
@@ -502,9 +505,11 @@ export function serveStats(req, res, resolve, failed) {
         return
       }
       void notAnswering(reading)
-      // A sandbox that stops answering may simply have been replaced, so the
-      // next attempt starts over at `resolve` rather than asking this id again.
-      retry()
+      // Stay subscribed. Tearing down here to re-resolve used to open a
+      // RETRY_MS window with no reader, so a tunnel that dialled in during
+      // that gap never pushed `ok: true` and the status bar sat on
+      // "connecting". A replaced sandbox is caught when the browser reopens
+      // the stream on its own backoff — each attach calls `resolve` again.
     })
   })
 }
