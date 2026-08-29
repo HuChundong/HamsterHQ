@@ -310,7 +310,8 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
   check 'KDE Plasma X11 + TigerVNC + noVNC are installed' ok "$plasma"
   launchers=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
     'layout=/usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js; \
-      grep -q "applications:org.kde.konsole.desktop" "$layout" \
+      grep -Fq '\''tasks.writeConfig("launchers", ['\'' "$layout" \
+      && grep -q "applications:org.kde.konsole.desktop" "$layout" \
       && ! grep -q "applications:org.kde.discover.desktop" "$layout" \
       && test -f /usr/share/applications/org.kde.konsole.desktop \
       && echo ok || echo broken' \
