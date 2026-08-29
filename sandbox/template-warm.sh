@@ -15,6 +15,10 @@ export DESKTOP_HOME="${DESKTOP_HOME:-/home/desktop}"
 export HOME="$DESKTOP_HOME"
 export USER="${USER:-desktop}"
 
+# This file is the final visible-desktop readiness marker. It must be written
+# by this boot's theme application, never inherited from an earlier layer.
+rm -f "$HOME/.config/dsh-desktop/theme-state"
+
 # Optional page-cache warm for the anti-detect binary (old aio habit).
 if [ -x /opt/chrome/chrome ]; then
   cat /opt/chrome/chrome >/dev/null 2>&1 || true

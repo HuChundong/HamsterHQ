@@ -45,6 +45,9 @@ uses them to freeze a **tenant-free** stack into the memory snapshot:
 
 - dbus, TigerVNC `:0`, KDE Plasma X11, noVNC on `127.0.0.1:6080`, headed Chrome + CDP
   `:9222`, and a tiny health server on `:6099`
+- the health server waits for Xvnc/noVNC, a real Chrome page target,
+  `plasmashell`, `kwin_x11`, and the applied Fluent theme, then requires five
+  stable seconds before Cube may snapshot; open ports alone are not readiness
 - a fixed 1280 x 720 framebuffer at up to 45 updates/s; the Computer pane keeps
   noVNC at JPEG quality 5 and compression 1 to favour input/frame latency over
   maximum visual fidelity or minimum bandwidth
