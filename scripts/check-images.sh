@@ -341,9 +341,13 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
       && test -d /usr/share/plasma/look-and-feel/com.github.vinceliuice.Fluent-round-dark-solid \
       && test -d /usr/share/icons/Fluent-dark \
       && test -d /usr/share/icons/Fluent-dark-cursors \
-      && test -f /home/desktop/.config/Kvantum/kvantum.kvconfig \
-      && test -f /home/desktop/.config/mimeapps.list \
-      && grep -A2 "^\[Wallet\]" /home/desktop/.config/kwalletrc | grep -q "Enabled=false" \
+      && test "$DESKTOP_USER" = hammy \
+      && test "$DESKTOP_HOME" = /home/hammy \
+      && id hammy >/dev/null \
+      && test ! -e /home/desktop \
+      && test -f /home/hammy/.config/Kvantum/kvantum.kvconfig \
+      && test -f /home/hammy/.config/mimeapps.list \
+      && grep -A2 "^\[Wallet\]" /home/hammy/.config/kwalletrc | grep -q "Enabled=false" \
       && grep -q -- "--password-store=basic" /app/sandbox/desktop-chrome-flags \
       && test -x /usr/local/bin/chrome-launch \
       && test -x /usr/local/bin/start-desktop-browser \

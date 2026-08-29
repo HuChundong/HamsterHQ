@@ -21,11 +21,12 @@ set -eu
 # ready before either the desktop user or an agent becomes the first caller.
 # The tenant mount is S3-backed persistence; cache remains local to this VM.
 if [ "${SANDBOX_VARIANT:-}" = desktop ]; then
+  DESKTOP_USER="${DESKTOP_USER:-hammy}"
   CHROME_PROFILE_DIR="${CHROME_PROFILE_DIR:-$MOUNT/browser-profile}"
   CHROME_CACHE_DIR="${CHROME_CACHE_DIR:-/tmp/desktop-chrome-cache}"
-  export CHROME_PROFILE_DIR CHROME_CACHE_DIR
-  install -d -m 700 -o desktop -g desktop "$CHROME_PROFILE_DIR"
-  install -d -m 700 -o desktop -g desktop "$CHROME_CACHE_DIR"
+  export DESKTOP_USER CHROME_PROFILE_DIR CHROME_CACHE_DIR
+  install -d -m 700 -o "$DESKTOP_USER" -g "$DESKTOP_USER" "$CHROME_PROFILE_DIR"
+  install -d -m 700 -o "$DESKTOP_USER" -g "$DESKTOP_USER" "$CHROME_CACHE_DIR"
 fi
 
 # The tenant's own state, all of it under one mount.

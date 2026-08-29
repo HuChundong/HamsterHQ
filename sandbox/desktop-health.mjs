@@ -14,6 +14,8 @@ import { promisify } from 'node:util'
 
 const PORT = Number(process.env.DESKTOP_HEALTH_PORT ?? 6099)
 const SETTLE_MS = Number(process.env.DESKTOP_HEALTH_SETTLE_MS ?? 5000)
+const DESKTOP_USER = process.env.DESKTOP_USER ?? 'hammy'
+const DESKTOP_HOME = process.env.DESKTOP_HOME ?? `/home/${DESKTOP_USER}`
 const execFileAsync = promisify(execFile)
 let readySince = 0
 
@@ -37,7 +39,7 @@ function listening(port) {
  */
 async function processRunning(name) {
   try {
-    await execFileAsync('pgrep', ['-u', 'desktop', '-x', name])
+    await execFileAsync('pgrep', ['-u', DESKTOP_USER, '-x', name])
     return true
   } catch {
     return false
@@ -47,7 +49,7 @@ async function processRunning(name) {
 /** @returns {Promise<boolean>} */
 async function themeApplied() {
   try {
-    await access('/home/desktop/.config/dsh-desktop/theme-state')
+    await access(`${DESKTOP_HOME}/.config/dsh-desktop/theme-state`)
     return true
   } catch {
     return false

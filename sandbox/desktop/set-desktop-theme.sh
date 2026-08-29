@@ -15,7 +15,8 @@ case "$mode" in
   *) echo "usage: set-desktop-theme light|dark|auto [light|dark]" >&2; exit 2 ;;
 esac
 
-export HOME=${HOME:-/home/desktop}
+desktop_user=${DESKTOP_USER:-hammy}
+export HOME=${HOME:-/home/$desktop_user}
 export DISPLAY=${DISPLAY:-:0}
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-desktop}
 

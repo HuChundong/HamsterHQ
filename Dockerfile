@@ -823,12 +823,13 @@ COPY --from=fluent-icons /out/doc/ /usr/share/doc/fluent-icon-theme/
 
 # Dedicated home for the desktop session (not the tenant mount). Plasma state
 # stays on the machine's own disk so template freeze is legal.
-RUN useradd --create-home --home-dir /home/desktop --shell /bin/bash desktop \
-  && install -d -m 700 -o desktop -g desktop /tmp/runtime-desktop \
-  && mkdir -p /home/desktop/.config/Kvantum /home/desktop/.local/share/konsole \
-  && chown -R desktop:desktop /home/desktop
+ENV DESKTOP_USER=hammy
+ENV DESKTOP_HOME=/home/hammy
+RUN useradd --create-home --home-dir "$DESKTOP_HOME" --shell /bin/bash "$DESKTOP_USER" \
+  && install -d -m 700 -o "$DESKTOP_USER" -g "$DESKTOP_USER" /tmp/runtime-desktop \
+  && mkdir -p "$DESKTOP_HOME/.config/Kvantum" "$DESKTOP_HOME/.local/share/konsole" \
+  && chown -R "$DESKTOP_USER:$DESKTOP_USER" "$DESKTOP_HOME"
 
-ENV DESKTOP_HOME=/home/desktop
 ENV LANG=zh_CN.UTF-8
 ENV LANGUAGE=zh_CN:zh
 ENV LC_ALL=zh_CN.UTF-8
@@ -842,10 +843,10 @@ ENV CHROME_CACHE_DIR=/tmp/desktop-chrome-cache
 # noVNC chrome hide, KDE configuration and default browser.
 COPY sandbox/desktop/ /tmp/desktop-assets/
 RUN mkdir -p /usr/share/applications \
-      /home/desktop/.local/share/applications \
-  && cp /tmp/desktop-assets/mimeapps.list /home/desktop/.config/mimeapps.list \
+      "$DESKTOP_HOME/.local/share/applications" \
+  && cp /tmp/desktop-assets/mimeapps.list "$DESKTOP_HOME/.config/mimeapps.list" \
   && cp /tmp/desktop-assets/google-chrome-custom.desktop \
-       /home/desktop/.local/share/applications/google-chrome-custom.desktop \
+       "$DESKTOP_HOME/.local/share/applications/google-chrome-custom.desktop" \
   && cp /tmp/desktop-assets/google-chrome-custom.desktop \
        /usr/share/applications/google-chrome-custom.desktop \
   && cp /tmp/desktop-assets/kde/baloofilerc \
@@ -856,9 +857,9 @@ RUN mkdir -p /usr/share/applications \
        /tmp/desktop-assets/kde/kwalletrc \
        /tmp/desktop-assets/kde/kwinrc \
        /tmp/desktop-assets/kde/plasma-localerc \
-       /home/desktop/.config/ \
-  && cp /tmp/desktop-assets/kde/Desktop.profile /home/desktop/.local/share/konsole/Desktop.profile \
-  && cp /tmp/desktop-assets/kde/kvantum.kvconfig /home/desktop/.config/Kvantum/kvantum.kvconfig \
+       "$DESKTOP_HOME/.config/" \
+  && cp /tmp/desktop-assets/kde/Desktop.profile "$DESKTOP_HOME/.local/share/konsole/Desktop.profile" \
+  && cp /tmp/desktop-assets/kde/kvantum.kvconfig "$DESKTOP_HOME/.config/Kvantum/kvantum.kvconfig" \
   && install -m 0755 /tmp/desktop-assets/chrome-launch.sh /usr/local/bin/chrome-launch \
   && install -m 0755 /tmp/desktop-assets/start-desktop-browser.sh /usr/local/bin/start-desktop-browser \
   && install -m 0755 /tmp/desktop-assets/stop-desktop-browser.sh /usr/local/bin/stop-desktop-browser \
@@ -875,7 +876,7 @@ RUN mkdir -p /usr/share/applications \
        -e 's/id="noVNC_control_bar_anchor" class="noVNC_vcenter"/id="noVNC_control_bar_anchor" class="noVNC_vcenter" style="display: none;"/' \
        -e 's/<div id="noVNC_control_bar">/<div id="noVNC_control_bar" style="display: none;">/' \
        /usr/share/novnc/vnc.html \
-  && chown -R desktop:desktop /home/desktop/.config /home/desktop/.local \
+  && chown -R "$DESKTOP_USER:$DESKTOP_USER" "$DESKTOP_HOME/.config" "$DESKTOP_HOME/.local" \
   && rm -rf /tmp/desktop-assets
 
 # ---------------------------------------------------------------- desktop ----
@@ -901,8 +902,8 @@ RUN chmod +x /app/sandbox/start-desktop.sh /app/sandbox/template-warm.sh \
   && test "$(node --version | cut -d. -f1)" = v24 \
   && test ! -e /usr/bin/node \
   && ! dpkg-query -W nodejs libnode108 2>/dev/null \
-  && printf 'export DESKTOP_HOME=%s\nexport LANG=%s\nexport LANGUAGE=%s\nexport LC_ALL=%s\nexport CHROME_PROFILE_DIR=%s\nexport CHROME_CACHE_DIR=%s\nexport SANDBOX_VARIANT=desktop\n' \
-       "$DESKTOP_HOME" "$LANG" "$LANGUAGE" "$LC_ALL" \
+  && printf 'export DESKTOP_USER=%s\nexport DESKTOP_HOME=%s\nexport LANG=%s\nexport LANGUAGE=%s\nexport LC_ALL=%s\nexport CHROME_PROFILE_DIR=%s\nexport CHROME_CACHE_DIR=%s\nexport SANDBOX_VARIANT=desktop\n' \
+       "$DESKTOP_USER" "$DESKTOP_HOME" "$LANG" "$LANGUAGE" "$LC_ALL" \
        "$CHROME_PROFILE_DIR" "$CHROME_CACHE_DIR" >> /app/sandbox/env.sh
 
 # ---------------------------------------------------------------- landing ----

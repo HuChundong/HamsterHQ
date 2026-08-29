@@ -8,8 +8,9 @@ set -eu
 
 DISPLAY_NUM=0
 export DISPLAY=":${DISPLAY_NUM}"
-export HOME="${DESKTOP_HOME:-/home/desktop}"
-export USER=desktop
+export DESKTOP_USER="${DESKTOP_USER:-hammy}"
+export HOME="${DESKTOP_HOME:-/home/$DESKTOP_USER}"
+export USER="$DESKTOP_USER"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-desktop}"
 export XDG_SESSION_TYPE=x11
 export XDG_CURRENT_DESKTOP=KDE
@@ -22,7 +23,7 @@ export LC_ALL="${LC_ALL:-zh_CN.UTF-8}"
 export TZ="${TZ:-Asia/Shanghai}"
 
 install -d -m 1777 /tmp/.X11-unix
-install -d -m 700 -o desktop -g desktop "$XDG_RUNTIME_DIR"
+install -d -m 700 -o "$DESKTOP_USER" -g "$DESKTOP_USER" "$XDG_RUNTIME_DIR"
 
 port_open() {
   (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
@@ -46,9 +47,9 @@ fi
 # does not complete the RFB handshake as a failed client and blacklists the
 # loopback address after several attempts. A template health loop once froze
 # that blacklist into every restored sandbox.
-if ! pgrep -u desktop -x Xvnc >/dev/null 2>&1; then
+if ! pgrep -u "$DESKTOP_USER" -x Xvnc >/dev/null 2>&1; then
   rm -f "/tmp/.X${DISPLAY_NUM}-lock" "/tmp/.X11-unix/X${DISPLAY_NUM}" 2>/dev/null || true
-  setsid nohup runuser -u desktop -- env "${desktop_env[@]}" \
+  setsid nohup runuser -u "$DESKTOP_USER" -- env "${desktop_env[@]}" \
     Xvnc ":${DISPLAY_NUM}" \
       -geometry "${VNC_GEOMETRY:-1280x720}" \
       -depth 24 -rfbport 5900 -SecurityTypes=None -localhost=yes -ac \
@@ -59,16 +60,16 @@ fi
 # X11 readiness is a real protocol exchange and has no effect on VNC's client
 # failure counter. It also works for both a cold Docker boot and a restored VM.
 for _ in $(seq 1 40); do
-  runuser -u desktop -- env DISPLAY="$DISPLAY" xdpyinfo >/dev/null 2>&1 && break
+  runuser -u "$DESKTOP_USER" -- env DISPLAY="$DISPLAY" xdpyinfo >/dev/null 2>&1 && break
   sleep 0.25
 done
 
 # ---- KDE Plasma X11 ----
-if ! pgrep -u desktop -x plasmashell >/dev/null 2>&1 \
-   && ! pgrep -u desktop -x kwin_x11 >/dev/null 2>&1; then
+if ! pgrep -u "$DESKTOP_USER" -x plasmashell >/dev/null 2>&1 \
+   && ! pgrep -u "$DESKTOP_USER" -x kwin_x11 >/dev/null 2>&1; then
   # Expanded by the desktop user's inner shell.
   # shellcheck disable=SC2016
-  setsid nohup runuser -u desktop -- env "${desktop_env[@]}" \
+  setsid nohup runuser -u "$DESKTOP_USER" -- env "${desktop_env[@]}" \
     KWIN_COMPOSE="${KWIN_COMPOSE:-N}" \
     dbus-run-session -- bash -lc '
       umask 077
@@ -77,7 +78,7 @@ if ! pgrep -u desktop -x plasmashell >/dev/null 2>&1 \
       balooctl disable >/tmp/baloo.log 2>&1 || true
       (
         for _ in $(seq 1 80); do
-          if pgrep -u desktop -x plasmashell >/dev/null \
+          if pgrep -u "$USER" -x plasmashell >/dev/null \
             && /usr/local/bin/set-desktop-theme \
               "${DESKTOP_THEME_MODE:-auto}" "${DESKTOP_THEME_RESOLVED:-dark}" \
               >/tmp/fluent-theme-switch.log 2>&1; then
