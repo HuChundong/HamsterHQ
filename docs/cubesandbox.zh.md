@@ -49,7 +49,7 @@ docker push 127.0.0.1:5000/hamsterhq-sandbox:$SANDBOX_VERSION
 cubemastercli template create-from-image \
   --image 127.0.0.1:5000/hamsterhq-sandbox:$SANDBOX_VERSION \
   --alias hamsterhq-sandbox-$SANDBOX_VERSION \
-  --writable-layer-size 20Gi --cpu 2000 --memory 4000
+  --writable-layer-size 8Gi --cpu 2000 --memory 4000
 
 # 然后在 .env 里：CUBE_TEMPLATE_ID=hamsterhq-sandbox-$SANDBOX_VERSION
 docker compose -f compose.yml -f compose.cube.yml up -d
