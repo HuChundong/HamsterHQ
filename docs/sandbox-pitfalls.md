@@ -28,7 +28,7 @@ identity that only exists at creation.
 
 The rule is a test, not a ban. The backend still fails that test (identity,
 mount, tunnel URL) and must never be frozen. The desktop stack — TigerVNC,
-XFCE, noVNC, headed Chrome with a profile on the machine's own disk — passes
+KDE Plasma X11, noVNC, headed Chrome with a profile on the machine's own disk — passes
 it. Cube 0.7's `create-from-image` now accepts `--cmd` and `--probe`; the
 desktop image uses `/app/sandbox/template-warm.sh` and a `:6099/health`
 probe so those processes are already in the memory snapshot. After restore,

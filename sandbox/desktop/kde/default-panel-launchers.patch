@@ -1,0 +1,14 @@
+--- usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js
++++ usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js
+@@ -25,7 +25,10 @@
+ 
+ //panel.addWidget("org.kde.plasma.showActivityManager")
+ panel.addWidget("org.kde.plasma.pager")
+-panel.addWidget("org.kde.plasma.icontasks")
++var tasks = panel.addWidget("org.kde.plasma.icontasks")
++tasks.currentConfigGroup = ["General"]
++tasks.writeConfig("launchers", ["applications:systemsettings.desktop", "applications:org.kde.konsole.desktop", "preferred://filemanager", "preferred://browser"])
++tasks.currentConfigGroup = []
+ panel.addWidget("org.kde.plasma.marginsseparator")
+ 
+ /* Next up is determining whether to add the Input Method Panel

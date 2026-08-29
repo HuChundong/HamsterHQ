@@ -96,10 +96,27 @@ and this deployment's own brand are cordis plugins, named in
 of the profile's `node_modules` like any other. Upgrading DSH is a version
 bump and an acceptance run.
 
-Every image is a target of [`Dockerfile`](../Dockerfile) with the
-repository root as its build context. One `npm install` in the `deps` stage is
-shared by all of them, and the toolchain that builds `node-pty` stays in that
-stage rather than shipping in what runs.
+Every image is a target of [`Dockerfile`](../Dockerfile) with the repository
+root as its build context. The harness graph is resolved once in `deps` and
+shared by every consumer; its checked-in lock belongs to the pinned default
+version, so a normal upgrade refreshes that lock and uses `npm ci` rather than
+asking npm to place the whole graph again. An explicit version override still
+has a resolver fallback for experiments. The toolchain that builds `node-pty`
+stays in `deps` rather than shipping in what runs.
+
+The BuildKit Dockerfile frontend is pinned by digest too. Cache mounts and
+linked copies therefore do not silently change under an otherwise cached build.
+
+The sandbox is split by change frequency. `sandbox-runtime` holds the expensive,
+stable apt, Python, OfficeCLI and browser layers; `sandbox-contract` holds the
+paths and process metadata both variants promise; `sandbox-compose` adds DSH,
+the project plugins and configuration. The light image ends there. KDE is
+installed independently from `sandbox-contract` in `desktop-system`, and the
+final desktop receives the same composed payload through linked copy layers.
+Consequently a DSH or plugin change rebuilds the payload and shell harvest but
+does not reinstall Plasma, while a desktop-theme change does not resolve DSH.
+[`scripts/check-dockerfile.mjs`](../scripts/check-dockerfile.mjs) enforces these
+stage boundaries and keeps the lock aligned with `DSH_VERSION`.
 
 `@deepseek-ai/dsh-web-frontend` is installed by name alongside `dsh` rather than
 arriving through it. cordis resolves plugins by package name at load time, so
@@ -631,7 +648,7 @@ is chosen at image build by `BROWSER_SOURCE`:
   The light sandbox still omits VNC / noVNC / horust and keeps `--disable-gpu`
   in `browser-flags` (no X display; ANGLE+SwiftShader would crash-loop the
   GPU process). The **desktop** image (`hamsterhq-desktop`) is where TigerVNC
-  + XFCE + noVNC return — 4 CPU / 8 GiB, frozen into the Cube template — and
+  + KDE Plasma X11 + noVNC return — 4 CPU / 8 GiB, frozen into the Cube template — and
   headed Chrome uses `desktop-chrome-flags` instead. The Linux build of the
   anti-detect binary also freezes a coherent Windows desktop
   identity at compile time (classic UA, Client Hints platform/version,
@@ -675,7 +692,7 @@ writes it into the tenant's workspace on every boot — rewritten rather than
 created once, so an image that moves the port cannot leave a volume pointing at
 the old answer.
 
-The desktop image freezes TigerVNC + XFCE + noVNC + headed Chrome into the
+The desktop image freezes TigerVNC + KDE Plasma X11 + noVNC + headed Chrome into the
 Cube template with `create-from-image --cmd /app/sandbox/template-warm.sh`
 and `--probe 6099` (Cube 0.7). After restore those processes are already in
 memory; `start-desktop.sh` only ensures them. The panel's Computer tab embeds

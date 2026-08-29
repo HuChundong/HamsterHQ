@@ -302,23 +302,53 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
     'test -x /app/sandbox/start-desktop.sh && test -x /app/sandbox/template-warm.sh && test -f /app/sandbox/desktop-health.mjs && echo ok || echo missing' \
     2>/dev/null || echo error)
   check 'desktop warm/ensure scripts are present' ok "$warm"
-  xfce=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
-    'command -v startxfce4 >/dev/null && command -v Xvnc >/dev/null && test -x /usr/share/novnc/utils/novnc_proxy && echo ok || echo missing' \
+  plasma=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
+    'command -v startplasma-x11 >/dev/null && command -v kwin_x11 >/dev/null \
+      && command -v Xvnc >/dev/null && test -x /usr/share/novnc/utils/novnc_proxy \
+      && echo ok || echo missing' \
     2>/dev/null || echo error)
-  check 'XFCE + TigerVNC + noVNC are installed' ok "$xfce"
+  check 'KDE Plasma X11 + TigerVNC + noVNC are installed' ok "$plasma"
+  streaming=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
+    'test "$VNC_GEOMETRY" = 1280x720 \
+      && test "$VNC_FRAME_RATE" = 45 \
+      && grep -Fq '\''${VNC_GEOMETRY:-1280x720}'\'' /app/sandbox/start-desktop.sh \
+      && grep -Fq '\''${VNC_FRAME_RATE:-45}'\'' /app/sandbox/start-desktop.sh \
+      && grep -Fq '\''quality=5&compression=1'\'' \
+           /root/.dsh/profiles/web/node_modules/dsh-artifact-panel/lib/client.js \
+      && echo ok || echo drifted' \
+    2>/dev/null || echo error)
+  check 'desktop ships the 720p fluid-streaming profile' ok "$streaming"
+  launchers=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
+    'layout=/usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js; \
+      grep -Fq '\''tasks.writeConfig("launchers", ['\'' "$layout" \
+      && grep -q "applications:org.kde.konsole.desktop" "$layout" \
+      && ! grep -q "applications:org.kde.discover.desktop" "$layout" \
+      && test -f /usr/share/applications/org.kde.konsole.desktop \
+      && echo ok || echo broken' \
+    2>/dev/null || echo error)
+  check 'the panel replaces unavailable Discover with Konsole' ok "$launchers"
+  node_runtime=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
+    'test "$(node --version | cut -d. -f1)" = v24 \
+      && test ! -e /usr/bin/node \
+      && ! dpkg-query -W nodejs libnode108 >/dev/null 2>&1 \
+      && echo ok || echo duplicate' \
+    2>/dev/null || echo error)
+  check 'desktop retains only the official Node 24 runtime' ok "$node_runtime"
   chrome=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
     'grep -q hamsterhq-hide-chrome /usr/share/novnc/vnc.html \
       && grep -q "display:none!important" /usr/share/novnc/vnc.html \
       && test -f /usr/share/novnc/app/styles/hamsterhq-hide-chrome.css \
-      && test -f /usr/share/backgrounds/hamsterhq/desktop.jpg \
-      && test -f /home/desktop/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml \
+      && test -d /usr/share/plasma/look-and-feel/com.github.vinceliuice.Fluent-round-dark-solid \
+      && test -d /usr/share/icons/Fluent-dark \
+      && test -d /usr/share/icons/Fluent-dark-cursors \
+      && test -f /home/desktop/.config/Kvantum/kvantum.kvconfig \
       && test -f /home/desktop/.config/mimeapps.list \
-      && test -f /home/desktop/.config/xfce4/helpers.rc \
       && test -x /usr/local/bin/chrome-launch \
+      && test -x /usr/local/bin/set-desktop-theme \
       && test "$(basename "$(readlink /usr/local/bin/google-chrome)")" = chrome-launch \
       && echo ok || echo missing' \
     2>/dev/null || echo error)
-  check 'noVNC chrome hidden, wallpaper and default browser seeded' ok "$chrome"
+  check 'noVNC chrome hidden, Fluent pair and default browser seeded' ok "$chrome"
 else
   echo
   echo "=== the desktop image ==="

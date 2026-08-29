@@ -73,9 +73,21 @@ harness 以钉住的版本从 npm 安装。这里没有任何东西去改它：�
 [`sandbox/harvest.patch.yml`](../sandbox/harvest.patch.yml) 里按名字声明，并像其他插件一样从
 profile 的 `node_modules` 解析。升级 DSH 就是改一个版本号，再跑一遍验收。
 
-每个镜像都是 [`Dockerfile`](../Dockerfile) 的一个 target，构建上下文为仓库
-根目录。`deps` 阶段里一次 `npm install` 供所有镜像共用，而编译 `node-pty` 的工具链留在那个
-阶段，不会进入真正运行的镜像。
+每个镜像都是 [`Dockerfile`](../Dockerfile) 的一个 target，构建上下文为仓库根目录。
+harness 依赖图只在 `deps` 中解析一次，并由所有使用方共享；仓库里的 lock 对应默认钉住的版本，
+因此正常升级会同步刷新 lock 并使用 `npm ci`，而不是让 npm 再放置一遍完整依赖图。显式覆盖版本
+仍保留一条供试验使用的解析回退路径。编译 `node-pty` 的工具链留在 `deps`，不会进入真正运行的镜像。
+
+BuildKit 的 Dockerfile frontend 也按 digest 固定，因此缓存挂载、链接复制不会在一次看似命中
+缓存的构建中随浮动标签静默变化。
+
+沙箱按变化频率分层。`sandbox-runtime` 装昂贵而稳定的 apt、Python、OfficeCLI 与浏览器；
+`sandbox-contract` 保存两种镜像共同承诺的路径和进程元数据；`sandbox-compose` 再加入 DSH、
+项目插件与配置，轻量镜像到这里结束。KDE 从 `sandbox-contract` 独立安装到 `desktop-system`，
+最终 desktop 再通过独立的复制层拿到同一份组合载荷。因此 DSH 或插件变化只重建载荷与外壳采集，
+不会重装 Plasma；桌面主题变化也不会重新解析 DSH。
+[`scripts/check-dockerfile.mjs`](../scripts/check-dockerfile.mjs) 会守住这些阶段边界，并检查 lock 与
+`DSH_VERSION` 一致。
 
 `@deepseek-ai/dsh-web-frontend` 是与 `dsh` 并列显式安装的，而不是通过它带进来。cordis 在
 加载时按包名解析插件，因此一份组合需要哪些包无法从依赖图推导——前端就无法从 CLI 沿依赖图
@@ -441,7 +453,7 @@ wheel 都有对应平台的预编译版，而从源码构建是唯一需要租�
 `/usr/local/bin/headless-shell` 背后的二进制由镜像构建时的 `BROWSER_SOURCE` 决定：
 
 - **`playwright`**（默认，CI 构建用）—— chrome-headless-shell，Playwright 自己固定版本的无界面 Chromium，由固定版本的 `@playwright/cli` 内置的那份 Playwright 安装，所以引擎正好是这个 CLI 版本所期待的构建。下载源是 npmmirror，因为这个仓库在中国境内构建，Playwright 默认的 CDN 正是会失败的那一步——和 OfficeCLI 走 CDN 是同一个原因。
-- **`antidetect`**（带有补丁二进制的生产主机构建用）——在该主机上编好的完整 Chromium，带反爬补丁（`navigator.webdriver` 恒为 false、产品名里没有 `Headless`、关掉自动化与坏 flag 的 infobar）。构建镜像前，主机把**最近一次**编译产出的 `chrome-dist/` rsync 进 `sandbox/browser-engine/`（见 [docs/cubesandbox.zh.md](cubesandbox.zh.md)）——不要从过期的打包镜像再抄一份。git 里这个目录只有占位——329 MB 从不入库。轻量沙箱仍然不带 VNC / noVNC / horust，并在 `browser-flags` 里保留 `--disable-gpu`（没有 X；ANGLE+SwiftShader 会让 GPU 进程崩溃循环）。**desktop** 镜像（`hamsterhq-desktop`）才是 TigerVNC + XFCE + noVNC 回来的地方——4 CPU / 8 GiB，冻进 Cube 模板——有头 Chrome 用 `desktop-chrome-flags`。这份 Linux 构建还会在编译期固化一套自洽的 Windows 桌面身份（经典 UA、Client Hints 的 platform/version、`NavigatorBase` 里冻结后的 `navigator.platform`、hardwareConcurrency、deviceMemory），因为拦 Linux 的站点读的是这些底层表面，不是页面脚本能改的那一层。语言和时区仍跟进程走（`--lang=zh-CN`，`start-browser.sh` 里的 `TZ=Asia/Shanghai`），这样换部署的语言不必再编一次 Chromium，又能和那套身份对齐。
+- **`antidetect`**（带有补丁二进制的生产主机构建用）——在该主机上编好的完整 Chromium，带反爬补丁（`navigator.webdriver` 恒为 false、产品名里没有 `Headless`、关掉自动化与坏 flag 的 infobar）。构建镜像前，主机把**最近一次**编译产出的 `chrome-dist/` rsync 进 `sandbox/browser-engine/`（见 [docs/cubesandbox.zh.md](cubesandbox.zh.md)）——不要从过期的打包镜像再抄一份。git 里这个目录只有占位——329 MB 从不入库。轻量沙箱仍然不带 VNC / noVNC / horust，并在 `browser-flags` 里保留 `--disable-gpu`（没有 X；ANGLE+SwiftShader 会让 GPU 进程崩溃循环）。**desktop** 镜像（`hamsterhq-desktop`）才是 TigerVNC + KDE Plasma X11 + noVNC 回来的地方——4 CPU / 8 GiB，冻进 Cube 模板——有头 Chrome 用 `desktop-chrome-flags`。这份 Linux 构建还会在编译期固化一套自洽的 Windows 桌面身份（经典 UA、Client Hints 的 platform/version、`NavigatorBase` 里冻结后的 `navigator.platform`、hardwareConcurrency、deviceMemory），因为拦 Linux 的站点读的是这些底层表面，不是页面脚本能改的那一层。语言和时区仍跟进程走（`--lang=zh-CN`，`start-browser.sh` 里的 `TZ=Asia/Shanghai`），这样换部署的语言不必再编一次 Chromium，又能和那套身份对齐。
 
 它取代了 Obscura——一个为内存而选的 30 MB 独立引擎——而这次替换是量出来的，不是
 偏好。量出了两件配置无法修复的事。Obscura 光栅化文字只用内嵌在二进制里的
@@ -468,7 +480,7 @@ agent 使用它的 skill，所以这个仓库不写自己的 skill。这和 Offi
 换了端口的镜像不会把某个卷留在旧答案上。
 
 desktop 镜像用 `create-from-image --cmd /app/sandbox/template-warm.sh` 与
-`--probe 6099`（Cube 0.7）把 TigerVNC + XFCE + noVNC + 有头 Chrome 冻进模板。还原
+`--probe 6099`（Cube 0.7）把 TigerVNC + KDE Plasma X11 + noVNC + 有头 Chrome 冻进模板。还原
 后这些进程已在内存里；`start-desktop.sh` 只做 ensure。面板的 Computer 标签嵌入
 `/computer/`（经隧道、会话鉴权的 noVNC）。轻量镜像仍在每次后端启动时用
 `start-browser.sh` 拉起无头 Chromium——端口检查后幂等——只读 Browser 标签轮询 CDP

@@ -135,7 +135,7 @@ if [ -x /usr/local/bin/dsh-agent ]; then
   /usr/local/bin/dsh-agent serve "$WORKSPACE" >/dev/null 2>&1 &
 fi
 
-# The display / browser stack. Desktop images carry start-desktop.sh (XFCE +
+# The display / browser stack. Desktop images carry start-desktop.sh (KDE +
 # TigerVNC + noVNC + headed Chrome); light images carry start-browser.sh
 # (headless CDP only). Desktop templates freeze the stack into the Cube
 # memory snapshot via template-warm.sh during create-from-image — after

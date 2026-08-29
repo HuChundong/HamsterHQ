@@ -8,7 +8,7 @@
 
 | 镜像 | Cube 别名前缀 | 创建规格 | 角色 |
 |---|---|---|---|
-| `hamsterhq-desktop` | `hamsterhq-desktop-<version>` | 4 CPU / 8 GiB，writable 8Gi | **默认。** XFCE + TigerVNC + noVNC + 有头 Chrome |
+| `hamsterhq-desktop` | `hamsterhq-desktop-<version>` | 4 CPU / 8 GiB，writable 8Gi | **默认。** KDE Plasma X11 + TigerVNC + noVNC + 有头 Chrome |
 | `hamsterhq-sandbox` | `hamsterhq-sandbox-<version>` | 2 CPU / 4 GiB，writable 8Gi | 轻量回滚；仅无头 CDP |
 
 `CUBE_TEMPLATE_ID` 指向 **desktop** 别名（全员）。轻量别名照常构建打 tag；回滚就是把 `CUBE_TEMPLATE_ID` 指回去再 `up -d`。可选在 `.env` 里写 `CUBE_TEMPLATE_ID_LIGHT` 给运维备忘——网关不读它。
@@ -30,10 +30,12 @@
 
 Cube 0.7 的 `create-from-image` 接受 `--cmd` 和 `--probe`。desktop 镜像用它们把**与租户无关**的栈冻进内存快照：
 
-- dbus、TigerVNC `:0`、XFCE、`127.0.0.1:6080` 上的 noVNC、有头 Chrome + CDP `:9222`，以及 `:6099` 上的小 health
+- dbus、TigerVNC `:0`、KDE Plasma X11、`127.0.0.1:6080` 上的 noVNC、有头 Chrome + CDP `:9222`，以及 `:6099` 上的小 health
+- 固定 1280 x 720 帧缓冲，最多每秒 45 次更新；Computer 面板把 noVNC 固定为 JPEG 画质 5、压缩 1，优先降低输入和画面延迟，而不是追求最高画质或最低带宽
 - 隐藏 noVNC 侧栏与连接状态条（`vnc.html` 上挂 CSS + 内联样式，与 weixin-bot 蓝本相同），Computer 面板只剩桌面
-- XFCE 壁纸种子为 `/usr/share/backgrounds/hamsterhq/desktop.jpg`
-- 默认浏览器为 `/usr/local/bin/chrome-launch`（`BROWSER_SOURCE=antidetect` 时走 `/opt/chrome`，否则 apt Chromium），经 mimeapps 与 XFCE `helpers.rc` 接到面板 / exo-open
+- 成对的 Fluent 浅色/深色 Plasma、Kvantum、图标和光标主题；为串流桌面关闭 Baloo 与 KWin 合成
+- 默认浏览器为 `/usr/local/bin/chrome-launch`（`BROWSER_SOURCE=antidetect` 时走 `/opt/chrome`，否则 apt Chromium），经 mimeapps 接入桌面
+- 只保留官方 Node 24；noVNC 静态资源从一次性 Debian 阶段复制，Debian Node 18 的打包依赖不进入最终镜像
 
 镜像仍然**不**声明 `CMD`。`--cmd /app/sandbox/template-warm.sh` 只覆盖模板构建那一次启动。还原后 `entrypoint.sh` 启动 dsh / 隧道 / reporter（租户才可知），并调用 `start-desktop.sh`——端口已在听时是空操作。
 

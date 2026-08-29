@@ -12,7 +12,7 @@ can pull from, and `cubemastercli` on the host.
 
 | Image | Cube alias prefix | Size at create | Role |
 |---|---|---|---|
-| `hamsterhq-desktop` | `hamsterhq-desktop-<version>` | 4 CPU / 8 GiB, writable 8Gi | **Default.** XFCE + TigerVNC + noVNC + headed Chrome |
+| `hamsterhq-desktop` | `hamsterhq-desktop-<version>` | 4 CPU / 8 GiB, writable 8Gi | **Default.** KDE Plasma X11 + TigerVNC + noVNC + headed Chrome |
 | `hamsterhq-sandbox` | `hamsterhq-sandbox-<version>` | 2 CPU / 4 GiB, writable 8Gi | Light rollback; headless CDP only |
 
 `CUBE_TEMPLATE_ID` points at the **desktop** alias for every plan. Keep the
@@ -43,14 +43,19 @@ so and Restart builds a new machine from the current template.
 Cube 0.7 `create-from-image` accepts `--cmd` and `--probe`. The desktop image
 uses them to freeze a **tenant-free** stack into the memory snapshot:
 
-- dbus, TigerVNC `:0`, XFCE, noVNC on `127.0.0.1:6080`, headed Chrome + CDP
+- dbus, TigerVNC `:0`, KDE Plasma X11, noVNC on `127.0.0.1:6080`, headed Chrome + CDP
   `:9222`, and a tiny health server on `:6099`
+- a fixed 1280 x 720 framebuffer at up to 45 updates/s; the Computer pane keeps
+  noVNC at JPEG quality 5 and compression 1 to favour input/frame latency over
+  maximum visual fidelity or minimum bandwidth
 - noVNC control bar / status chrome hidden (CSS + inline style on `vnc.html`,
   same cut as the weixin-bot blueprint) so the Computer pane is only the desktop
-- XFCE backdrop seeded to `/usr/share/backgrounds/hamsterhq/desktop.jpg`
+- paired Fluent light/dark Plasma, Kvantum, icon and cursor themes, with Baloo
+  and KWin compositing disabled for the streamed desktop
 - Default browser is `/usr/local/bin/chrome-launch` (anti-detect `/opt/chrome`
   when `BROWSER_SOURCE=antidetect`, else apt Chromium), wired through mimeapps
-  and XFCE `helpers.rc` so panel / exo-open start the same binary
+- only the official Node 24 runtime; noVNC assets come from a throw-away Debian
+  stage so its Debian Node 18 packaging dependency does not enter the image
 
 The image still declares **no** `CMD`. `--cmd /app/sandbox/template-warm.sh`
 overrides only the template-build boot. After restore, `entrypoint.sh` starts

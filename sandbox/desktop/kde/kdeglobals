@@ -1,0 +1,11 @@
+[General]
+ColorScheme=FluentDark
+
+[Icons]
+Theme=Fluent-dark
+
+[KDE]
+widgetStyle=kvantum-dark
+
+[Locale]
+Language=zh_CN:zh

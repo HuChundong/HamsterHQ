@@ -19,7 +19,7 @@ CubeSandbox 的模板不是镜像。它是镜像运行时拍下的快照，为�
 因此镜像不声明 `CMD`。`cube-entrypoint.sh` 只守着 envd，由网关在拿到那份只在创建时才存在的
 身份之后，通过 envd 的进程 API 为每个租户启动后端。
 
-这条规则是一道判据，不是一刀切。后端仍然通不过（身份、挂载、隧道 URL），绝不能冻结。桌面栈——TigerVNC、XFCE、noVNC、有头 Chrome 且 profile 在机器自己的磁盘上——能通过。Cube 0.7 的 `create-from-image` 现已接受 `--cmd` 与 `--probe`；desktop 镜像用 `/app/sandbox/template-warm.sh` 和 `:6099/health` probe，让这些进程已经在内存快照里。还原之后 `start-desktop.sh` 幂等：端口已在听就是空操作。轻量模板仍在每次后端启动时用 `start-browser.sh` 拉起无头 Chromium。
+这条规则是一道判据，不是一刀切。后端仍然通不过（身份、挂载、隧道 URL），绝不能冻结。桌面栈——TigerVNC、KDE Plasma X11、noVNC、有头 Chrome 且 profile 在机器自己的磁盘上——能通过。Cube 0.7 的 `create-from-image` 现已接受 `--cmd` 与 `--probe`；desktop 镜像用 `/app/sandbox/template-warm.sh` 和 `:6099/health` probe，让这些进程已经在内存快照里。还原之后 `start-desktop.sh` 幂等：端口已在听就是空操作。轻量模板仍在每次后端启动时用 `start-browser.sh` 拉起无头 Chromium。
 
 此前错误的结论：运行手册曾照着 E2B 的 `template build` 写过 `--start-cmd` / `--ready-cmd`，当时的 CLI 两个都没有，浏览器就被挪到每次后端启动上。这段历史对轻量镜像仍然成立；desktop 路径用的是 Cube 后来真正长出来的参数。
 

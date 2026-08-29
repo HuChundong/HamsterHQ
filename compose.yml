@@ -233,7 +233,8 @@ services:
     profiles: [build]
     networks: [hamsterhq-net]
 
-  # XFCE desktop variant. Built beside the light sandbox; never run by compose.
+  # KDE Plasma X11 desktop variant. Built beside the light sandbox; never run
+  # by compose.
   # Production points CUBE_TEMPLATE_ID at a Cube template made from this image.
   desktop:
     build:
