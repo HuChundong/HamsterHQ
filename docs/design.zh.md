@@ -441,7 +441,7 @@ wheel 都有对应平台的预编译版，而从源码构建是唯一需要租�
 `/usr/local/bin/headless-shell` 背后的二进制由镜像构建时的 `BROWSER_SOURCE` 决定：
 
 - **`playwright`**（默认，CI 构建用）—— chrome-headless-shell，Playwright 自己固定版本的无界面 Chromium，由固定版本的 `@playwright/cli` 内置的那份 Playwright 安装，所以引擎正好是这个 CLI 版本所期待的构建。下载源是 npmmirror，因为这个仓库在中国境内构建，Playwright 默认的 CDN 正是会失败的那一步——和 OfficeCLI 走 CDN 是同一个原因。
-- **`antidetect`**（带有补丁二进制的生产主机构建用）——在别处编好的完整 Chromium，带反爬补丁（`navigator.webdriver` 恒为 false、产品名里没有 `Headless`、关掉自动化与坏 flag 的 infobar）。构建镜像前，主机从 `anti-detect-chrome:v3` 把 `/opt/chrome` 抽到 `sandbox/browser-engine/`（见 [docs/cubesandbox.zh.md](cubesandbox.zh.md)）；git 里这个目录只有占位——329 MB 从不入库。那张镜像里一并带着的 VNC / noVNC / horust 栈刻意不取：这套部署已经有面板经 `/browser` 轮询截图，而 2–4 GB 的沙箱也养不起 TigerVNC。没有那套显示，ANGLE+SwiftShader 同样打不开 X，所以 `browser-flags` 保留 `--disable-gpu`——webdriver/UA 补丁仍然生效，换掉的只是 WebGL 指纹伪装，换来的是 GPU 进程不再崩溃循环。这份 Linux 构建还会在编译期固化一套自洽的 Windows 桌面身份（经典 UA、Client Hints 的 platform/version、`NavigatorBase` 里冻结后的 `navigator.platform`、hardwareConcurrency、deviceMemory），因为拦 Linux 的站点读的是这些底层表面，不是页面脚本能改的那一层。语言和时区仍跟进程走（`--lang=zh-CN`，`start-browser.sh` 里的 `TZ=Asia/Shanghai`），这样换部署的语言不必再编一次 Chromium，又能和那套身份对齐。
+- **`antidetect`**（带有补丁二进制的生产主机构建用）——在该主机上编好的完整 Chromium，带反爬补丁（`navigator.webdriver` 恒为 false、产品名里没有 `Headless`、关掉自动化与坏 flag 的 infobar）。构建镜像前，主机把**最近一次**编译产出的 `chrome-dist/` rsync 进 `sandbox/browser-engine/`（见 [docs/cubesandbox.zh.md](cubesandbox.zh.md)）——不要从过期的打包镜像再抄一份。git 里这个目录只有占位——329 MB 从不入库。轻量沙箱仍然不带 VNC / noVNC / horust，并在 `browser-flags` 里保留 `--disable-gpu`（没有 X；ANGLE+SwiftShader 会让 GPU 进程崩溃循环）。**desktop** 镜像（`hamsterhq-desktop`）才是 TigerVNC + XFCE + noVNC 回来的地方——4 CPU / 8 GiB，冻进 Cube 模板——有头 Chrome 用 `desktop-chrome-flags`。这份 Linux 构建还会在编译期固化一套自洽的 Windows 桌面身份（经典 UA、Client Hints 的 platform/version、`NavigatorBase` 里冻结后的 `navigator.platform`、hardwareConcurrency、deviceMemory），因为拦 Linux 的站点读的是这些底层表面，不是页面脚本能改的那一层。语言和时区仍跟进程走（`--lang=zh-CN`，`start-browser.sh` 里的 `TZ=Asia/Shanghai`），这样换部署的语言不必再编一次 Chromium，又能和那套身份对齐。
 
 它取代了 Obscura——一个为内存而选的 30 MB 独立引擎——而这次替换是量出来的，不是
 偏好。量出了两件配置无法修复的事。Obscura 光栅化文字只用内嵌在二进制里的
@@ -467,16 +467,13 @@ agent 使用它的 skill，所以这个仓库不写自己的 skill。这和 Offi
 境变量，所以由入口脚本在每次启动时写进租户的工作区；是重写而不是只创建一次，这样
 换了端口的镜像不会把某个卷留在旧答案上。
 
-浏览器随租户的后端一起启动，因为平台没有给出更早的位置：`cubemastercli template
-create-from-image` 不接受 start 或 ready 命令，所以最初设想的「把运行中的浏览器
-冻进模板」做不到——运行手册一度照着 E2B 的 template build 写下了这两个参数，而这
-个 CLI 两个都没有。那个设计留下来的部分是有意保留的。`sandbox/start-browser.sh`
-在端口检查之后幂等，所以经 envd 重启的后端迎面是已在运行的浏览器，而不是再拉起第
-二个；启动是后台方式，后端从不等它；脚本不认识任何租户——没有身份、没有挂载、
-profile 在机器自己的磁盘上——这正是模板 start 钩子所要求的形状，所以哪天 CLI 长出
-这个钩子，指过来即可，一行都不用改。profile 的落点自有其理由：晚于浏览器到来的挂
-载不能把它的文件盖在下面，而且 Chromium 的 profile 正是网络文件系统最不擅长的海
-量小文件负载。代价明码标出：cookie 不跨重建存活，随工作集而去，不随文件。
+desktop 镜像用 `create-from-image --cmd /app/sandbox/template-warm.sh` 与
+`--probe 6099`（Cube 0.7）把 TigerVNC + XFCE + noVNC + 有头 Chrome 冻进模板。还原
+后这些进程已在内存里；`start-desktop.sh` 只做 ensure。面板的 Computer 标签嵌入
+`/computer/`（经隧道、会话鉴权的 noVNC）。轻量镜像仍在每次后端启动时用
+`start-browser.sh` 拉起无头 Chromium——端口检查后幂等——只读 Browser 标签轮询 CDP
+JPEG。两套脚本都不认识租户：没有身份、没有挂载、profile 在机器自己的磁盘上，这正
+是 desktop 可以合法冻结、也是模板钩子历来要求的形状。
 
 浏览器只监听回环，这一条是承重的：CDP 端口就是以租户身份操作这个浏览器，谁能连
 上它，谁就能读租户所读、以租户身份发帖。换引擎交出去的是另一道栅栏，这里如实记

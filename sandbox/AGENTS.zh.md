@@ -20,7 +20,9 @@
    的；只改其中一个的 layout 变更，会把租户的文件留在没有东西去找的地方。
 4. 后台启动 dsh。
 5. 后台启动 reporter，如果它在的话。
-6. `wait` dsh，而且只 wait dsh。
+6. ensure 显示/浏览器栈（desktop 镜像用 `start-desktop.sh`，轻量用 `start-browser.sh`）。
+   Desktop 的 Cube 模板在 `create-from-image` 时已冻结该栈；ensure 此时多为端口检查空操作。
+7. `wait` dsh，而且只 wait dsh。
 
 tunnel 是那个组合里的一个插件，不是第二个进程，所以只有一样东西要等，也没有什么需要与它保持
 同步。

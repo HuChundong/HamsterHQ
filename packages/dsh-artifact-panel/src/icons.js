@@ -127,6 +127,9 @@ const glyphs = () => (TABLE ??= {
   // already marks an .html file in the tree, and a tool and a file sharing
   // one mark is what `brush` was introduced to end.
   window: extracted.window,
+  // Session-header Computer control (and the tab it opens). laptop-minimal
+  // from lucide — not `window`, which already means the Browser tab.
+  computer: extracted.computer,
   shrink: extracted.shrink,
   file: extracted.file,
   image: extracted.image,

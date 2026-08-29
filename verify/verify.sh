@@ -618,6 +618,13 @@ else
 fi
 
 echo
+echo '=== 11b. The computer plane is session-gated ==='
+docker compose cp verify-login.mjs gateway:/app/verify-login.mjs > /dev/null 2>&1 || NODE_FAIL=1
+docker compose cp verify-computer.mjs gateway:/app/verify-computer.mjs > /dev/null 2>&1 || NODE_FAIL=1
+docker compose exec -T -e GATEWAY=http://localhost:8080 -e "VERIFY_ALICE=$ALICE" \
+  gateway node /app/verify-computer.mjs || NODE_FAIL=1
+
+echo
 echo '=== 13. The interface loads with no sandbox running ==='
 echo '     (the point of serving the whole frontend from the web deployment)'
 echo '     DESTRUCTIVE: removes every sandbox, ending any session open in a browser.'

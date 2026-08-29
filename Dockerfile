@@ -9,7 +9,8 @@
 #
 # Stages:
 #   deps       one npm install, shared by everything below
-#   sandbox    one tenant's dsh, beside this project's own plugins
+#   sandbox    one tenant's dsh, beside this project's own plugins (light)
+#   desktop    XFCE + TigerVNC + noVNC on top of sandbox (default Cube template)
 #   shell      boot the composition once and save what it serves
 #   web        nginx over the frontend build and that shell
 #   gateway    the authenticating front door; no harness code at all
@@ -368,11 +369,11 @@ RUN set -eux; \
 #
 #   playwright   (default, CI) — chrome-headless-shell, installed by the
 #                  CLI's own bundled Playwright so the two cannot drift.
-#   antidetect   (production)  — a full Chromium built elsewhere with the
+#   antidetect   (production)  — a full Chromium built on the host with the
 #                  anti-detect patches (navigator.webdriver false, no
 #                  Headless in the UA, automation infobars off, SwiftShader
 #                  WebGL). The binary is copied from sandbox/browser-engine/
-#                  which a production host fills from anti-detect-chrome:v3
+#                  which a production host fills from its latest chrome-dist/
 #                  before the build (see docs/cubesandbox.md). The directory
 #                  in git holds only a placeholder — 329 MB never lands here.
 #
@@ -390,7 +391,7 @@ RUN npm install -g --no-audit --no-fund "@playwright/cli@${PLAYWRIGHT_CLI_VERSIO
  && playwright-cli --help > /dev/null
 
 # Candidate tree from the build context. Empty under CI (placeholder only);
-# the full /opt/chrome contents under a production host that ran the extract
+# the full /opt/chrome contents under a production host that synced chrome-dist
 # step in docs/cubesandbox.md. Selected or discarded by the RUN below.
 COPY sandbox/browser-engine /tmp/chrome-candidate
 
@@ -637,6 +638,94 @@ RUN mkdir -p "$WORKSPACE" "$DSH_HOME" \
 WORKDIR /mnt/workspace
 EXPOSE 49983
 ENTRYPOINT ["/usr/local/bin/cube-entrypoint.sh"]
+
+# ---------------------------------------------------------------- desktop ----
+# XFCE + TigerVNC + noVNC + headed Chrome on top of the light sandbox.
+#
+# Built as a separate image (`hamsterhq-desktop`) so the light template stays
+# the rollback path. Cube create-from-image freezes this stack with
+# `--cmd /app/sandbox/template-warm.sh --probe 6099`; tenant boots only ensure
+# it via start-desktop.sh (no-op after a memory restore).
+FROM sandbox AS desktop
+
+ARG APT_MIRROR=
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources 2>/dev/null \
+      || sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list; \
+    fi
+
+# Desktop stack only — no OpenCode, no sshd, no playwright-mcp (tempvm product
+# surface, not this deployment's). Chromium for headed mode when the light
+# stage shipped Playwright's headless-shell alone; antidetect builds already
+# have /opt/chrome/chrome and skip the apt chromium.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       dbus-x11 \
+       tigervnc-standalone-server \
+       novnc websockify \
+       xfce4-session xfce4-panel xfwm4 xfdesktop4 xfce4-settings xfce4-terminal \
+       thunar \
+       xdg-desktop-portal xdg-desktop-portal-gtk \
+       x11-xserver-utils \
+       locales \
+  && if [ ! -x /opt/chrome/chrome ]; then \
+       apt-get install -y --no-install-recommends chromium \
+       && ln -sf "$(command -v chromium || command -v chromium-browser)" /usr/local/bin/chrome; \
+     fi \
+  && sed -i 's/^# *zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen \
+  && locale-gen zh_CN.UTF-8 \
+  && printf '%s\n' '{"name":"novnc","version":"1.3.0"}' > /usr/share/novnc/package.json \
+  && rm -rf /var/lib/apt/lists/*
+
+# Dedicated home for the desktop session (not the tenant mount). Profile and
+# XFCE config stay on the machine's own disk so template freeze is legal.
+RUN useradd --create-home --home-dir /home/desktop --shell /bin/bash desktop \
+  && mkdir -p /home/desktop/.config \
+  && chown -R desktop:desktop /home/desktop
+
+ENV DESKTOP_HOME=/home/desktop
+ENV LANG=zh_CN.UTF-8
+ENV LANGUAGE=zh_CN:zh
+ENV LC_ALL=zh_CN.UTF-8
+
+# noVNC chrome hide + XFCE wallpaper + default browser — same cuts as the
+# weixin-bot desktop template this image was blueprinted from.
+COPY sandbox/desktop/ /tmp/desktop-assets/
+RUN mkdir -p /usr/share/backgrounds/hamsterhq \
+      /usr/share/applications \
+      /usr/share/xfce4/helpers \
+      /home/desktop/.config/xfce4/xfconf/xfce-perchannel-xml \
+      /home/desktop/.local/share/applications \
+  && cp /tmp/desktop-assets/wallpaper.jpg /usr/share/backgrounds/hamsterhq/desktop.jpg \
+  && cp /tmp/desktop-assets/xfce4-desktop.xml \
+       /home/desktop/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml \
+  && cp /tmp/desktop-assets/mimeapps.list /home/desktop/.config/mimeapps.list \
+  && cp /tmp/desktop-assets/helpers.rc /home/desktop/.config/xfce4/helpers.rc \
+  && cp /tmp/desktop-assets/google-chrome-custom.desktop \
+       /home/desktop/.local/share/applications/google-chrome-custom.desktop \
+  && cp /tmp/desktop-assets/google-chrome-custom.desktop \
+       /usr/share/applications/google-chrome-custom.desktop \
+  && cp /tmp/desktop-assets/xfce-helper-google-chrome.desktop \
+       /usr/share/xfce4/helpers/google-chrome.desktop \
+  && install -m 0755 /tmp/desktop-assets/chrome-launch.sh /usr/local/bin/chrome-launch \
+  && ln -sfn /usr/local/bin/chrome-launch /usr/local/bin/chrome \
+  && ln -sfn /usr/local/bin/chrome-launch /usr/local/bin/google-chrome \
+  && cp /tmp/desktop-assets/novnc-hide-chrome.css \
+       /usr/share/novnc/app/styles/hamsterhq-hide-chrome.css \
+  && sed -i 's|href="app/styles/base.css">|href="app/styles/base.css">\n    <link rel="stylesheet" href="app/styles/hamsterhq-hide-chrome.css">\n    <!-- hide noVNC chrome (weixin-bot cut) -->\n    <style>#noVNC_control_bar_anchor,#noVNC_control_bar,#noVNC_control_bar_hint,#noVNC_status,#noVNC_transition{display:none!important}#noVNC_status.noVNC_status_error.noVNC_open{display:flex!important}html,body,#noVNC_container{background-color:var(--hamsterhq-novnc-bg,#1b1b1c)!important;background-image:none!important}#noVNC_container{border-radius:0!important}</style>\n    <script>(function(){try{var b=new URLSearchParams(location.search).get("bg");if(b)document.documentElement.style.setProperty("--hamsterhq-novnc-bg",decodeURIComponent(b))}catch(e){}})();</script>|' \
+       /usr/share/novnc/vnc.html \
+  && sed -i \
+       -e 's/id="noVNC_control_bar_anchor" class="noVNC_vcenter"/id="noVNC_control_bar_anchor" class="noVNC_vcenter" style="display: none;"/' \
+       -e 's/<div id="noVNC_control_bar">/<div id="noVNC_control_bar" style="display: none;">/' \
+       /usr/share/novnc/vnc.html \
+  && chown -R desktop:desktop /home/desktop/.config /home/desktop/.local \
+  && rm -rf /tmp/desktop-assets
+
+COPY sandbox/start-desktop.sh sandbox/template-warm.sh sandbox/desktop-health.mjs \
+     sandbox/desktop-chrome-flags /app/sandbox/
+RUN chmod +x /app/sandbox/start-desktop.sh /app/sandbox/template-warm.sh \
+  && printf 'export DESKTOP_HOME=%s\nexport LANG=%s\nexport LANGUAGE=%s\nexport LC_ALL=%s\nexport SANDBOX_VARIANT=desktop\n' \
+       "$DESKTOP_HOME" "$LANG" "$LANGUAGE" "$LC_ALL" >> /app/sandbox/env.sh
 
 # ---------------------------------------------------------------- landing ----
 # Build the front door.

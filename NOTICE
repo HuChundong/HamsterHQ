@@ -17,20 +17,21 @@ In-tree redistributed material
 Copyright holder: Copyright (C) 2026 Tencent. Author: Tencent Inc.
 License: Apache License 2.0.
 
-Location and use: vendor/cubesandbox-sdk-0.3.0+pr1485+bytes.tgz. The
-gateway uses this package to create and reclaim CubeSandbox sandboxes.
+Location and use:
+vendor/cubesandbox-sdk-0.3.0+82a807ab+e2b-read-format.tgz. The gateway
+uses this package to create and reclaim CubeSandbox sandboxes.
 
 Origin: built from the sdk/node tree of TencentCloud/CubeSandbox at
-revision 9c4837ec, with the change from
-https://github.com/TencentCloud/CubeSandbox/pull/1485, and a second
-change in this tree: files.read honours format: 'bytes' and returns a
-Uint8Array instead of decoding the file as UTF-8.
+revision 82a807ab on branch feat/node-sdk-files-read-format
+(https://github.com/TencentCloud/CubeSandbox/pull/1571,
+https://github.com/TencentCloud/CubeSandbox/issues/1570). That revision
+adds e2b-compatible files.read formats (text / bytes / blob / stream).
+Until it merges to upstream master, this tree carries the same artifact.
 
-This is a modified version of the upstream package. The modifications
-are that commands.run no longer sends a Connect-Timeout-Ms header that
-has already expired, and that files.read can return a file's bytes
-unaltered. Apache License 2.0 section 4(b) requires that these
-modifications be stated prominently.
+This is a modified version of the upstream package relative to the last
+released tag: the modification is the e2b-compatible read formats above.
+Apache License 2.0 section 4(b) requires that these modifications be
+stated prominently.
 
 The tarball does not contain a LICENSE file. The full upstream LICENSE,
 including the third-party appendix, is licenses/CubeSandbox-LICENSE.txt.
@@ -112,6 +113,12 @@ web/landing/cubesandbox.svg
 Upstream brand graphic used to identify an interoperability target.
 This file is not licensed under Apache License 2.0. See Trademarks
 below.
+
+sandbox/desktop/wallpaper.jpg
+-----------------------------
+Desktop backdrop (1280x720 JPEG) carried from the weixin-bot desktop
+image that blueprinted the hamsterhq-desktop XFCE stack. Installed in
+the desktop image as /usr/share/backgrounds/hamsterhq/desktop.jpg.
 
 
 Build-time / image-only material

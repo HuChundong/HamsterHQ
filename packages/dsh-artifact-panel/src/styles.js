@@ -208,42 +208,24 @@ export const CSS = `
   }
   /* The showing tab, told apart by its ground.
 
-     \`button-ghost-active-fill\` is the token for a pressed ghost button —
-     a state that lasts as long as a finger is down, so it is a whisper by
-     design, and one shade off the panel's own surface. Held for as long as
-     a tab is open it was not a state anyone could see: measured in the
-     running panel it was 1.12:1 against the panel's surface in the light
-     theme, and 1.005:1 against the HOVER fill. The tab that was open and
-     whatever tab the pointer happened to be over were the same colour to
-     three decimal places.
+     Same token as every other durable "this is selected" surface in the
+     panel — the tree row, the segment track, the fold that is on —
+     \`--dsw-alias-button-ghost-active-fill\`. Measured on the light skin:
+     panel \`#fbfbfa\`, this fill \`#f0eeec\`; on dark: panel \`#232324\`,
+     fill \`#43454a\`. Both are opaque steps the eye can hold.
 
-     One step of an interactive fill is not enough on its own — every one
-     the theme publishes is a thin tint meant for a state that lasts a
-     moment, and this state lasts as long as the file is open. So two are
-     laid over each other: the held-interactive fill as the colour, and the
-     panel's own division token painted over it as a flat image. Both are
-     translucent, so the ground lands about twice as far from the surface
-     as either reaches alone — a visible step in both schemes, and still a
-     neutral one, which is what a row of six of them needs.
+     \`interactive-bg-active\` was tried first. It is a translucent press
+     tint (\`#2631481a\` light / \`#ffffff24\` dark) meant for a finger-down
+     moment, and stacked with \`border-l2\` it still read as the same wash
+     as hover — the open tab and the hovered neighbour were one colour.
+     Docs/artifact-panel.md names ghost-active-fill as the verified
+     pressed token; use it, and do not invent a second selected look.
 
-     Layered rather than outlined, and that is the requirement rather than
-     a preference: a ring says "focused", the eye reads it as the thing it
-     is about to act on rather than the thing it is looking at, and it
-     draws a second edge inside a row that already has the rule under it.
-     The ground is what a tab IS.
-
-     The ground and the label colour, and nothing else. A heavier weight
-     was here too and had to go once a tab took its width from its name:
-     500 measures wider than 400, so selecting a tab widened it and pushed
-     every tab to its right along by a couple of pixels — a row that
-     twitches under the pointer that just clicked it. The ground says the
-     same thing and costs no width. */
+     Ground and label colour only. A heavier weight was dropped once a
+     tab took its width from its name: 500 measures wider than 400, so
+     selecting twitched the whole strip. */
   .${NS}-tab[aria-selected='true'] {
-    background-color: var(--dsw-alias-interactive-bg-active);
-    background-image: linear-gradient(
-      var(--dsw-alias-border-l2),
-      var(--dsw-alias-border-l2)
-    );
+    background: var(--dsw-alias-button-ghost-active-fill);
     color: var(--dsw-alias-label-primary);
   }
   /* Pushes the closing control to the panel's own edge. */
@@ -303,7 +285,13 @@ export const CSS = `
      empty space for the tab the pointer is not on. Out of the flow it
      costs nothing until it is wanted, and it lands on the label's gutter:
      empty ground when the name fits, and the tail the fade has already
-     given up when it does not. */
+     given up when it does not.
+
+     Opaque solid fills only — layered translucent tints collapsed into
+     the panel surface in light mode and left the glyph floating on the
+     name. \`interactive-bg-hover-solid\` is the theme's opaque hover chip;
+     on the selected tab the panel surface itself sits on ghost-active-
+     fill as a lighter (light) / darker (dark) chip. */
   .${NS}-tab-close {
     position: absolute;
     top: 50%;
@@ -318,60 +306,28 @@ export const CSS = `
     border: none;
     border-radius: 4px;
     padding: 0;
-    /* The tab's own ground, repainted under the key so it is opaque.
-       
-       The key is laid over the name's tail rather than given a column, and
-       the tail is faded but not gone — so a transparent key was a glyph
-       drawn on top of letters, which is two drawings in 16px and neither
-       of them legible. What goes behind it has to be the ground it sits
-       on, or the key reads as a chip stuck onto the tab.
-       
-       So it is built the way the tab's ground is: the panel's own surface
-       as an opaque colour, and the same translucent tint the tab is
-       wearing painted over it. A skin that fills the panel with
-       \`--dsw-specific-sidebar-fill\` instead is the one case where these
-       two come out different — the key is 16px, and the alternative is a
-       key nobody can read. */
-    background-color: var(--dsw-alias-bg-layer-1);
-    background-image: linear-gradient(
-      var(--dsw-alias-interactive-bg-hover),
-      var(--dsw-alias-interactive-bg-hover)
-    );
-    color: var(--dsw-alias-label-tertiary);
+    background: var(--dsw-alias-interactive-bg-hover-solid);
+    color: var(--dsw-alias-label-secondary);
     cursor: pointer;
   }
-  /* On the showing tab the ground is the other one, so the key repaints
-     that instead — both layers of it. */
   .${NS}-tab[aria-selected='true'] .${NS}-tab-close {
-    background-image:
-      linear-gradient(
-        var(--dsw-alias-interactive-bg-active),
-        var(--dsw-alias-interactive-bg-active)
-      ),
-      linear-gradient(
-        var(--dsw-alias-border-l2),
-        var(--dsw-alias-border-l2)
-      );
+    background: var(--dsw-alias-bg-layer-1);
+    color: var(--dsw-alias-label-secondary);
   }
   .${NS}-tab:hover .${NS}-tab-close,
   .${NS}-tab-close:focus-visible {
     opacity: 1;
   }
-  /* Under the pointer it darkens by one more layer of the same token,
-     which is a step up from either ground. Both selectors, because the
-     selected rule above outranks a bare \`:hover\` and would otherwise keep
-     the key looking untouched on the one tab most likely to be closed. */
-  .${NS}-tab .${NS}-tab-close:hover,
+  /* Under the pointer: step away from the chip's resting fill. Unselected
+     uses ghost-active-hover (darker wash); on the selected tab that token
+     is almost the selected ground itself in light mode, so the opaque
+     hover-solid lifts the chip off ghost-active-fill instead. */
+  .${NS}-tab .${NS}-tab-close:hover {
+    background: var(--dsw-alias-button-ghost-active-hover);
+    color: var(--dsw-alias-label-primary);
+  }
   .${NS}-tab[aria-selected='true'] .${NS}-tab-close:hover {
-    background-image:
-      linear-gradient(
-        var(--dsw-alias-border-l2),
-        var(--dsw-alias-border-l2)
-      ),
-      linear-gradient(
-        var(--dsw-alias-border-l2),
-        var(--dsw-alias-border-l2)
-      );
+    background: var(--dsw-alias-interactive-bg-hover-solid);
     color: var(--dsw-alias-label-primary);
   }
 
@@ -611,6 +567,43 @@ export const CSS = `
     height: auto;
     border-radius: 6px;
     border: 1px solid var(--dsw-alias-border-l1);
+  }
+
+  /* Interactive desktop (noVNC). The iframe fills the pane; the bar is the
+     only chrome we add so the tenant can pop the desktop into its own window. */
+  .${NS}-computer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background: var(--dsw-alias-bg-layer-1);
+  }
+  .${NS}-computer-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--dsw-alias-border-l1);
+    font-family: var(--dsw-font-family);
+    font-size: 12px;
+    color: var(--dsw-alias-label-secondary);
+  }
+  .${NS}-computer-open {
+    color: var(--dsw-alias-label-secondary);
+    text-decoration: none;
+  }
+  .${NS}-computer-open:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+  .${NS}-computer-frame {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    border: 0;
+    /* Matches the shell; the iframe letterbox is painted to the same token. */
+    background: var(--dsw-alias-bg-layer-1);
   }
 
   /* The row menu and the questions it leads to. Both are drawn at the
@@ -1117,7 +1110,8 @@ export const CSS = `
      here is left pointing at a hole. */
   [data-slot='conversation.session.header.utilities'] button,
   .${NS}-opener,
-  .${NS}-toggle {
+  .${NS}-toggle,
+  .${NS}-computer-launch {
     flex: none;
     display: inline-flex;
     align-items: center;
@@ -1134,7 +1128,8 @@ export const CSS = `
   }
   [data-slot='conversation.session.header.utilities'] button:hover,
   .${NS}-opener:hover,
-  .${NS}-toggle:hover {
+  .${NS}-toggle:hover,
+  .${NS}-computer-launch:hover {
     background: var(--dsw-alias-interactive-bg-hover);
     color: var(--dsw-alias-label-primary);
   }
@@ -1152,7 +1147,8 @@ export const CSS = `
   /* Pressed is a state of the control, not a second control: the same
      button says the panel is open rather than turning into a different
      one. */
-  .${NS}-toggle[aria-pressed='true'] {
+  .${NS}-toggle[aria-pressed='true'],
+  .${NS}-computer-launch[aria-pressed='true'] {
     background: var(--dsw-alias-interactive-bg-active);
     color: var(--dsw-alias-label-primary);
   }

@@ -1090,12 +1090,11 @@ async function handleRequest(req, res) {
 
   // The planes a tenant's browser talks to their own backend over. `/api` is
   // dsh's own; `/files` and `/browser` are channels `dsh-sandbox-host`
-  // registers — uploads and the watched headless browser — because `/api`
-  // accepts exactly one interceptor and dsh already holds it. All are the
-  // same thing to the gateway — a request that means nothing without knowing
-  // whose sandbox it belongs in — so they authenticate and route identically,
-  // and only the sandbox knows what is on them.
-  if (path.startsWith('/api') || path.startsWith('/files') || path.startsWith('/browser')) {
+  // registers; `/computer` is noVNC on the sandbox's :6080, reached through
+  // the same tunnel with a different loopback authority. All authenticate
+  // and route identically; only the sandbox knows what is on them.
+  if (path.startsWith('/api') || path.startsWith('/files') || path.startsWith('/browser')
+      || path.startsWith('/computer')) {
     const caller = await callerOf(req, res)
     if (caller === undefined) {
       res.writeHead(401, { 'Content-Type': 'text/plain' })
@@ -1164,7 +1163,7 @@ server.on('upgrade', (req, socket, head) => {
     return
   }
 
-  if (!path.startsWith('/api/')) {
+  if (!path.startsWith('/api/') && !path.startsWith('/computer')) {
     socket.write('HTTP/1.1 404 Not Found\r\n\r\n')
     socket.destroy()
     return

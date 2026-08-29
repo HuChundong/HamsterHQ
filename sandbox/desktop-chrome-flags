@@ -1,0 +1,36 @@
+# How the desktop sandbox's headed Chrome is started: one flag per line.
+# Shared by template-warm.sh and start-desktop.sh. No --headless: the page
+# paints on DISPLAY=:0 behind TigerVNC. CDP stays on loopback :9222.
+
+# The container grants no unprivileged user namespaces for Chromium's own
+# sandbox, and the isolation boundary is the tenant's machine itself.
+--no-sandbox
+
+# A container's /dev/shm is smaller than Chromium assumes.
+--disable-dev-shm-usage
+
+# CDP is load-bearing: agent tools and the panel share this browser. Loopback
+# only — anything that can reach the port acts as the tenant.
+--remote-debugging-address=127.0.0.1
+--remote-allow-origins=*
+
+# ANGLE + SwiftShader when the anti-detect binary ships its ICD; otherwise
+# these are inert. Prefer a working WebGL fingerprint over --disable-gpu.
+--enable-webgl
+--use-gl=angle
+--use-angle=swiftshader
+--disable-gpu-compositing
+--disable-vulkan
+--ignore-gpu-blocklist
+
+--no-first-run
+--start-maximized
+--lang=zh-CN
+--accept-lang=zh-CN,zh
+
+# Same memory posture as the light sandbox where it still applies.
+--disable-background-networking
+--disable-background-timer-throttling
+--disable-breakpad
+--disable-sync
+--password-store=basic

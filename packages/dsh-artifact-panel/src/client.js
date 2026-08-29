@@ -2,10 +2,10 @@
  * The right-hand panel, browser half.
  *
  * Four kinds of thing and nothing else: the workspace's files, a shell in the
- * sandbox, the page the agent is building, and the browser it is reading. See
- * `docs/artifact-panel.zh.md` for the product judgement that bounds the list —
- * the bound is what keeps this from growing into an IDE, and it is a decision
- * rather than a backlog.
+ * sandbox, the page the agent is building, and the browser it is reading.
+ * Computer (the XFCE desktop) opens from the session header, not from this
+ * panel's tool list — see `docs/artifact-panel.zh.md` for the product
+ * judgement that bounds the list.
  *
  * Everything it shows comes from the sandbox over the gateway's panel routes:
  * `/sandbox/fs/*` to list and change, `/sandbox/raw/*` for bytes, a ticketed
@@ -73,6 +73,7 @@
 import terminalCss from '@xterm/xterm/css/xterm.css'
 import { basename, insideWorkspace } from './api.js'
 import { BrowserPane, setBrowserPlane } from './browser-pane.js'
+import { ComputerPane } from './computer-pane.js'
 import { Canvas } from './canvas.js'
 import {
   ANCHOR, DEFAULT_WIDTH, DRAGGING, HEADER_HEIGHT_VAR, MAX_FRACTION, MIN_WIDTH, NS, WIDTH_VAR,
@@ -306,6 +307,33 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Open the sandbox desktop from the session header.
+     *
+     * Not a TOOLS entry: Computer is a first-class surface beside Session log
+     * and the panel toggle, not one more choice in the sidebar empty state.
+     * Always drawn (open panel or not) so it does not disappear once the
+     * panel is already showing something else.
+     * @returns {object} the element.
+     */
+    function ComputerLaunch() {
+      const t = useT()
+      const state = useStore()
+      const activeId = state.groups[state.session]?.activeId
+      const showing = state.open && activeId === 'computer'
+      return h('button', {
+        type: 'button',
+        className: `${NS}-computer-launch`,
+        title: t('computer.launch'),
+        'aria-label': t('computer.launch'),
+        'aria-pressed': showing ? 'true' : 'false',
+        onClick: () => {
+          store.openTab({ id: 'computer', icon: 'computer' })
+          store.write({ open: true })
+        },
+      }, icon('computer', 15))
+    }
+
+    /**
      * Catches a render failure and says what it was.
      *
      * Without this a thrown render unmounts the whole root, and the panel
@@ -523,7 +551,9 @@ window.__ModuleLoader__.load({
                 ? h(Canvas, null)
                 : active.id === 'terminal'
                   ? h(TerminalPane, null)
-                  : active.id === 'browser'
+                  : active.id === 'computer'
+                    ? h(ComputerPane, null)
+                    : active.id === 'browser'
                     ? h(BrowserPane, null)
                     : h(Placeholder, { tab: active })),
         h(RowActions, null),
@@ -644,9 +674,17 @@ window.__ModuleLoader__.load({
           return () => { workspaces.openPath = original }
         }, 'artifact-panel: open files in the panel')
 
-        // The toggle takes a real seat, because one exists: the header's
-        // utilities row is a declared slot, and the Session log button is
-        // already in it. Nothing here touches the app's DOM.
+        // Session log (harness) → Computer → panel toggle. Computer is not a
+        // TOOLS entry: higher priority than the sidebar empty-state choices,
+        // and always reachable from the header. order 5 sits between Session
+        // log (earlier) and the toggle (10).
+        ctx.effect(
+          () => ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register(
+            { name: 'conversation.session.header.utilities', id: 'artifact-panel-computer', order: 5 },
+            ComputerLaunch,
+          )),
+          'artifact-panel: Computer in the session header',
+        )
         ctx.effect(
           () => ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register(
             { name: 'conversation.session.header.utilities', id: 'artifact-panel-toggle', order: 10 },

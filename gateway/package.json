@@ -6,7 +6,7 @@
   "description": "The authenticating front door: sessions, accounts, and one sandbox per tenant.",
   "main": "src/server.js",
   "dependencies": {
-    "@cubesandbox/sdk": "file:../vendor/cubesandbox-sdk-0.3.0+pr1485+bytes.tgz",
+    "@cubesandbox/sdk": "file:../vendor/cubesandbox-sdk-0.3.0+82a807ab+e2b-read-format.tgz",
     "@xterm/xterm": "^5.5.0",
     "dsh-ground": "file:../packages/dsh-ground",
     "dsh-icons": "file:../packages/dsh-icons",

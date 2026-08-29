@@ -132,7 +132,7 @@ services:
       SANDBOX_NETWORK: ${COMPOSE_NETWORK:-hamsterhq_hamsterhq-net}
       CUBE_API_URL: ${CUBE_API_URL:-http://127.0.0.1:3000}
       CUBE_API_KEY: ${CUBE_API_KEY:-e2b_000000}
-      CUBE_TEMPLATE_ID: ${CUBE_TEMPLATE_ID:-hamsterhq-sandbox}
+      CUBE_TEMPLATE_ID: ${CUBE_TEMPLATE_ID:-hamsterhq-desktop}
       GATEWAY_TUNNEL_URL: ws://gateway:8080/_tunnel
       # Signs the access tokens. Changing it invalidates every one in
       # circulation, which signs everyone out until their browser refreshes.
@@ -230,6 +230,26 @@ services:
         BROWSER_SOURCE: ${BROWSER_SOURCE:-playwright}
         SANDBOX_VERSION: ${SANDBOX_VERSION:-dev}
     image: hamsterhq-sandbox:latest
+    profiles: [build]
+    networks: [hamsterhq-net]
+
+  # XFCE desktop variant. Built beside the light sandbox; never run by compose.
+  # Production points CUBE_TEMPLATE_ID at a Cube template made from this image.
+  desktop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: desktop
+      args:
+        DSH_VERSION:
+        APT_MIRROR: ${APT_MIRROR:-}
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        AGENT_PYTHON_PACKAGES:
+        TZ: ${DEPLOYMENT_TZ:-UTC}
+        BROWSER_SOURCE: ${BROWSER_SOURCE:-playwright}
+        SANDBOX_VERSION: ${SANDBOX_VERSION:-dev}
+    image: hamsterhq-desktop:latest
     profiles: [build]
     networks: [hamsterhq-net]
 

@@ -51,7 +51,7 @@ class SandboxTunnel {
     this.lastActiveAt = Date.now()
     /** @type {Map<string, {res: import('node:http').ServerResponse, timer: NodeJS.Timeout}>} */
     this.httpStreams = new Map()
-    /** @type {Map<string, {socket: import('ws').WebSocket | undefined, settle: ((ok: boolean) => void) | undefined, pending: string[]}>} */
+    /** @type {Map<string, {socket: import('ws').WebSocket | undefined, settle: ((ok: boolean) => void) | undefined, pending: Array<{data: string|Buffer, binary: boolean}>}>} */
     this.wsStreams = new Map()
   }
 
@@ -106,14 +106,16 @@ class SandboxTunnel {
   }
 
   /**
-   * Open one downlink WebSocket inside the sandbox and bridge it to the browser.
+   * Open one WebSocket inside the sandbox and bridge it to the browser.
+   *
+   * Used for dsh event downlinks (`/api/...`) and for noVNC (`/computer/...`).
+   * Browser→sandbox traffic is forwarded as `wsdata` frames (binary as base64)
+   * so interactive desktops work; dsh event sockets typically only push.
    *
    * Resolution waits for the sandbox to confirm its local upgrade, so a browser
-   * upgrade is only completed once the dsh end is actually open. Reporting
-   * readiness earlier would let the frontend believe a downlink exists while
-   * the sandbox was still failing to open it.
+   * upgrade is only completed once the far end is actually open.
    *
-   * @param {string} path - the `/api` downlink path.
+   * @param {string} path - the path to open inside the sandbox (as the browser saw it).
    * @param {Record<string, string | string[] | undefined>} headers - the browser's request headers.
    * @returns {Promise<{id: string, attach: (socket: import('ws').WebSocket) => void} | undefined>} the opened stream, or undefined when the sandbox refused.
    */
@@ -141,10 +143,18 @@ class SandboxTunnel {
           return
         }
         stream.socket = socket
-        // Flush in arrival order before any later frame can reach the socket,
-        // so the browser sees one uninterrupted event sequence.
-        for (const held of stream.pending) socket.send(held)
+        for (const held of stream.pending) {
+          if (socket.readyState === socket.OPEN) socket.send(held.data, { binary: held.binary })
+        }
         stream.pending.length = 0
+        socket.on('message', (data, isBinary) => {
+          const buf = Buffer.isBuffer(data) ? data : Buffer.from(data)
+          if (isBinary) {
+            this.send({ t: 'wsdata', id, data: buf.toString('base64'), bin: true })
+          } else {
+            this.send({ t: 'wsdata', id, data: buf.toString('utf8'), bin: false })
+          }
+        })
         socket.on('close', () => {
           this.send({ t: 'wsclose', id })
           this.wsStreams.delete(id)
@@ -207,6 +217,8 @@ class SandboxTunnel {
       case 'wsmsg': {
         const stream = this.wsStreams.get(frame.id)
         if (stream === undefined) return
+        const binary = frame.bin === true
+        const payload = binary ? Buffer.from(frame.data, 'base64') : frame.data
         const socket = stream.socket
         // The sandbox begins pushing the moment its local downlink opens, which
         // can precede the browser upgrade completing here. These are session
@@ -214,10 +226,12 @@ class SandboxTunnel {
         // dropped; the bound keeps a stream that never attaches from growing
         // without limit.
         if (socket === undefined) {
-          if (stream.pending.length < MAX_PENDING_DOWNLINK_FRAMES) stream.pending.push(frame.data)
+          if (stream.pending.length < MAX_PENDING_DOWNLINK_FRAMES) {
+            stream.pending.push({ data: payload, binary })
+          }
           return
         }
-        if (socket.readyState === socket.OPEN) socket.send(frame.data)
+        if (socket.readyState === socket.OPEN) socket.send(payload, { binary })
         return
       }
       case 'wsclosed': {

@@ -29,14 +29,53 @@ const MAX_CHUNK_BYTES = 512 * 1024
 
 /**
  * Frame kinds sent by the gateway toward the sandbox.
- * @typedef {'http' | 'body' | 'end' | 'abort' | 'wsopen' | 'wsclose'} DownFrameKind
+ * @typedef {'http' | 'body' | 'end' | 'abort' | 'wsopen' | 'wsclose' | 'wsdata'} DownFrameKind
  */
 
 /**
  * Frame kinds sent by the sandbox toward the gateway.
  * @typedef {'hello' | 'httpres' | 'resbody' | 'resend' | 'reserr'
- *   | 'wsopenok' | 'wsfail' | 'wsmsg' | 'wsclosed'} UpFrameKind
+ *   | 'wsopenok' | 'wsfail' | 'wsmsg' | 'wsclosed' | 'activity'} UpFrameKind
  */
+
+/**
+ * Which loopback authority a tunnelled path should dial inside the sandbox.
+ *
+ * `/computer` is noVNC on :6080; everything else is dsh's webServer.
+ *
+ * @param {string} path - the request path (may include query).
+ * @param {string} dshAuthority - `host:port` for the local dsh webServer.
+ * @returns {string} `host:port` to dial.
+ */
+export function authorityFor(path, dshAuthority) {
+  const pathname = path.split('?', 1)[0] ?? path
+  if (pathname === '/computer' || pathname.startsWith('/computer/')) {
+    return '127.0.0.1:6080'
+  }
+  return dshAuthority
+}
+
+/**
+ * Rewrite a browser path for the sandbox-local authority.
+ *
+ * noVNC is mounted at `/` inside the sandbox; the gateway exposes it under
+ * `/computer/`, so that prefix is stripped before dialling :6080.
+ *
+ * @param {string} path - the browser path (may include query).
+ * @returns {string} the path to request on the chosen authority.
+ */
+export function localPathFor(path) {
+  const q = path.indexOf('?')
+  const pathname = q === -1 ? path : path.slice(0, q)
+  const query = q === -1 ? '' : path.slice(q)
+  if (pathname === '/computer' || pathname === '/computer/') {
+    return `/${query}`
+  }
+  if (pathname.startsWith('/computer/')) {
+    return `${pathname.slice('/computer'.length)}${query}`
+  }
+  return path
+}
 
 /**
  * Encode one frame for transmission.

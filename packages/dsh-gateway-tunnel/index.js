@@ -30,7 +30,14 @@
 import http from 'node:http'
 import process from 'node:process'
 import WebSocket from 'ws'
-import { chunkBody, decodeFrame, encodeFrame, rewriteRequestHeaders } from 'dsh-tunnel-protocol'
+import {
+  authorityFor,
+  chunkBody,
+  decodeFrame,
+  encodeFrame,
+  localPathFor,
+  rewriteRequestHeaders,
+} from 'dsh-tunnel-protocol'
 
 export const name = 'gateway-tunnel'
 
@@ -124,17 +131,19 @@ export function apply(ctx) {
   }
 
   /**
-   * Begin one proxied HTTP request against the local `/api` surface.
+   * Begin one proxied HTTP request against dsh or noVNC.
    * @param {{id: string, method: string, path: string, headers: Record<string, string>}} frame - the opening frame.
    */
   const startHttp = (frame) => {
-    const [host, port] = localAuthority.split(':')
+    const authority = authorityFor(frame.path, localAuthority)
+    const path = localPathFor(frame.path)
+    const [host, port] = authority.split(':')
     const request = http.request({
       host,
       port: Number(port),
       method: frame.method,
-      path: frame.path,
-      headers: rewriteRequestHeaders(frame.headers, localAuthority),
+      path,
+      headers: rewriteRequestHeaders(frame.headers, authority),
     }, (response) => {
       send({ t: 'httpres', id: frame.id, status: response.statusCode ?? 502, headers: response.headers })
       response.on('data', (chunk) => {
@@ -156,25 +165,34 @@ export function apply(ctx) {
   }
 
   /**
-   * Open one downlink against the local `/api` surface.
+   * Open one WebSocket against dsh (event downlinks) or noVNC (:6080).
    *
    * `ws` derives Host from the URL and attaches no Origin, which is what the
    * fence wants; carrying the browser's `sec-websocket-*` headers over would
    * override the handshake key `ws` minted and can verify.
    *
+   * Binary frames are forwarded (base64 in `wsmsg`) so noVNC/websockify works;
+   * dsh's text-only event sockets keep sending `bin: false`.
+   *
    * @param {{id: string, path: string, headers: Record<string, string>}} frame - the opening frame.
    */
   const startWebSocket = (frame) => {
-    const headers = rewriteRequestHeaders(frame.headers, localAuthority)
+    const authority = authorityFor(frame.path, localAuthority)
+    const path = localPathFor(frame.path)
+    const headers = rewriteRequestHeaders(frame.headers, authority)
     delete headers.host
     for (const key of Object.keys(headers)) {
       if (key.startsWith('sec-websocket-')) delete headers[key]
     }
-    const downlink = new WebSocket(`ws://${localAuthority}${frame.path}`, { headers })
+    const downlink = new WebSocket(`ws://${authority}${path}`, { headers })
     downlink.on('open', () => { send({ t: 'wsopenok', id: frame.id }) })
     downlink.on('message', (data, isBinary) => {
-      if (isBinary) return
-      send({ t: 'wsmsg', id: frame.id, data: data.toString('utf8') })
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data)
+      if (isBinary) {
+        send({ t: 'wsmsg', id: frame.id, data: buf.toString('base64'), bin: true })
+        return
+      }
+      send({ t: 'wsmsg', id: frame.id, data: buf.toString('utf8'), bin: false })
     })
     downlink.on('close', (code, reason) => {
       send({ t: 'wsclosed', id: frame.id, code, reason: reason.toString('utf8') })
@@ -212,6 +230,16 @@ export function apply(ctx) {
       case 'wsopen':
         startWebSocket(frame)
         return
+      case 'wsdata': {
+        const downlink = sockets.get(frame.id)
+        if (downlink === undefined || downlink.readyState !== WebSocket.OPEN) return
+        if (frame.bin) {
+          downlink.send(Buffer.from(frame.data, 'base64'))
+        } else {
+          downlink.send(frame.data)
+        }
+        return
+      }
       case 'wsclose':
         sockets.get(frame.id)?.close()
         sockets.delete(frame.id)

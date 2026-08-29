@@ -135,17 +135,20 @@ if [ -x /usr/local/bin/dsh-agent ]; then
   /usr/local/bin/dsh-agent serve "$WORKSPACE" >/dev/null 2>&1 &
 fi
 
-# The browser, started here because the platform offers nowhere earlier:
-# cubemastercli template create-from-image takes no start or ready command,
-# so it cannot be baked running into the template. The launch rides this boot
-# instead — backgrounded inside the script, so the backend never waits on it
-# — and the script is idempotent behind a port check, so a backend restarted
-# through envd meets the browser running and this call returns at once. The
-# script carries its own reasoning (loopback, the lost private-network fence,
-# where the profile lives).
+# The display / browser stack. Desktop images carry start-desktop.sh (XFCE +
+# TigerVNC + noVNC + headed Chrome); light images carry start-browser.sh
+# (headless CDP only). Desktop templates freeze the stack into the Cube
+# memory snapshot via template-warm.sh during create-from-image — after
+# restore the port checks inside start-desktop.sh make this a no-op. Docker
+# simulation has no snapshot, so the same call cold-starts. Light builds
+# still launch headless on every backend boot.
 #
 # Not waited on: a sandbox whose browser died should keep serving its tenant.
-/app/sandbox/start-browser.sh || true
+if [ -x /app/sandbox/start-desktop.sh ]; then
+  /app/sandbox/start-desktop.sh || true
+elif [ -x /app/sandbox/start-browser.sh ]; then
+  /app/sandbox/start-browser.sh || true
+fi
 
 # `playwright-cli` resolves its configuration as `.playwright/cli.config.json`
 # relative to the working directory, and there is no environment variable for

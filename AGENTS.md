@@ -164,7 +164,7 @@ it from the shell's module table exactly the way it requires React. A window
 may hold only one icon style: the harness's filled 16-grid outlines. Drawing a
 second set beside them is the thing this rule exists to prevent.
 
-What the harness has no drawing for lives in `packages/dsh-icons`: 21 glyphs,
+What the harness has no drawing for lives in `packages/dsh-icons`: 24 glyphs,
 written as path data by `extract.mjs` from lucide-static and stamped with the
 version they came from. Attribution is in [NOTICE](NOTICE).
 

@@ -3,14 +3,18 @@
  *
  * A deployment stamps sandboxes with a date-shaped version (YYYY-MM-DD or
  * YYYY-MM-DD.N). The Cube alias and CUBE_TEMPLATE_ID are
- * `hamsterhq-sandbox-<version>`; the UI and the SANDBOX_VERSION env show only
- * the trailing part. See docs/cubesandbox.md.
+ * `hamsterhq-desktop-<version>` (default) or `hamsterhq-sandbox-<version>`
+ * (light rollback); the UI and the SANDBOX_VERSION env show only the trailing
+ * part. See docs/cubesandbox.md.
  *
  * @module sandbox-version
  */
 
-/** Prefix every dated template alias carries. */
-export const TEMPLATE_ALIAS_PREFIX = 'hamsterhq-sandbox-'
+/** Prefixes dated template aliases may carry (longest first). */
+export const TEMPLATE_ALIAS_PREFIXES = Object.freeze([
+  'hamsterhq-desktop-',
+  'hamsterhq-sandbox-',
+])
 
 /**
  * The template this deployment creates sandboxes from.
@@ -19,7 +23,7 @@ export const TEMPLATE_ALIAS_PREFIX = 'hamsterhq-sandbox-'
  * one short-version helper without importing the SDK module.
  */
 export const DEPLOYMENT_TEMPLATE =
-  process.env.CUBE_TEMPLATE_ID ?? 'hamsterhq-sandbox'
+  process.env.CUBE_TEMPLATE_ID ?? 'hamsterhq-desktop'
 
 /**
  * Turn a template alias into the short version shown to tenants.
@@ -31,9 +35,10 @@ export function shortVersionFromTemplate(alias) {
   if (alias === undefined || alias === null) return null
   const trimmed = String(alias).trim()
   if (trimmed === '') return null
-  if (trimmed.startsWith(TEMPLATE_ALIAS_PREFIX)
-      && trimmed.length > TEMPLATE_ALIAS_PREFIX.length) {
-    return trimmed.slice(TEMPLATE_ALIAS_PREFIX.length)
+  for (const prefix of TEMPLATE_ALIAS_PREFIXES) {
+    if (trimmed.startsWith(prefix) && trimmed.length > prefix.length) {
+      return trimmed.slice(prefix.length)
+    }
   }
   return trimmed
 }
