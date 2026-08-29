@@ -798,6 +798,18 @@ RUN apt-get update \
   && rm -rf /usr/share/wallpapers/Next \
   && rm -rf /var/lib/apt/lists/*
 
+# Debian's default icon task manager pins Discover even when the deliberately
+# minimal desktop does not install it. Keep the useful slot, but make it the
+# installed KDE terminal instead of leaving a broken launcher in every tenant.
+COPY sandbox/desktop/kde/default-panel-launchers.patch /tmp/default-panel-launchers.patch
+RUN patch --directory=/ --strip=0 --forward --batch \
+      < /tmp/default-panel-launchers.patch \
+  && grep -q 'applications:org.kde.konsole.desktop' \
+       /usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js \
+  && ! grep -q 'applications:org.kde.discover.desktop' \
+       /usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js \
+  && rm /tmp/default-panel-launchers.patch
+
 COPY --from=novnc-assets /usr/share/novnc/ /usr/share/novnc/
 COPY --from=novnc-assets /usr/share/doc/novnc/copyright /usr/share/doc/novnc/copyright
 COPY --from=fluent-theme /usr/share/aurorae/ /usr/share/aurorae/

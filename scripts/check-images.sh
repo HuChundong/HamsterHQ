@@ -308,6 +308,14 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
       && echo ok || echo missing' \
     2>/dev/null || echo error)
   check 'KDE Plasma X11 + TigerVNC + noVNC are installed' ok "$plasma"
+  launchers=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
+    'layout=/usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js; \
+      grep -q "applications:org.kde.konsole.desktop" "$layout" \
+      && ! grep -q "applications:org.kde.discover.desktop" "$layout" \
+      && test -f /usr/share/applications/org.kde.konsole.desktop \
+      && echo ok || echo broken' \
+    2>/dev/null || echo error)
+  check 'the panel replaces unavailable Discover with Konsole' ok "$launchers"
   node_runtime=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
     'test "$(node --version | cut -d. -f1)" = v24 \
       && test ! -e /usr/bin/node \

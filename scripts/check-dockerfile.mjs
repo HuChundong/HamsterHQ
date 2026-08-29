@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 const root = join(fileURLToPath(new URL('..', import.meta.url)))
 const dockerfile = readFileSync(join(root, 'Dockerfile'), 'utf8')
 const lock = JSON.parse(readFileSync(join(root, 'sandbox/dsh-package-lock.json'), 'utf8'))
+const panelPatch = readFileSync(join(root, 'sandbox/desktop/kde/default-panel-launchers.patch'), 'utf8')
 const problems = []
 
 const check = (condition, message) => {
@@ -46,6 +47,12 @@ const required = [
   'npm ci --omit=dev --no-audit --no-fund',
 ]
 for (const line of required) check(dockerfile.includes(line), `Dockerfile is missing cache boundary: ${line}`)
+
+check(
+  panelPatch.includes('applications:org.kde.konsole.desktop')
+    && !panelPatch.includes('+tasks.writeConfig("launchers", "applications:org.kde.discover.desktop'),
+  'the default panel must replace the unavailable Discover launcher with Konsole',
+)
 
 check(!dockerfile.includes('FROM sandbox AS desktop'), 'desktop must not inherit the DSH payload before KDE is installed')
 
