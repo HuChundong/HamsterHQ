@@ -485,7 +485,9 @@ desktop 镜像用 `create-from-image --cmd /app/sandbox/template-warm.sh` 与
 镜像里很薄的一层 `playwright-cli` 包装会经过同一把锁，只在首次使用时启动浏览器，随后都连接
 CDP `:9222`，所以人和 agent 看到的是同一个浏览器，而不是两个争用 profile 的进程。
 `/mnt/browser-profile` 是 S3 持久卷上的租户状态，重建沙箱后 cookies 与 Local Storage 仍在；
-`--disk-cache-dir` 指到 `/tmp/desktop-chrome-cache`，不把可丢弃的传输缓存写进 S3。面板的
+`--disk-cache-dir` 指到 `/tmp/desktop-chrome-cache`，不把可丢弃的传输缓存写进 S3。KWallet
+被禁用，Chrome 使用自己的 basic profile 存储，因此首次启动不会卡在钱包密码询问；相应地，持久卷
+必须按包含凭据的存储来保护。面板的
 Computer 标签嵌入 `/computer/`（经隧道、会话鉴权的 noVNC）；只读 Browser 标签轮询 CDP
 JPEG，但不会因此唤醒已停止的浏览器。轻量镜像维持原有行为，仍在后端启动时通过
 `start-browser.sh` 拉起使用机器本地 profile 的无头 Chromium。

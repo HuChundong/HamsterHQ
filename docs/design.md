@@ -701,7 +701,10 @@ through one lock and start it only on first use. Both then attach to CDP `:9222`
 so a person and an agent see the same browser rather than competing processes.
 Its `/mnt/browser-profile` is tenant state on the S3-backed volume, preserving
 cookies and Local Storage across rebuilt sandboxes; `--disk-cache-dir` points at
-`/tmp/desktop-chrome-cache`, keeping disposable transfer cache out of S3. The
+`/tmp/desktop-chrome-cache`, keeping disposable transfer cache out of S3.
+KWallet is disabled and Chrome uses its basic profile store so the first launch
+cannot block on a wallet password; the persistent volume must therefore be
+protected as credential-bearing storage. The
 panel's Computer tab embeds `/computer/` (session-authenticated noVNC through the
 tunnel), while the watch-only Browser tab polls CDP JPEGs without waking a
 stopped browser. The light image keeps its existing boot-time headless Chromium

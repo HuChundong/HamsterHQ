@@ -343,6 +343,8 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
       && test -d /usr/share/icons/Fluent-dark-cursors \
       && test -f /home/desktop/.config/Kvantum/kvantum.kvconfig \
       && test -f /home/desktop/.config/mimeapps.list \
+      && grep -A2 "^\[Wallet\]" /home/desktop/.config/kwalletrc | grep -q "Enabled=false" \
+      && grep -q -- "--password-store=basic" /app/sandbox/desktop-chrome-flags \
       && test -x /usr/local/bin/chrome-launch \
       && test -x /usr/local/bin/start-desktop-browser \
       && test -x /usr/local/bin/playwright-cli \

@@ -853,6 +853,7 @@ RUN mkdir -p /usr/share/applications \
        /tmp/desktop-assets/kde/konsolerc \
        /tmp/desktop-assets/kde/krunnerrc \
        /tmp/desktop-assets/kde/kscreenlockerrc \
+       /tmp/desktop-assets/kde/kwalletrc \
        /tmp/desktop-assets/kde/kwinrc \
        /tmp/desktop-assets/kde/plasma-localerc \
        /home/desktop/.config/ \
