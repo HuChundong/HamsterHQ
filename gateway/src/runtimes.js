@@ -15,7 +15,7 @@ import process from 'node:process'
 import { createContainer, listContainers, removeContainer, startContainer } from './docker.js'
 import { TEMPLATE, createSandbox, listSandboxes, removeSandbox } from './platform-cube.js'
 import { protectedEgress } from './egress.js'
-import { startBackend } from './envd.js'
+import { runCommand, startBackend } from './envd.js'
 import { volumeMountsFor } from './volumes.js'
 
 /** Marker naming the owning tenant, carried as a Docker label or CubeSandbox metadata. */
@@ -63,7 +63,10 @@ const cube = {
     }
     return sandboxId
   },
-  remove: async (handle) => { await removeSandbox(handle) },
+  remove: async (handle) => {
+    await flushBrowserProfile(handle)
+    await removeSandbox(handle)
+  },
   listOwned: async () => (await listSandboxes(OWNER_KEY)).map((sandbox) => sandbox.sandboxId),
 }
 
@@ -110,7 +113,10 @@ const docker = {
     await startContainer(name)
     return name
   },
-  remove: async (handle) => { await removeContainer(handle) },
+  remove: async (handle) => {
+    await flushBrowserProfile(handle)
+    await removeContainer(handle)
+  },
   // NAMES, because that is what `create` returns and what `envd.js` dials —
   // and because adoption compares the two. Docker reports a name with a
   // leading slash. Returning ids here instead was invisible while nothing
@@ -118,6 +124,21 @@ const docker = {
   // its own sandboxes, every one of them looked like a stranger's.
   listOwned: async () => (await listContainers(OWNER_KEY).catch(() => []))
     .flatMap((container) => (container.Names ?? []).map((name) => name.replace(/^\//, ''))),
+}
+
+/**
+ * Give a headed browser a bounded chance to commit cookies and Local Storage.
+ *
+ * Reclaim still wins when envd or Chrome is already gone: inability to flush a
+ * dead machine must never turn it into a machine the gateway cannot release.
+ * Light images do not carry the command and answer success without doing work.
+ *
+ * @param {string} handle - sandbox/container about to be reclaimed.
+ * @returns {Promise<void>}
+ */
+async function flushBrowserProfile(handle) {
+  const command = 'test ! -x /usr/local/bin/stop-desktop-browser || /usr/local/bin/stop-desktop-browser'
+  await runCommand(handle, command, {}).catch(() => {})
 }
 
 /**

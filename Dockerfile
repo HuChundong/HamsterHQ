@@ -861,6 +861,7 @@ RUN mkdir -p /usr/share/applications \
   && cp /tmp/desktop-assets/kde/kvantum.kvconfig /home/desktop/.config/Kvantum/kvantum.kvconfig \
   && install -m 0755 /tmp/desktop-assets/chrome-launch.sh /usr/local/bin/chrome-launch \
   && install -m 0755 /tmp/desktop-assets/start-desktop-browser.sh /usr/local/bin/start-desktop-browser \
+  && install -m 0755 /tmp/desktop-assets/stop-desktop-browser.sh /usr/local/bin/stop-desktop-browser \
   && rm /usr/local/bin/playwright-cli \
   && install -m 0755 /tmp/desktop-assets/playwright-cli-lazy.sh /usr/local/bin/playwright-cli \
   && install -m 0755 /tmp/desktop-assets/set-desktop-theme.sh /usr/local/bin/set-desktop-theme \
