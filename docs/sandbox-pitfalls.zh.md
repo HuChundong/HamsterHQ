@@ -70,21 +70,21 @@ CubeEgress 终止 TLS 来改写 `Authorization` 头，因此沙箱里拿到的�
   根证书——而 Node 只验它自带的根、忽略系统信任库，所以光装 CA 还不够，还要 `NODE_EXTRA_CA_CERTS`。
 - **注入不能有条件。** 本意是只在请求带着占位符时才注入，这样自己配了密钥的租户不会被覆盖。
   但 `ngx.req.clear_header` 总是先执行，等规则能去看的时候，已经没有东西可看了。
-- **只有 80 和 443 会被拦截。** 喂给 CubeEgress 的是一条 TPROXY 规则，它只按入向网卡和目的
-  端口选流量，别的一概不看——`iif cube-dev` 加 `tcp dport 80/443`，见
-  `CubeEgress/scripts/cube-proxy-iptables-init.sh`。模型端点跑在其他端口上，流量根本到不了规则
-  引擎，任何规则都注入不进去：请求带着占位符发出去，提供方回 401。`host:3000` 这样的模型服务
-  无法靠出网注入拿到密钥，全部原因就在这里；而且这件事从规则 API 上完全看不出来——规则会被
-  收下、存住，然后永远不被查询。自定义端口的端点只能自己在沙箱里带上凭据。
-- **拦截还取决于端点在哪儿，而且不出声。** TPROXY 把包交给一个透明 socket，而这次交接只对
-  宿主机"直路由"得到的目的地有效。**宿主机自己的地址不行**：`local` 路由表的优先级是 0，排在
-  负责引导被拦截流量的那条 7999 策略规则前面，于是包被本地投递给宿主机——而没有任何东西回答，
-  因为本该回答的就是那个透明 socket。在这套部署上实测：SYN 到达 `cube-dev`、TPROXY 规则的计数器
-  增长、永远没有 SYN-ACK、CubeEgress 日志一行都没有。给 dummy 网卡加的地址同理，Docker 网桥地址
-  也不行（被 Docker 自己的隔离链丢掉）。Kubernetes 的 pod 地址可以，自建 netns 里的 veth 对端也
-  可以。模型就跑在这台机器上的部署，得自己造一个这样的地址并把 `MODEL_BASE_URL` 指过去：一个
-  网络命名空间、一对 veth、一个地址、一个转发进程——这是宿主机的管线，不是本项目能随包发出的
-  东西，地址、网段和上游都是某一套部署自己的答案。
+- **宿主机 LOCAL 目标永远进不了 CubeEgress。** 宿主机 `local` 路由表优先级是 0，排在
+  TPROXY 策略规则之前。对本机 LAN 地址（`192.168.2.192`）实测：仅 L7 规则时约 2 ms 拒
+  SYN，TPROXY 计数不动；同一 IP 再进 `allowOut` 则走 SNAT、能通但不注入。Docker 网桥
+  地址即使有 `allowOut` 仍超时。能打进 inject 的是非 LOCAL 的 model relay
+  （netns 里的 `10.201.0.2`）——在下面这条路径健康时，连自定义端口 `:8088` 也可以。
+- **正在注入时不要把同一主机写进 `allowOut`。** L7 allow 规则本身就会打开该目的地；再写
+  一条匹配的 `allowOut` 会并行装上 SNAT，可能在 MITM 之前把流量抢走。因此
+  `gateway/src/egress.js` 只在**不**注入时才把私网模型地址放进 `allowOut`。
+- **宿主机上宽泛的 `CONNMARK --restore-mark` 会抹掉 CubeEgress 的 mark。** 本机为
+  Clash/mihomo 共存写的脚本曾对 mangle PREROUTING 里所有 ESTABLISHED 包做
+  connection-mark 恢复，结果把 CubeSandbox 的 L7 mark（`0xce010000` /
+  `0xce020000`）盖成 0：SYN 仍进 TPROXY，HTTP 数据到不了 cube-egress nginx（客户端
+  重传后 RST），inject 审计停更。恢复必须收窄到仅 WAN mark（`connmark match 0x1234`），
+  或排除 `cube-dev`。当时 mihomo 的 TUN 是关的；伤到数据面的是 iptables 副作用，不是
+  TUN 本身。
 - **明文端点可以被注入，代价也在明处。** 网关生成的规则只在 `https` 时带 SNI——否则没有握手
   可以从中读出它——CubeSandbox 自己的规则构造也是这么分的。`http` 端点付出的代价是 CubeEgress
   到端点这一跳：凭据在那段路上是明文。它仍然不进沙箱，那才是真正值得保住的性质；这一跳明不

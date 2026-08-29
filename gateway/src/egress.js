@@ -9,12 +9,19 @@
  *   internet access to reach the infrastructure running it. The gateway sits on
  *   one of those ranges, so its address is allowed back in explicitly.
  *
- * - The model credential never enters the sandbox. The sandbox is handed a
- *   placeholder and CubeEgress replaces the `Authorization` header with the real
- *   key as the request passes through it. This matters because the agent inside
- *   runs with full access on the tenant's behalf: anything in its environment,
- *   its filesystem, or its process table is something a prompt can be made to
- *   read back. A key that is never there cannot be read back.
+ * - The model credential never enters the sandbox when CubeEgress can inject
+ *   it. The sandbox is handed a placeholder and CubeEgress replaces the
+ *   `Authorization` header with the real key as the request passes through it.
+ *   This matters because the agent inside runs with full access on the tenant's
+ *   behalf: anything in its environment, its filesystem, or its process table
+ *   is something a prompt can be made to read back. A key that is never there
+ *   cannot be read back.
+ *
+ * Private LAN endpoints that are not being injected into are allowed with an
+ * explicit `allowOut` entry. When CubeEgress is injecting, the L7 allow rule
+ * itself opens the destination — listing the same IP in `allowOut` installs a
+ * parallel SNAT path that can steal the flow before MITM (especially for a
+ * host-LOCAL address). See `interceptable` and docs/sandbox-pitfalls.md.
  *
  * The rule is scoped to the model host, which is also what keeps the
  * interception scoped: CubeVS routes traffic through CubeEgress only for hosts
@@ -57,6 +64,19 @@ function gatewayAddress(tunnelUrl) {
 }
 
 /**
+ * Destination TCP port for an http(s) URL, as CubeEgress expects it.
+ *
+ * @param {string} baseUrl - the model endpoint.
+ * @param {boolean} secure - whether the URL is https.
+ * @returns {number} 80, 443, or an explicit non-default port.
+ */
+function destinationPort(baseUrl, secure) {
+  const { port } = new URL(baseUrl)
+  if (port === '') return secure ? 443 : 80
+  return Number(port)
+}
+
+/**
  * The rule that injects the model credential, or nothing when there is no
  * credential to protect or no host to scope it to.
  *
@@ -70,15 +90,9 @@ function injectionRules(baseUrl, apiKey) {
   if (protocol !== 'https:' && protocol !== 'http:') {
     throw new Error(`egress: MODEL_BASE_URL must be http or https, got ${JSON.stringify(baseUrl)}`)
   }
-  // Only what CubeEgress is fed can be injected into, and what it is fed is
-  // decided by destination port alone: the TPROXY rule matches `iif cube-dev`
-  // plus `tcp dport 80/443` and nothing else. An endpoint anywhere else never
-  // reaches the rule engine, and a rule written for it is accepted, stored,
-  // and never consulted — which is worse than no rule, because the sandbox
-  // would then be started with the placeholder and every request would go out
-  // carrying it. So the credential stays in the sandbox for those endpoints,
-  // where the harness can at least use it, and the deployment keeps the
-  // metering it gets from a per-tenant key.
+  // Withholding the key is only safe when CubeEgress will actually rewrite the
+  // header. If it will not, the sandbox must keep the real key — otherwise every
+  // model call leaves with the placeholder and the provider answers 401.
   if (!interceptable(baseUrl)) return []
   // The SNI is what CubeEgress mints its leaf certificate for, so it is the
   // match for a TLS endpoint and meaningless for a plaintext one — a rule that
@@ -96,12 +110,17 @@ function injectionRules(baseUrl, apiKey) {
   // making; where it is across the internet, it is not, and the deployment
   // that points MODEL_BASE_URL at an http URL out there has chosen it.
   const secure = protocol === 'https:'
+  const port = destinationPort(baseUrl, secure)
   return [{
     name: 'model-api-credential',
     match: {
       scheme: secure ? 'https' : 'http',
       ...secure ? { sni: hostname } : {},
       host: hostname,
+      // CubeSandbox ≥ 0.7.0: L7 rules may name a non-default port. Omitting
+      // port keeps the classic {80/http, 443/https} set; an explicit port is
+      // required for anything else (e.g. NewAPI on :8088).
+      port,
     },
     action: {
       allow: true,
@@ -121,9 +140,14 @@ function injectionRules(baseUrl, apiKey) {
 export function protectedEgress(env) {
   const baseUrl = env.MODEL_BASE_URL ?? ''
   const rules = injectionRules(baseUrl, env.MODEL_API_KEY ?? '')
+  // Gateway always; model host only when we are not injecting. An L7 allow
+  // rule opens that destination on its own — a matching allowOut entry is the
+  // SNAT bypass that kept credentials from being rewritten on this install.
+  const allowOut = [gatewayAddress(env.GATEWAY_TUNNEL_URL)]
+  if (rules.length === 0) allowOut.push(...privateModelHost(baseUrl))
   return {
     env: rules.length === 0 ? env : { ...env, MODEL_API_KEY: MODEL_KEY_PLACEHOLDER },
-    network: { allowOut: [gatewayAddress(env.GATEWAY_TUNNEL_URL), ...privateModelHost(baseUrl)], rules },
+    network: { allowOut, rules },
   }
 }
 
@@ -133,9 +157,8 @@ export function protectedEgress(env) {
  *
  * CubeSandbox allows public egress and denies the private ranges, which is
  * right for everything except the case where the model is on this deployment's
- * own network — a gateway on the LAN, or on the host itself. There the rule
- * that injects the credential is written, accepted, and never reached, because
- * the connection it would have applied to is refused a layer below it.
+ * own network — a NewAPI on the LAN, or on the host itself. There the address
+ * must be listed in `allowOut` or the SYN is refused before any L7 rule runs.
  *
  * An address and only an address, for the reason `allowOut` takes no names:
  * a DNS name there is honoured only alongside a deny-all. A model endpoint
@@ -156,21 +179,26 @@ function privateModelHost(baseUrl) {
 }
 
 /**
- * Whether an endpoint is one CubeEgress is ever handed.
+ * Whether CubeEgress will rewrite credentials for this endpoint.
  *
- * Only ports 80 and 443 reach it: the TPROXY rule that feeds it selects on
- * ingress interface and destination port and nothing else. An endpoint
- * anywhere else never reaches the rule engine, so a rule written for one is
- * accepted, stored, and never consulted.
+ * CubeSandbox 0.7.0 L7 rules may name any port (scheme required with port).
+ * Measured on this install after fixing a host CONNMARK clash with mihomo:
+ * inject works for non-LOCAL destinations on both :80 and :8088. A host-LOCAL
+ * address (the machine's own LAN IP) still never reaches TPROXY — point
+ * MODEL_BASE_URL at the model relay (or another non-LOCAL front) when the
+ * credential must stay out of the sandbox.
  *
  * @param {string} baseUrl - the model endpoint.
  * @returns {boolean} whether a rule scoped to it can fire.
  */
 function interceptable(baseUrl) {
   if (baseUrl === '') return false
-  let port
-  try { ({ port } = new URL(baseUrl)) } catch { return false }
-  return port === '' || port === '80' || port === '443'
+  try {
+    const { protocol } = new URL(baseUrl)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
 }
 
 /**
