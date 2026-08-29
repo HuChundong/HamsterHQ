@@ -1,0 +1,7 @@
+[Compositing]
+Backend=XRender
+Enabled=false
+
+[Plugins]
+blurEnabled=false
+wobblywindowsEnabled=false

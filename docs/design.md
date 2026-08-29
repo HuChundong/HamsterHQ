@@ -631,7 +631,7 @@ is chosen at image build by `BROWSER_SOURCE`:
   The light sandbox still omits VNC / noVNC / horust and keeps `--disable-gpu`
   in `browser-flags` (no X display; ANGLE+SwiftShader would crash-loop the
   GPU process). The **desktop** image (`hamsterhq-desktop`) is where TigerVNC
-  + XFCE + noVNC return — 4 CPU / 8 GiB, frozen into the Cube template — and
+  + KDE Plasma X11 + noVNC return — 4 CPU / 8 GiB, frozen into the Cube template — and
   headed Chrome uses `desktop-chrome-flags` instead. The Linux build of the
   anti-detect binary also freezes a coherent Windows desktop
   identity at compile time (classic UA, Client Hints platform/version,
@@ -675,7 +675,7 @@ writes it into the tenant's workspace on every boot — rewritten rather than
 created once, so an image that moves the port cannot leave a volume pointing at
 the old answer.
 
-The desktop image freezes TigerVNC + XFCE + noVNC + headed Chrome into the
+The desktop image freezes TigerVNC + KDE Plasma X11 + noVNC + headed Chrome into the
 Cube template with `create-from-image --cmd /app/sandbox/template-warm.sh`
 and `--probe 6099` (Cube 0.7). After restore those processes are already in
 memory; `start-desktop.sh` only ensures them. The panel's Computer tab embeds

@@ -3,7 +3,7 @@
  *
  * Four kinds of thing and nothing else: the workspace's files, a shell in the
  * sandbox, the page the agent is building, and the browser it is reading.
- * Computer (the XFCE desktop) opens from the session header, not from this
+ * Computer (the KDE desktop) opens from the session header, not from this
  * panel's tool list — see `docs/artifact-panel.zh.md` for the product
  * judgement that bounds the list.
  *

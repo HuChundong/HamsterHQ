@@ -114,13 +114,6 @@ Upstream brand graphic used to identify an interoperability target.
 This file is not licensed under Apache License 2.0. See Trademarks
 below.
 
-sandbox/desktop/wallpaper.jpg
------------------------------
-Desktop backdrop (1280x720 JPEG) carried from the weixin-bot desktop
-image that blueprinted the hamsterhq-desktop XFCE stack. Installed in
-the desktop image as /usr/share/backgrounds/hamsterhq/desktop.jpg.
-
-
 Build-time / image-only material
 ================================
 
@@ -138,6 +131,27 @@ image copies the binary from
 ghcr.io/tencentcloud/cubesandbox-base:2026.16.
 
 License text: licenses/Apache-2.0.txt.
+
+Fluent-kde (revision 44794f29c89de994b0179aebabd2f5776c90d236)
+---------------------------------------------------------------------
+Copyright holder: Vince Liuice and contributors.
+License: GNU General Public License version 3.
+
+Location and use: Plasma, Aurorae and Kvantum light/dark themes installed
+under /usr/share in the hamsterhq-desktop image. Source and git history stay
+in a throw-away build stage. The upstream license and pinned source revision
+are carried in /usr/share/doc/fluent-kde.
+
+Fluent-icon-theme (revision ad627380aa452aa5e18fd5fbab94291f409af710)
+------------------------------------------------------------------------
+Copyright holder: Vince Liuice and contributors.
+License: GNU General Public License version 3.
+
+Location and use: matching standard-color icon variants and light/dark cursor
+themes installed under /usr/share/icons in the hamsterhq-desktop image. Source
+and git history stay in a throw-away build stage. The upstream icon and cursor
+licenses and pinned source revision are carried in
+/usr/share/doc/fluent-icon-theme.
 
 @xterm/xterm 5.5.0 and @xterm/addon-fit 0.10.0
 ----------------------------------------------

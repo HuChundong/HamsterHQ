@@ -1,7 +1,7 @@
 /**
  * The sandbox desktop, interactive through noVNC.
  *
- * Desktop images run XFCE behind TigerVNC; the gateway exposes noVNC under
+ * Desktop images run KDE Plasma X11 behind TigerVNC; the gateway exposes noVNC under
  * `/computer/` (session-authenticated, tunnelled to loopback :6080). This pane
  * embeds that page — clicks and keys reach the sandbox — unlike the watch-only
  * Browser tab that polls CDP JPEGs on light sandboxes.

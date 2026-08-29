@@ -10,7 +10,7 @@
 # Stages:
 #   deps       one npm install, shared by everything below
 #   sandbox    one tenant's dsh, beside this project's own plugins (light)
-#   desktop    XFCE + TigerVNC + noVNC on top of sandbox (default Cube template)
+#   desktop    KDE Plasma X11 + TigerVNC + noVNC on top of sandbox
 #   shell      boot the composition once and save what it serves
 #   web        nginx over the frontend build and that shell
 #   gateway    the authenticating front door; no harness code at all
@@ -30,7 +30,7 @@
 ARG DSH_VERSION=0.1.1-rc.2
 
 # ------------------------------------------------------------------- deps ----
-FROM node:24-slim AS deps
+FROM node:24-bookworm-slim AS deps
 
 ARG APT_MIRROR=
 RUN if [ -n "$APT_MIRROR" ]; then \
@@ -155,7 +155,7 @@ RUN cargo build --release --offline && install -Dm755 target/release/dsh-agent /
 #
 # `package.json` first and the sources after, so a change to the panel's code
 # does not reinstall its toolchain.
-FROM node:24-slim AS panel-build
+FROM node:24-bookworm-slim AS panel-build
 
 ARG NPM_REGISTRY=
 RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi
@@ -173,7 +173,7 @@ COPY packages/dsh-artifact-panel/src ./src
 RUN npm run build
 
 # ---------------------------------------------------------------- sandbox ----
-FROM node:24-slim AS sandbox
+FROM node:24-bookworm-slim AS sandbox
 
 # The resident tools, before anything that might want them. See `agent-build`
 # for why they are a compiled binary rather than a script.
@@ -639,8 +639,74 @@ WORKDIR /mnt/workspace
 EXPOSE 49983
 ENTRYPOINT ["/usr/local/bin/cube-entrypoint.sh"]
 
+# ---------------------------------------------------------- fluent-theme ----
+# Fluent's Plasma/Kvantum surface and its matching icon/cursor family are
+# separate upstream projects. Pin both revisions and keep git/source trees out
+# of the tenant image.
+FROM debian:bookworm-slim AS fluent-theme
+
+ARG APT_MIRROR=
+ARG FLUENT_KDE_REF=44794f29c89de994b0179aebabd2f5776c90d236
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources 2>/dev/null \
+      || sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list; \
+    fi \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates git \
+ && install -d /src/fluent-kde \
+ && git -C /src/fluent-kde init \
+ && git -C /src/fluent-kde remote add origin https://github.com/vinceliuice/Fluent-kde.git \
+ && git -C /src/fluent-kde fetch --depth 1 origin "$FLUENT_KDE_REF" \
+ && git -C /src/fluent-kde checkout --detach FETCH_HEAD \
+ && HOME=/root /src/fluent-kde/install.sh --round --solid -c light dark \
+ && install -D -m 0644 /src/fluent-kde/LICENSE /usr/share/doc/fluent-kde/COPYING \
+ && printf '%s\n' \
+      'Source: https://github.com/vinceliuice/Fluent-kde' \
+      "Revision: $FLUENT_KDE_REF" \
+      > /usr/share/doc/fluent-kde/SOURCE
+
+FROM debian:bookworm-slim AS fluent-icons
+
+ARG APT_MIRROR=
+ARG FLUENT_ICON_REF=ad627380aa452aa5e18fd5fbab94291f409af710
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources 2>/dev/null \
+      || sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list; \
+    fi \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates git \
+ && install -d /src/fluent-icons \
+ && git -C /src/fluent-icons init \
+ && git -C /src/fluent-icons remote add origin https://github.com/vinceliuice/Fluent-icon-theme.git \
+ && git -C /src/fluent-icons fetch --depth 1 origin "$FLUENT_ICON_REF" \
+ && git -C /src/fluent-icons checkout --detach FETCH_HEAD \
+ && HOME=/root /src/fluent-icons/install.sh --dest /out/icons standard \
+ && find -L /out/icons/.Fluent-base /out/icons/.Fluent-light-base /out/icons/.Fluent-dark-base \
+      -type l -delete \
+ && cp -a /src/fluent-icons/cursors/dist /out/icons/Fluent-cursors \
+ && cp -a /src/fluent-icons/cursors/dist-dark /out/icons/Fluent-dark-cursors \
+ && install -D -m 0644 /src/fluent-icons/COPYING /out/doc/COPYING \
+ && install -D -m 0644 /src/fluent-icons/cursors/LICENSE /out/doc/CURSORS-LICENSE \
+ && printf '%s\n' \
+      'Source: https://github.com/vinceliuice/Fluent-icon-theme' \
+      "Revision: $FLUENT_ICON_REF" \
+      > /out/doc/SOURCE
+
+# Debian's noVNC package is a reviewed static-asset source, but its dependency
+# graph pulls Debian Node 18. Extract those assets in a throw-away stage so the
+# runtime retains the official Node 24 already supplied by the sandbox stage.
+FROM debian:bookworm-slim AS novnc-assets
+
+ARG APT_MIRROR=
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources 2>/dev/null \
+      || sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list; \
+    fi \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends novnc
+
 # ---------------------------------------------------------------- desktop ----
-# XFCE + TigerVNC + noVNC + headed Chrome on top of the light sandbox.
+# KDE Plasma X11 + TigerVNC + noVNC + headed Chrome on the light sandbox.
 #
 # Built as a separate image (`hamsterhq-desktop`) so the light template stays
 # the rollback path. Cube create-from-image freezes this stack with
@@ -654,18 +720,28 @@ RUN if [ -n "$APT_MIRROR" ]; then \
       || sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list; \
     fi
 
-# Desktop stack only — no OpenCode, no sshd, no playwright-mcp (tempvm product
-# surface, not this deployment's). Chromium for headed mode when the light
-# stage shipped Playwright's headless-shell alone; antidetect builds already
-# have /opt/chrome/chrome and skip the apt chromium.
+# Preserve only Simplified Chinese application catalogs from Debian's slim
+# locale filter before installing Plasma.
+RUN printf '%s\n' \
+      'path-include /usr/share/locale/zh_CN/*' \
+      'path-include /usr/share/locale/zh_CN/*/*' \
+      'path-include /usr/share/locale/zh_CN/*/*/*' \
+      > /etc/dpkg/dpkg.cfg.d/zz-zh-cn-locales
+
+# Desktop stack only — no OpenCode, sshd or playwright-mcp. noVNC's browser
+# assets arrive from novnc-assets; runtime transport is Python websockify, so
+# apt must not replace the image's official Node 24 with Debian Node 18.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       dbus-x11 \
+       dbus dbus-x11 \
        tigervnc-standalone-server \
-       novnc websockify \
-       xfce4-session xfce4-panel xfwm4 xfdesktop4 xfce4-settings xfce4-terminal \
-       thunar \
-       xdg-desktop-portal xdg-desktop-portal-gtk \
+       websockify \
+       phonon4qt5-backend-null \
+       plasma-desktop plasma-workspace kwin-x11 \
+       systemsettings dolphin konsole \
+       qml-module-qt-labs-platform \
+       qt5-style-kvantum qttranslations5-l10n \
+       fonts-noto-cjk fonts-noto-color-emoji \
        x11-xserver-utils \
        locales \
   && if [ ! -x /opt/chrome/chrome ]; then \
@@ -674,40 +750,60 @@ RUN apt-get update \
      fi \
   && sed -i 's/^# *zh_CN.UTF-8 UTF-8/zh_CN.UTF-8 UTF-8/' /etc/locale.gen \
   && locale-gen zh_CN.UTF-8 \
-  && printf '%s\n' '{"name":"novnc","version":"1.3.0"}' > /usr/share/novnc/package.json \
+  && find /usr/share/qt5/translations/qtwebengine_locales -type f \
+       ! -name 'zh-CN.pak' ! -name 'en-US.pak' -delete \
+  && find /usr/share/qt5/translations -maxdepth 1 -type f -name '*.qm' \
+       ! -name '*zh_CN.qm' -delete \
+  && rm -rf /usr/share/wallpapers/Next \
   && rm -rf /var/lib/apt/lists/*
 
-# Dedicated home for the desktop session (not the tenant mount). Profile and
-# XFCE config stay on the machine's own disk so template freeze is legal.
+COPY --from=novnc-assets /usr/share/novnc/ /usr/share/novnc/
+COPY --from=novnc-assets /usr/share/doc/novnc/copyright /usr/share/doc/novnc/copyright
+COPY --from=fluent-theme /usr/share/aurorae/ /usr/share/aurorae/
+COPY --from=fluent-theme /usr/share/color-schemes/ /usr/share/color-schemes/
+COPY --from=fluent-theme /usr/share/Kvantum/ /usr/share/Kvantum/
+COPY --from=fluent-theme /usr/share/plasma/ /usr/share/plasma/
+COPY --from=fluent-theme /usr/share/wallpapers/ /usr/share/wallpapers/
+COPY --from=fluent-theme /usr/share/doc/fluent-kde/ /usr/share/doc/fluent-kde/
+COPY --from=fluent-icons /out/icons/ /usr/share/icons/
+COPY --from=fluent-icons /out/doc/ /usr/share/doc/fluent-icon-theme/
+
+# Dedicated home for the desktop session (not the tenant mount). Plasma state
+# stays on the machine's own disk so template freeze is legal.
 RUN useradd --create-home --home-dir /home/desktop --shell /bin/bash desktop \
-  && mkdir -p /home/desktop/.config \
+  && install -d -m 700 -o desktop -g desktop /tmp/runtime-desktop \
+  && mkdir -p /home/desktop/.config/Kvantum /home/desktop/.local/share/konsole \
   && chown -R desktop:desktop /home/desktop
 
 ENV DESKTOP_HOME=/home/desktop
 ENV LANG=zh_CN.UTF-8
 ENV LANGUAGE=zh_CN:zh
 ENV LC_ALL=zh_CN.UTF-8
+ENV DISPLAY=:0
+ENV VNC_GEOMETRY=1920x1080
+ENV KWIN_COMPOSE=N
 
-# noVNC chrome hide + XFCE wallpaper + default browser — same cuts as the
-# weixin-bot desktop template this image was blueprinted from.
+# noVNC chrome hide, KDE configuration and default browser.
 COPY sandbox/desktop/ /tmp/desktop-assets/
-RUN mkdir -p /usr/share/backgrounds/hamsterhq \
-      /usr/share/applications \
-      /usr/share/xfce4/helpers \
-      /home/desktop/.config/xfce4/xfconf/xfce-perchannel-xml \
+RUN mkdir -p /usr/share/applications \
       /home/desktop/.local/share/applications \
-  && cp /tmp/desktop-assets/wallpaper.jpg /usr/share/backgrounds/hamsterhq/desktop.jpg \
-  && cp /tmp/desktop-assets/xfce4-desktop.xml \
-       /home/desktop/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml \
   && cp /tmp/desktop-assets/mimeapps.list /home/desktop/.config/mimeapps.list \
-  && cp /tmp/desktop-assets/helpers.rc /home/desktop/.config/xfce4/helpers.rc \
   && cp /tmp/desktop-assets/google-chrome-custom.desktop \
        /home/desktop/.local/share/applications/google-chrome-custom.desktop \
   && cp /tmp/desktop-assets/google-chrome-custom.desktop \
        /usr/share/applications/google-chrome-custom.desktop \
-  && cp /tmp/desktop-assets/xfce-helper-google-chrome.desktop \
-       /usr/share/xfce4/helpers/google-chrome.desktop \
+  && cp /tmp/desktop-assets/kde/baloofilerc \
+       /tmp/desktop-assets/kde/kdeglobals \
+       /tmp/desktop-assets/kde/konsolerc \
+       /tmp/desktop-assets/kde/krunnerrc \
+       /tmp/desktop-assets/kde/kscreenlockerrc \
+       /tmp/desktop-assets/kde/kwinrc \
+       /tmp/desktop-assets/kde/plasma-localerc \
+       /home/desktop/.config/ \
+  && cp /tmp/desktop-assets/kde/Desktop.profile /home/desktop/.local/share/konsole/Desktop.profile \
+  && cp /tmp/desktop-assets/kde/kvantum.kvconfig /home/desktop/.config/Kvantum/kvantum.kvconfig \
   && install -m 0755 /tmp/desktop-assets/chrome-launch.sh /usr/local/bin/chrome-launch \
+  && install -m 0755 /tmp/desktop-assets/set-desktop-theme.sh /usr/local/bin/set-desktop-theme \
   && ln -sfn /usr/local/bin/chrome-launch /usr/local/bin/chrome \
   && ln -sfn /usr/local/bin/chrome-launch /usr/local/bin/google-chrome \
   && cp /tmp/desktop-assets/novnc-hide-chrome.css \
@@ -724,6 +820,9 @@ RUN mkdir -p /usr/share/backgrounds/hamsterhq \
 COPY sandbox/start-desktop.sh sandbox/template-warm.sh sandbox/desktop-health.mjs \
      sandbox/desktop-chrome-flags /app/sandbox/
 RUN chmod +x /app/sandbox/start-desktop.sh /app/sandbox/template-warm.sh \
+  && test "$(node --version | cut -d. -f1)" = v24 \
+  && test ! -e /usr/bin/node \
+  && ! dpkg-query -W nodejs libnode108 2>/dev/null \
   && printf 'export DESKTOP_HOME=%s\nexport LANG=%s\nexport LANGUAGE=%s\nexport LC_ALL=%s\nexport SANDBOX_VARIANT=desktop\n' \
        "$DESKTOP_HOME" "$LANG" "$LANGUAGE" "$LC_ALL" >> /app/sandbox/env.sh
 
