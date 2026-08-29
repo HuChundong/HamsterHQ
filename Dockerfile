@@ -656,7 +656,12 @@ RUN if [ -n "$APT_MIRROR" ]; then \
  && install -d /src/fluent-kde \
  && git -C /src/fluent-kde init \
  && git -C /src/fluent-kde remote add origin https://github.com/vinceliuice/Fluent-kde.git \
- && git -C /src/fluent-kde fetch --depth 1 origin "$FLUENT_KDE_REF" \
+ && git -C /src/fluent-kde config http.version HTTP/1.1 \
+ && for attempt in 1 2 3; do \
+      git -C /src/fluent-kde fetch --depth 1 origin "$FLUENT_KDE_REF" && break; \
+      [ "$attempt" -lt 3 ] || exit 1; \
+      sleep $((attempt * 3)); \
+    done \
  && git -C /src/fluent-kde checkout --detach FETCH_HEAD \
  && HOME=/root /src/fluent-kde/install.sh --round --solid -c light dark \
  && install -D -m 0644 /src/fluent-kde/LICENSE /usr/share/doc/fluent-kde/COPYING \
@@ -678,7 +683,12 @@ RUN if [ -n "$APT_MIRROR" ]; then \
  && install -d /src/fluent-icons \
  && git -C /src/fluent-icons init \
  && git -C /src/fluent-icons remote add origin https://github.com/vinceliuice/Fluent-icon-theme.git \
- && git -C /src/fluent-icons fetch --depth 1 origin "$FLUENT_ICON_REF" \
+ && git -C /src/fluent-icons config http.version HTTP/1.1 \
+ && for attempt in 1 2 3; do \
+      git -C /src/fluent-icons fetch --depth 1 origin "$FLUENT_ICON_REF" && break; \
+      [ "$attempt" -lt 3 ] || exit 1; \
+      sleep $((attempt * 3)); \
+    done \
  && git -C /src/fluent-icons checkout --detach FETCH_HEAD \
  && HOME=/root /src/fluent-icons/install.sh --dest /out/icons standard \
  && find -L /out/icons/.Fluent-base /out/icons/.Fluent-light-base /out/icons/.Fluent-dark-base \
