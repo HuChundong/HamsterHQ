@@ -61,7 +61,12 @@ WORKDIR /app
 # while the harness is on 0.1.0-rc.8 — a shell four releases behind the backend
 # it renders, chosen silently at build time. The two halves ship as one release
 # and are installed as one.
-RUN npm install --omit=dev --no-audit --no-fund \
+# npm 11's Arborist crosses the default V8 heap limit while placing the large
+# dsh-web-app dependency graph, then spends most of the build in garbage
+# collection. The cap is a ceiling rather than a reservation; a larger build
+# host uses it only when this graph needs it.
+RUN NODE_OPTIONS=--max-old-space-size=8192 \
+    npm install --omit=dev --no-audit --no-fund \
       "@deepseek-ai/dsh@${DSH_VERSION}" \
       "@deepseek-ai/dsh-web-frontend@${DSH_VERSION}"
 
