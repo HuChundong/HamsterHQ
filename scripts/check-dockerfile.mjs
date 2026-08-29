@@ -49,9 +49,10 @@ const required = [
 for (const line of required) check(dockerfile.includes(line), `Dockerfile is missing cache boundary: ${line}`)
 
 check(
-  panelPatch.includes('applications:org.kde.konsole.desktop')
+  panelPatch.includes('tasks.writeConfig("launchers", [')
+    && panelPatch.includes('applications:org.kde.konsole.desktop')
     && !panelPatch.includes('+tasks.writeConfig("launchers", "applications:org.kde.discover.desktop'),
-  'the default panel must replace the unavailable Discover launcher with Konsole',
+  'the default panel must replace Discover with Konsole using a launcher list',
 )
 
 check(!dockerfile.includes('FROM sandbox AS desktop'), 'desktop must not inherit the DSH payload before KDE is installed')

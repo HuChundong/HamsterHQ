@@ -7,7 +7,7 @@
 -panel.addWidget("org.kde.plasma.icontasks")
 +var tasks = panel.addWidget("org.kde.plasma.icontasks")
 +tasks.currentConfigGroup = ["General"]
-+tasks.writeConfig("launchers", "applications:systemsettings.desktop,applications:org.kde.konsole.desktop,preferred://filemanager,preferred://browser")
++tasks.writeConfig("launchers", ["applications:systemsettings.desktop", "applications:org.kde.konsole.desktop", "preferred://filemanager", "preferred://browser"])
 +tasks.currentConfigGroup = []
  panel.addWidget("org.kde.plasma.marginsseparator")
  
