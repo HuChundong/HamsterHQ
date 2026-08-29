@@ -265,7 +265,7 @@ echo "=== the gateway image ==="
 
 exports=$(docker run --rm --entrypoint node "$GATEWAY" -e "
   import('dsh-tunnel-protocol')
-    .then((m) => console.log(['chunkBody', 'decodeFrame', 'encodeFrame', 'rewriteRequestHeaders'].every((k) => k in m) ? 'complete' : 'incomplete'))
+    .then((m) => console.log(['chunkBody', 'decodeFrame', 'encodeFrame', 'rewriteRequestHeaders', 'authorityFor', 'localPathFor'].every((k) => k in m) ? 'complete' : 'incomplete'))
     .catch((error) => console.log('failed: ' + error.message))
 " 2>/dev/null || echo error)
 check 'the frame protocol imports' complete "$exports"
@@ -293,6 +293,37 @@ console=$(docker run --rm --entrypoint node "$ADMIN" --input-type=module -e "
   console.log('loads')
 " 2>/dev/null | tail -1 || echo error)
 check "the console pages load with the image's own modules" loads "$console"
+
+DESKTOP="${5:-hamsterhq-desktop:latest}"
+if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
+  echo
+  echo "=== the desktop image ==="
+  warm=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
+    'test -x /app/sandbox/start-desktop.sh && test -x /app/sandbox/template-warm.sh && test -f /app/sandbox/desktop-health.mjs && echo ok || echo missing' \
+    2>/dev/null || echo error)
+  check 'desktop warm/ensure scripts are present' ok "$warm"
+  xfce=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
+    'command -v startxfce4 >/dev/null && command -v Xvnc >/dev/null && test -x /usr/share/novnc/utils/novnc_proxy && echo ok || echo missing' \
+    2>/dev/null || echo error)
+  check 'XFCE + TigerVNC + noVNC are installed' ok "$xfce"
+  chrome=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
+    'grep -q hamsterhq-hide-chrome /usr/share/novnc/vnc.html \
+      && grep -q "display:none!important" /usr/share/novnc/vnc.html \
+      && test -f /usr/share/novnc/app/styles/hamsterhq-hide-chrome.css \
+      && test -f /usr/share/backgrounds/hamsterhq/desktop.jpg \
+      && test -f /home/desktop/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml \
+      && test -f /home/desktop/.config/mimeapps.list \
+      && test -f /home/desktop/.config/xfce4/helpers.rc \
+      && test -x /usr/local/bin/chrome-launch \
+      && test "$(basename "$(readlink /usr/local/bin/google-chrome)")" = chrome-launch \
+      && echo ok || echo missing' \
+    2>/dev/null || echo error)
+  check 'noVNC chrome hidden, wallpaper and default browser seeded' ok "$chrome"
+else
+  echo
+  echo "=== the desktop image ==="
+  echo "  (skip — $DESKTOP not built; compose --profile build build desktop)"
+fi
 
 echo
 [ "$fail" -eq 0 ] && echo 'check-images: the images resolve what they will be asked for' \

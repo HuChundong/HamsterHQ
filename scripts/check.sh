@@ -38,6 +38,7 @@ for check in \
   scripts/check-icons.mjs \
   scripts/check-docs.mjs \
   scripts/check-forwarded.mjs \
+  scripts/check-tunnel-path.mjs \
   scripts/check-env-defaults.mjs \
   scripts/check-entitlements.mjs \
   scripts/check-scheduler-boundary.mjs \

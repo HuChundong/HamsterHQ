@@ -84,6 +84,23 @@ location /browser/ {
   proxy_buffering off;
 }
 
+# The desktop plane: noVNC inside the sandbox (loopback :6080), proxied through
+# the tunnel. Upgrade headers are required — websockify is a WebSocket — and
+# the long timeouts match an idle desktop the way `/sandbox/pty` matches an
+# idle shell. Path rewriting to strip `/computer` happens in the sandbox tunnel
+# plugin, not here.
+location /computer/ {
+  proxy_pass http://$gateway_upstream;
+  proxy_http_version 1.1;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection $connection_upgrade;
+  proxy_read_timeout 1h;
+  proxy_send_timeout 1h;
+  proxy_buffering off;
+}
+
 # A tenant's scheduled tasks, read and written from the shell's own dialog.
 #
 # It goes to the gateway rather than through `/api` into the sandbox, and that

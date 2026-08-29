@@ -1,0 +1,25 @@
+/* Hide noVNC chrome when embedded in the Computer pane, and theme the
+ * letterbox. Carried from the weixin-bot cut for the chrome; the background
+ * follows the shell via --hamsterhq-novnc-bg (set by computer-pane.js, or by
+ * the ?bg= bootstrap on vnc.html for new-window opens).
+ */
+#noVNC_control_bar_anchor,
+#noVNC_control_bar,
+#noVNC_control_bar_hint,
+#noVNC_status,
+#noVNC_transition {
+  display: none !important;
+}
+
+#noVNC_status.noVNC_status_error.noVNC_open {
+  display: flex !important;
+}
+
+html, body, #noVNC_container {
+  background-color: var(--hamsterhq-novnc-bg, #1b1b1c) !important;
+  background-image: none !important;
+}
+
+#noVNC_container {
+  border-radius: 0 !important;
+}

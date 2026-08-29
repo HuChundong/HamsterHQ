@@ -622,24 +622,23 @@ is chosen at image build by `BROWSER_SOURCE`:
   is built from inside China where Playwright's default CDN is the step that
   fails — the same reason OfficeCLI arrives from a CDN.
 - **`antidetect`** (what a production host with the patched binary builds) —
-  a full Chromium compiled elsewhere with the anti-detect patches
+  a full Chromium compiled on that host with the anti-detect patches
   (`navigator.webdriver` always false, no `Headless` in the product string,
-  automation and bad-flag infobars off). The host extracts `/opt/chrome`
-  from `anti-detect-chrome:v3` into `sandbox/browser-engine/` before the
-  image build (see [docs/cubesandbox.md](cubesandbox.md)); the directory in
-  git holds only a placeholder — 329 MB never lands here. The VNC / noVNC /
-  horust stack that image also carried is deliberately not taken: this
-  deployment already has a panel that polls screenshots over `/browser`, and
-  a sandbox of 2–4 GB cannot also afford TigerVNC. Without that display,
-  ANGLE+SwiftShader cannot open an X server either, so `browser-flags` keeps
-  `--disable-gpu` — the webdriver/UA patches still apply; only the WebGL
-  fingerprint disguise is traded for a GPU process that does not crash-loop.
-  The Linux build of that binary also freezes a coherent Windows desktop
+  automation and bad-flag infobars off). Before the image build the host
+  rsyncs its latest `chrome-dist/` into `sandbox/browser-engine/` (see
+  [docs/cubesandbox.md](cubesandbox.md)) — never a stale packaging image.
+  The directory in git holds only a placeholder — 329 MB never lands here.
+  The light sandbox still omits VNC / noVNC / horust and keeps `--disable-gpu`
+  in `browser-flags` (no X display; ANGLE+SwiftShader would crash-loop the
+  GPU process). The **desktop** image (`hamsterhq-desktop`) is where TigerVNC
+  + XFCE + noVNC return — 4 CPU / 8 GiB, frozen into the Cube template — and
+  headed Chrome uses `desktop-chrome-flags` instead. The Linux build of the
+  anti-detect binary also freezes a coherent Windows desktop
   identity at compile time (classic UA, Client Hints platform/version,
   reduced `navigator.platform` in `NavigatorBase`, hardwareConcurrency,
   deviceMemory), because sites that fence off Linux read those surfaces
   below any page script. Language and timezone stay with the process
-  (`--lang=zh-CN`, `TZ=Asia/Shanghai` in `start-browser.sh`) so they stay
+  (`--lang=zh-CN`, `TZ=Asia/Shanghai`) so they stay
   aligned with that identity without a second Chromium rebuild when a
   deployment changes locale.
 
@@ -676,22 +675,16 @@ writes it into the tenant's workspace on every boot — rewritten rather than
 created once, so an image that moves the port cannot leave a volume pointing at
 the old answer.
 
-The browser starts with the tenant's backend, because the platform offers
-nowhere earlier: `cubemastercli template create-from-image` takes no start or
-ready command, so a running browser cannot be baked into the template the way
-its first design assumed — the runbook briefly documented those two flags on
-the strength of E2B's `template build` having them, and the CLI has neither.
-What remains of that design is deliberate. `sandbox/start-browser.sh` is
-idempotent behind a port check, so a backend restarted through envd meets the
-browser running rather than spawning a second; the launch is backgrounded, so
-the backend never waits on it; and the script knows no tenant — no identity,
-no mount, a profile on the machine's own disk — which is what a template
-start hook would require, so if the CLI grows one, it points here and nothing
-changes. The profile's home is also its own argument: a mount arriving after
-the browser must not shadow its files, and Chromium's profile is precisely
-the many-small-files workload the mount is worst at. The price, paid
-knowingly: cookies do not survive a rebuild, the working set's fate rather
-than the files'.
+The desktop image freezes TigerVNC + XFCE + noVNC + headed Chrome into the
+Cube template with `create-from-image --cmd /app/sandbox/template-warm.sh`
+and `--probe 6099` (Cube 0.7). After restore those processes are already in
+memory; `start-desktop.sh` only ensures them. The panel's Computer tab embeds
+`/computer/` (session-authenticated noVNC through the tunnel). The light image
+still starts headless Chromium from `start-browser.sh` on each backend boot —
+idempotent behind a port check — and the watch-only Browser tab polls CDP
+JPEGs. Both scripts know no tenant: no identity, no mount, a profile on the
+machine's own disk, which is what makes desktop freeze legal and what a
+template hook always required.
 
 The browser listens on loopback, and that is load-bearing: a CDP port drives
 the browser as the tenant, so anything that can reach it reads what they read

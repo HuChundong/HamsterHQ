@@ -19,12 +19,9 @@ CubeSandbox 的模板不是镜像。它是镜像运行时拍下的快照，为�
 因此镜像不声明 `CMD`。`cube-entrypoint.sh` 只守着 envd，由网关在拿到那份只在创建时才存在的
 身份之后，通过 envd 的进程 API 为每个租户启动后端。
 
-这条规则是一道判据，不是一刀切——但通过判据买不来 CLI 花不出去的东西。沙箱的浏览器通过了后端
-没通过的那道判据（没有身份、没有挂载、profile 在机器自己的磁盘上），原本的设计是由模板的
-start 命令把它冻进快照、ready 命令按住端口。运行手册照着 E2B 的 template build 有这两个参数，
-就给 `create-from-image` 写上了 `--start-cmd` 和 `--ready-cmd`；这个 CLI 两个都没有，而仓库里
-从没有任何东西真正跑过那条命令去发现这一点。浏览器改为随每个租户的后端一起启动，后台方式，
-脚本保留着模板钩子所需要的那个「不认识租户」的形状。
+这条规则是一道判据，不是一刀切。后端仍然通不过（身份、挂载、隧道 URL），绝不能冻结。桌面栈——TigerVNC、XFCE、noVNC、有头 Chrome 且 profile 在机器自己的磁盘上——能通过。Cube 0.7 的 `create-from-image` 现已接受 `--cmd` 与 `--probe`；desktop 镜像用 `/app/sandbox/template-warm.sh` 和 `:6099/health` probe，让这些进程已经在内存快照里。还原之后 `start-desktop.sh` 幂等：端口已在听就是空操作。轻量模板仍在每次后端启动时用 `start-browser.sh` 拉起无头 Chromium。
+
+此前错误的结论：运行手册曾照着 E2B 的 `template build` 写过 `--start-cmd` / `--ready-cmd`，当时的 CLI 两个都没有，浏览器就被挪到每次后端启动上。这段历史对轻量镜像仍然成立；desktop 路径用的是 Cube 后来真正长出来的参数。
 
 **多花一轮才发现的推论：** `POST /templates/{id}` 不会拾取新镜像。把已有模板指向新镜像，每个
 沙箱还原的仍是它原来那份快照。换镜像就必须建新模板，每次都是。
@@ -431,10 +428,24 @@ e2b 客户端的 `files.read` 默认按文本解码，所以在共用的 `readFi
 `resp.text()`。对着租户沙箱量过：70 字节的 PNG 回来变成 86 字节，开头的
 `0x89` 魔数变成 `EF BF BD`。
 
-官方客户端返回不了文件的字节。规则要求的答案是上游 issue 加上这里写明的
-限制，而不是在旁边再写一套协议。限制落在内置副本里
-（`vendor/cubesandbox-sdk-0.3.0+pr1485+bytes.tgz`）：同一个 `read` 认
-`format: 'bytes'`，返回 `Uint8Array`。不要在它旁边再 fetch 一次 `/files`。
+官方客户端曾经返回不了文件的字节。规则要求的答案是上游修复，而不是在旁边
+再写一套协议。[Issue #1570](https://github.com/TencentCloud/CubeSandbox/issues/1570)
+/ [PR #1571](https://github.com/TencentCloud/CubeSandbox/pull/1571) 补上了与
+e2b 对齐的 `format` 表面（`text` / `bytes` / `blob` / `stream`）。在合入上游
+`master` 之前，内置副本（`vendor/cubesandbox-sdk-0.3.0+82a807ab+e2b-read-format.tgz`）
+按该 PR 构建。不要在它旁边再 fetch 一次 `/files`。
+
+## 挂在 `/computer/` 下的 noVNC 必须显式给出 websockify 路径
+
+Computer 面板嵌入的是 `/computer/vnc.html`。noVNC 把 WebSocket 拼成
+`wss://host/<path>`，默认 `path=websockify`，于是浏览器连到站点根上的
+`/websockify`——不在 nginx 的 location 里，也不在隧道剥 `/computer` 的路径上——
+以 1006 失败。错误结论是隧道或 Upgrade 头坏了；其实 `GET /computer/vnc.html`
+已经是 200。
+
+在 iframe URL 上带 `path=computer/websockify`。隧道剥掉 `/computer` 后拨
+`:6080/websockify`。控制台里 `/computer/package.json` 的 404 是另一件事，
+且不挡连接：Debian 的 novnc 包在 `vnc.html` 旁没有 `package.json`。
 
 ## 能推广的部分
 

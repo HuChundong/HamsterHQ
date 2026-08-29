@@ -124,7 +124,7 @@ MIT；每个插件的浏览器半边都可以从 shell 的模块表里 `require`
 require React 完全一样。一个窗口里只允许一种图标风格：harness 的 16 网格填充
 轮廓。在旁边再画一套，正是这条规矩要防的事。
 
-harness 没有画的那些放在 `packages/dsh-icons`：21 个字形，由 `extract.mjs` 从
+harness 没有画的那些放在 `packages/dsh-icons`：24 个字形，由 `extract.mjs` 从
 lucide-static 写成 path data 并盖上来源版本号。署名见 [NOTICE](NOTICE)。
 
 选 Lucide，是因为决定「一个字形能不能挨着另一个」的两条尺度：它的线宽占框

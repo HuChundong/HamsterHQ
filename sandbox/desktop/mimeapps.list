@@ -1,0 +1,11 @@
+[Default Applications]
+x-scheme-handler/http=google-chrome-custom.desktop
+x-scheme-handler/https=google-chrome-custom.desktop
+text/html=google-chrome-custom.desktop
+application/xhtml+xml=google-chrome-custom.desktop
+
+[Added Associations]
+x-scheme-handler/http=google-chrome-custom.desktop
+x-scheme-handler/https=google-chrome-custom.desktop
+text/html=google-chrome-custom.desktop
+application/xhtml+xml=google-chrome-custom.desktop

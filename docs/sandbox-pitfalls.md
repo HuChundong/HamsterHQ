@@ -26,15 +26,21 @@ The image therefore declares no `CMD`. `cube-entrypoint.sh` waits on envd, and
 the gateway starts each tenant's backend through envd's process API with the
 identity that only exists at creation.
 
-The rule is a test, not a ban — but passing it buys nothing the CLI cannot
-spend. The sandbox's browser passes where the backend failed (no identity, no
-mount, a profile on the machine's own disk) and was designed to be frozen
-into the snapshot by a template start command, its port held by a ready
-command. The runbook shipped `create-from-image` with `--start-cmd` and
-`--ready-cmd` on the strength of E2B's `template build` having them; the CLI
-has neither, and nothing in this repository had ever run that command to find
-out. The browser launches with each tenant's backend instead, backgrounded,
-and the script keeps the tenant-free shape a template hook would need.
+The rule is a test, not a ban. The backend still fails that test (identity,
+mount, tunnel URL) and must never be frozen. The desktop stack — TigerVNC,
+XFCE, noVNC, headed Chrome with a profile on the machine's own disk — passes
+it. Cube 0.7's `create-from-image` now accepts `--cmd` and `--probe`; the
+desktop image uses `/app/sandbox/template-warm.sh` and a `:6099/health`
+probe so those processes are already in the memory snapshot. After restore,
+`start-desktop.sh` is idempotent: ports already listening mean a no-op.
+Light templates still launch headless Chromium from `start-browser.sh` on
+each backend boot.
+
+The wrong conclusion that preceded this: the runbook briefly documented
+`--start-cmd` / `--ready-cmd` on the strength of E2B's `template build`, the
+CLI of the day had neither, and the browser was moved onto every backend boot
+instead. That history stays true for the light image; the desktop path uses
+the flags Cube actually grew.
 
 **Corollary that cost a second round:** `POST /templates/{id}` does not pick up
 a new image. Pointing an existing template at one leaves every sandbox restoring
@@ -567,12 +573,28 @@ it — `read` has no such option, and always does `resp.text()`. Measured
 against a tenant's sandbox: a 70-byte PNG arrived as 86 bytes, its `0x89`
 magic byte as `EF BF BD`.
 
-The official client cannot return a file's bytes. The rule for that is an
-upstream issue and a documented limitation, not a second protocol written
-out beside it. The limitation lives in the vendored copy
-(`vendor/cubesandbox-sdk-0.3.0+pr1485+bytes.tgz`): the same `read` honours
-`format: 'bytes'` and returns a `Uint8Array`. Do not add a fetch of
-`/files` next to it.
+The official client could not return a file's bytes. The rule for that is
+an upstream fix, not a second protocol written out beside it.
+[Issue #1570](https://github.com/TencentCloud/CubeSandbox/issues/1570) /
+[PR #1571](https://github.com/TencentCloud/CubeSandbox/pull/1571) add the
+e2b-compatible `format` surface (`text` / `bytes` / `blob` / `stream`).
+Until that lands on upstream `master`, the vendored copy
+(`vendor/cubesandbox-sdk-0.3.0+82a807ab+e2b-read-format.tgz`) is built from
+that PR. Do not add a fetch of `/files` next to it.
+
+## noVNC under `/computer/` needs an explicit websockify path
+
+The Computer pane embeds `/computer/vnc.html`. noVNC builds the WebSocket URL
+as `wss://host/<path>` with default `path=websockify`, so the browser dials
+`/websockify` at the site root — outside the nginx location and the tunnel's
+`/computer` strip — and fails with code 1006. The wrong conclusion was that
+the tunnel or Upgrade headers were broken; HTTP `GET /computer/vnc.html`
+already returned 200.
+
+Pass `path=computer/websockify` on the iframe URL. The tunnel then strips
+`/computer` and dials `:6080/websockify`. The console warning about
+`/computer/package.json` is separate and non-fatal: Debian's novnc package
+ships no `package.json` next to `vnc.html`.
 
 ## What generalizes
 

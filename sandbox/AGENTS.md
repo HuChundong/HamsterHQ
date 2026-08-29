@@ -23,7 +23,10 @@ The order in that script is not incidental:
    other leaves a tenant's files where nothing looks for them.
 4. Start dsh in the background.
 5. Start the reporter in the background, if it is there.
-6. `wait` on dsh, and only on dsh.
+6. Ensure the display / browser stack (`start-desktop.sh` on desktop images,
+   `start-browser.sh` on light ones). Desktop Cube templates freeze that stack
+   during `create-from-image`; the ensure is then a port-check no-op.
+7. `wait` on dsh, and only on dsh.
 
 The tunnel is a plugin inside that composition, not a second process, so there is
 one thing to wait on and nothing to keep in step with it.

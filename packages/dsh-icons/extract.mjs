@@ -62,6 +62,10 @@ const WANTED = {
   // on the web" — and not the brush, which is the page the agent is making.
   // This tab is the window those are seen through, so it wears one.
   window: 'app-window',
+  // The Computer control in the session header: a laptop, not a window frame
+  // (that is the Browser tab). laptop-minimal is the quieter of lucide's two
+  // laptop drawings and sits next to Session log without shouting.
+  computer: 'laptop-minimal',
   // The operator's console, whose sections are administrators, users and
   // invite codes: everyone who has an account, not one being configured.
   people: 'users',
