@@ -19,9 +19,9 @@ CubeSandbox 的模板不是镜像。它是镜像运行时拍下的快照，为�
 因此镜像不声明 `CMD`。`cube-entrypoint.sh` 只守着 envd，由网关在拿到那份只在创建时才存在的
 身份之后，通过 envd 的进程 API 为每个租户启动后端。
 
-这条规则是一道判据，不是一刀切。后端仍然通不过（身份、挂载、隧道 URL），绝不能冻结。桌面栈——TigerVNC、KDE Plasma X11、noVNC、有头 Chrome 且 profile 在机器自己的磁盘上——能通过。Cube 0.7 的 `create-from-image` 现已接受 `--cmd` 与 `--probe`；desktop 镜像用 `/app/sandbox/template-warm.sh` 和 `:6099/health` probe，让这些进程已经在内存快照里。还原之后 `start-desktop.sh` 幂等：端口已在听就是空操作。轻量模板仍在每次后端启动时用 `start-browser.sh` 拉起无头 Chromium。
+这条规则是一道判据，不是一刀切。后端仍然通不过（身份、挂载、隧道 URL），绝不能冻结。不含租户状态的显示栈——TigerVNC、KDE Plasma X11 和 noVNC——能通过。有头 Chrome 不再能通过：只有让 profile 跟着租户持久卷，登录状态才有价值，而制作通用模板时这个卷并不存在。Cube 0.7 的 `create-from-image` 接受 `--cmd` 与 `--probe`；desktop 镜像用 `/app/sandbox/template-warm.sh` 和 `:6099/health` probe，让显示进程已经在内存快照里。还原之后 `start-desktop.sh` 幂等：端口已在听就是空操作。轻量模板仍在每次后端启动时用 `start-browser.sh` 拉起无头 Chromium。
 
-探针必须描述可见桌面，而不是只描述传输端口。曾经的探针只检查 noVNC 与 CDP，导致 KDE 模板在 Plasma 和 Fluent 主题还在启动时就被截取；每个租户恢复后都要目睹剩余启动过程。现在必须等 Xvnc/noVNC、Chrome 页面目标、Plasma、KWin 和主题标记全部就绪并稳定 5 秒，才允许制作快照。
+探针必须描述可见桌面，而不是只描述传输端口。曾经的探针只检查 noVNC 与 CDP，导致 KDE 模板在 Plasma 和 Fluent 主题还在启动时就被截取；每个租户恢复后都要目睹剩余启动过程。现在必须等 Xvnc/noVNC、Plasma、KWin 和主题标记全部就绪并稳定 5 秒，才允许制作快照。Chrome 是刻意缺席的，因此探测 CDP 反而会唤醒它，并把不属于任何租户的 profile 状态重新塞进模板。
 
 这版增强探针最初又犯了一个更严重的错误：每 500ms 裸连一次 `:5900`。Xvnc 会把未完成 RFB 握手就断开的客户端计为失败，数次后将回环地址加入黑名单，而 Cube 又如实把这份黑名单冻进了模板。租户恢复后，noVNC 因此要等待约 20 秒才能连接 Xvnc。正确方式是检查 Xvnc 进程和 X11 显示是否就绪；不能靠打开套接字后丢弃握手来探测有状态协议。
 

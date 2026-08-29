@@ -480,12 +480,17 @@ agent 使用它的 skill，所以这个仓库不写自己的 skill。这和 Offi
 换了端口的镜像不会把某个卷留在旧答案上。
 
 desktop 镜像用 `create-from-image --cmd /app/sandbox/template-warm.sh` 与
-`--probe 6099`（Cube 0.7）把 TigerVNC + KDE Plasma X11 + noVNC + 有头 Chrome 冻进模板。还原
-后这些进程已在内存里；`start-desktop.sh` 只做 ensure。面板的 Computer 标签嵌入
-`/computer/`（经隧道、会话鉴权的 noVNC）。轻量镜像仍在每次后端启动时用
-`start-browser.sh` 拉起无头 Chromium——端口检查后幂等——只读 Browser 标签轮询 CDP
-JPEG。两套脚本都不认识租户：没有身份、没有挂载、profile 在机器自己的磁盘上，这正
-是 desktop 可以合法冻结、也是模板钩子历来要求的形状。
+`--probe 6099`（Cube 0.7）把 TigerVNC + KDE Plasma X11 + noVNC 冻进模板。还原后这些进程已
+在内存里；`start-desktop.sh` 只做 ensure。有头 Chrome 不属于这份快照：桌面启动器与 desktop
+镜像里很薄的一层 `playwright-cli` 包装会经过同一把锁，只在首次使用时启动浏览器，随后都连接
+CDP `:9222`，所以人和 agent 看到的是同一个浏览器，而不是两个争用 profile 的进程。
+`/mnt/browser-profile` 是 S3 持久卷上的租户状态，重建沙箱后 cookies 与 Local Storage 仍在；
+`--disk-cache-dir` 指到 `/tmp/desktop-chrome-cache`，不把可丢弃的传输缓存写进 S3。KWallet
+被禁用，Chrome 使用自己的 basic profile 存储，因此首次启动不会卡在钱包密码询问；相应地，持久卷
+必须按包含凭据的存储来保护。面板的
+Computer 标签嵌入 `/computer/`（经隧道、会话鉴权的 noVNC）；只读 Browser 标签轮询 CDP
+JPEG，但不会因此唤醒已停止的浏览器。轻量镜像维持原有行为，仍在后端启动时通过
+`start-browser.sh` 拉起使用机器本地 profile 的无头 Chromium。
 
 浏览器只监听回环，这一条是承重的：CDP 端口就是以租户身份操作这个浏览器，谁能连
 上它，谁就能读租户所读、以租户身份发帖。换引擎交出去的是另一道栅栏，这里如实记

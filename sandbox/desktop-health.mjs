@@ -54,30 +54,15 @@ async function themeApplied() {
   }
 }
 
-/** @returns {Promise<boolean>} */
-async function cdpHasPage() {
-  try {
-    const response = await fetch('http://127.0.0.1:9222/json/list', {
-      signal: AbortSignal.timeout(1000),
-    })
-    if (!response.ok) return false
-    const targets = await response.json()
-    return Array.isArray(targets) && targets.some((target) => target?.type === 'page')
-  } catch {
-    return false
-  }
-}
-
 const server = http.createServer(async (_req, res) => {
-  const [xvnc, novnc, cdp, plasma, kwin, theme] = await Promise.all([
+  const [xvnc, novnc, plasma, kwin, theme] = await Promise.all([
     processRunning('Xvnc'),
     listening(6080),
-    cdpHasPage(),
     processRunning('plasmashell'),
     processRunning('kwin_x11'),
     themeApplied(),
   ])
-  const ready = xvnc && novnc && cdp && plasma && kwin && theme
+  const ready = xvnc && novnc && plasma && kwin && theme
   if (!ready) readySince = 0
   else if (readySince === 0) readySince = Date.now()
 
@@ -89,7 +74,7 @@ const server = http.createServer(async (_req, res) => {
   }
   res.writeHead(503, { 'Content-Type': 'text/plain' })
   res.end(
-    `not ready xvnc=${xvnc} novnc=${novnc} cdp=${cdp} plasma=${plasma} `
+    `not ready xvnc=${xvnc} novnc=${novnc} plasma=${plasma} `
     + `kwin=${kwin} theme=${theme} settled=${settled}\n`,
   )
 })

@@ -59,7 +59,7 @@ check(
 
 check(!dockerfile.includes('FROM sandbox AS desktop'), 'desktop must not inherit the DSH payload before KDE is installed')
 
-for (const signal of ['plasmashell', 'kwin_x11', 'theme-state', '/json/list', 'DESKTOP_HEALTH_SETTLE_MS']) {
+for (const signal of ['plasmashell', 'kwin_x11', 'theme-state', 'DESKTOP_HEALTH_SETTLE_MS']) {
   check(desktopHealth.includes(signal), `desktop template health must wait for ${signal}`)
 }
 check(
@@ -75,8 +75,25 @@ const desktopStart = readFileSync(join(root, 'sandbox/start-desktop.sh'), 'utf8'
 check(
   desktopStart.includes('pgrep -u desktop -x Xvnc')
     && desktopStart.includes('xdpyinfo')
-    && !desktopStart.includes('port_open 5900'),
+    && !desktopStart.includes('port_open 5900')
+    && !desktopStart.includes('chrome-launch'),
   'desktop startup must use process/X11 readiness instead of a bare VNC connection',
+)
+
+const chromeLaunch = readFileSync(join(root, 'sandbox/desktop/chrome-launch.sh'), 'utf8')
+const lazyBrowser = readFileSync(join(root, 'sandbox/desktop/start-desktop-browser.sh'), 'utf8')
+const walletConfig = readFileSync(join(root, 'sandbox/desktop/kde/kwalletrc'), 'utf8')
+check(
+  chromeLaunch.includes('${CHROME_PROFILE_DIR:-/mnt/browser-profile}')
+    && chromeLaunch.includes('${CHROME_CACHE_DIR:-/tmp/desktop-chrome-cache}')
+    && lazyBrowser.includes('start-desktop-browser: Chrome did not expose CDP'),
+  'desktop Chrome must start on demand with persistent profile and ephemeral cache',
+)
+check(
+  walletConfig.includes('[Wallet]')
+    && walletConfig.includes('Enabled=false')
+    && walletConfig.includes('First Use=false'),
+  'desktop must disable KWallet instead of prompting on first browser launch',
 )
 
 const systemStart = dockerfile.indexOf('FROM sandbox-contract AS desktop-system')

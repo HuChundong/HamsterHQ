@@ -27,9 +27,11 @@ the gateway starts each tenant's backend through envd's process API with the
 identity that only exists at creation.
 
 The rule is a test, not a ban. The backend still fails that test (identity,
-mount, tunnel URL) and must never be frozen. The desktop stack — TigerVNC,
-KDE Plasma X11, noVNC, headed Chrome with a profile on the machine's own disk — passes
-it. Cube 0.7's `create-from-image` now accepts `--cmd` and `--probe`; the
+mount, tunnel URL) and must never be frozen. The tenant-free display stack —
+TigerVNC, KDE Plasma X11 and noVNC — passes it. Headed Chrome no longer does:
+login state is useful only if its profile follows the tenant's persistent
+volume, which is absent while a generic template is made. Cube 0.7's
+`create-from-image` accepts `--cmd` and `--probe`; the
 desktop image uses `/app/sandbox/template-warm.sh` and a `:6099/health`
 probe so those processes are already in the memory snapshot. After restore,
 `start-desktop.sh` is idempotent: ports already listening mean a no-op.
@@ -39,8 +41,10 @@ each backend boot.
 The probe must describe the visible desktop, not its transport. A probe that
 checked only noVNC and CDP cut the KDE template while Plasma and Fluent theme
 application were still starting; every restored tenant then watched that work
-finish. It now requires Xvnc/noVNC, a Chrome page target, Plasma, KWin and the
-theme marker to remain ready for five seconds before the snapshot is taken.
+finish. It now requires Xvnc/noVNC, Plasma, KWin and the theme marker to remain
+ready for five seconds before the snapshot is taken. Chrome is deliberately
+absent, so probing CDP would both wake it and put tenant-independent profile
+state back into the template.
 
 The first version of that stronger probe made a worse mistake: it tested
 `:5900` with a bare TCP connection every 500 ms. Xvnc counts a client that

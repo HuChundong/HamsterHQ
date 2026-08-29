@@ -17,6 +17,17 @@ set -eu
 # shellcheck source=/dev/null  # written by the image build, absent from the tree
 . /app/sandbox/env.sh
 
+# A desktop browser is deliberately lazy, but its profile directory must be
+# ready before either the desktop user or an agent becomes the first caller.
+# The tenant mount is S3-backed persistence; cache remains local to this VM.
+if [ "${SANDBOX_VARIANT:-}" = desktop ]; then
+  CHROME_PROFILE_DIR="${CHROME_PROFILE_DIR:-$MOUNT/browser-profile}"
+  CHROME_CACHE_DIR="${CHROME_CACHE_DIR:-/tmp/desktop-chrome-cache}"
+  export CHROME_PROFILE_DIR CHROME_CACHE_DIR
+  install -d -m 700 -o desktop -g desktop "$CHROME_PROFILE_DIR"
+  install -d -m 700 -o desktop -g desktop "$CHROME_CACHE_DIR"
+fi
+
 # The tenant's own state, all of it under one mount.
 #
 # One CubeSandbox volume is attached at `/mnt`, backed by a prefix in an
@@ -136,8 +147,8 @@ if [ -x /usr/local/bin/dsh-agent ]; then
 fi
 
 # The display / browser stack. Desktop images carry start-desktop.sh (KDE +
-# TigerVNC + noVNC + headed Chrome); light images carry start-browser.sh
-# (headless CDP only). Desktop templates freeze the stack into the Cube
+# TigerVNC + noVNC); their headed Chrome is started on demand. Light images
+# carry start-browser.sh (headless CDP only). Desktop templates freeze the Cube
 # memory snapshot via template-warm.sh during create-from-image — after
 # restore the port checks inside start-desktop.sh make this a no-op. Docker
 # simulation has no snapshot, so the same call cold-starts. Light builds
