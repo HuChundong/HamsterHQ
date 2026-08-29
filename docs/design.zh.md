@@ -78,6 +78,9 @@ harness 依赖图只在 `deps` 中解析一次，并由所有使用方共享；�
 因此正常升级会同步刷新 lock 并使用 `npm ci`，而不是让 npm 再放置一遍完整依赖图。显式覆盖版本
 仍保留一条供试验使用的解析回退路径。编译 `node-pty` 的工具链留在 `deps`，不会进入真正运行的镜像。
 
+BuildKit 的 Dockerfile frontend 也按 digest 固定，因此缓存挂载、链接复制不会在一次看似命中
+缓存的构建中随浮动标签静默变化。
+
 沙箱按变化频率分层。`sandbox-runtime` 装昂贵而稳定的 apt、Python、OfficeCLI 与浏览器；
 `sandbox-contract` 保存两种镜像共同承诺的路径和进程元数据；`sandbox-compose` 再加入 DSH、
 项目插件与配置，轻量镜像到这里结束。KDE 从 `sandbox-contract` 独立安装到 `desktop-system`，

@@ -104,6 +104,9 @@ asking npm to place the whole graph again. An explicit version override still
 has a resolver fallback for experiments. The toolchain that builds `node-pty`
 stays in `deps` rather than shipping in what runs.
 
+The BuildKit Dockerfile frontend is pinned by digest too. Cache mounts and
+linked copies therefore do not silently change under an otherwise cached build.
+
 The sandbox is split by change frequency. `sandbox-runtime` holds the expensive,
 stable apt, Python, OfficeCLI and browser layers; `sandbox-contract` holds the
 paths and process metadata both variants promise; `sandbox-compose` adds DSH,

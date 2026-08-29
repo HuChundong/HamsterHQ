@@ -13,6 +13,11 @@ const check = (condition, message) => {
   if (!condition) problems.push(message)
 }
 
+check(
+  /^# syntax=docker\/dockerfile:1@sha256:[a-f0-9]{64}$/m.test(dockerfile),
+  'Dockerfile must pin the BuildKit frontend by digest',
+)
+
 const pinned = dockerfile.match(/^ARG DSH_VERSION=(\S+)$/m)?.[1]
 check(Boolean(pinned), 'Dockerfile must pin ARG DSH_VERSION')
 
