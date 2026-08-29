@@ -69,15 +69,15 @@ async function cdpHasPage() {
 }
 
 const server = http.createServer(async (_req, res) => {
-  const [vnc, novnc, cdp, plasma, kwin, theme] = await Promise.all([
-    listening(5900),
+  const [xvnc, novnc, cdp, plasma, kwin, theme] = await Promise.all([
+    processRunning('Xvnc'),
     listening(6080),
     cdpHasPage(),
     processRunning('plasmashell'),
     processRunning('kwin_x11'),
     themeApplied(),
   ])
-  const ready = vnc && novnc && cdp && plasma && kwin && theme
+  const ready = xvnc && novnc && cdp && plasma && kwin && theme
   if (!ready) readySince = 0
   else if (readySince === 0) readySince = Date.now()
 
@@ -89,7 +89,7 @@ const server = http.createServer(async (_req, res) => {
   }
   res.writeHead(503, { 'Content-Type': 'text/plain' })
   res.end(
-    `not ready vnc=${vnc} novnc=${novnc} cdp=${cdp} plasma=${plasma} `
+    `not ready xvnc=${xvnc} novnc=${novnc} cdp=${cdp} plasma=${plasma} `
     + `kwin=${kwin} theme=${theme} settled=${settled}\n`,
   )
 })

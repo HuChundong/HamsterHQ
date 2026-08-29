@@ -63,8 +63,20 @@ for (const signal of ['plasmashell', 'kwin_x11', 'theme-state', '/json/list', 'D
   check(desktopHealth.includes(signal), `desktop template health must wait for ${signal}`)
 }
 check(
+  desktopHealth.includes("processRunning('Xvnc')") && !desktopHealth.includes('listening(5900)'),
+  'desktop template health must not poison Xvnc with bare TCP probes',
+)
+check(
   templateWarm.includes('rm -f "$HOME/.config/dsh-desktop/theme-state"'),
   'desktop template warm-up must clear the visible-readiness marker before boot',
+)
+
+const desktopStart = readFileSync(join(root, 'sandbox/start-desktop.sh'), 'utf8')
+check(
+  desktopStart.includes('pgrep -u desktop -x Xvnc')
+    && desktopStart.includes('xdpyinfo')
+    && !desktopStart.includes('port_open 5900'),
+  'desktop startup must use process/X11 readiness instead of a bare VNC connection',
 )
 
 const systemStart = dockerfile.indexOf('FROM sandbox-contract AS desktop-system')
