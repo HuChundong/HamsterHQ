@@ -93,6 +93,8 @@ check(
 )
 check(
   browserStop.includes('method: "Browser.close"')
+    && browserStop.includes('chrome_running')
+    && browserStop.includes('sync -f "$profile"')
     && runtimes.includes('await flushBrowserProfile(handle)')
     && (runtimes.match(/await flushBrowserProfile\(handle\)/g) ?? []).length === 2,
   'both runtimes must flush the desktop browser profile before reclaim',

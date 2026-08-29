@@ -488,7 +488,7 @@ CDP `:9222`，所以人和 agent 看到的是同一个浏览器，而不是两�
 `--disk-cache-dir` 指到 `/tmp/desktop-chrome-cache`，不把可丢弃的传输缓存写进 S3。KWallet
 被禁用，Chrome 使用自己的 basic profile 存储，因此首次启动不会卡在钱包密码询问；相应地，持久卷
 必须按包含凭据的存储来保护。任一 runtime 回收沙箱前，网关都会通过回环 CDP 请求 Chrome
-`Browser.close`；这个有时间上限、失败不阻塞回收的关闭动作，会在卷转移到下一台 VM 前提交刚变化的
+`Browser.close`，等待持有 profile 的进程退出，再执行有上限的文件系统 sync；这个失败不阻塞回收的关闭动作，会在卷转移到下一台 VM 前提交刚变化的
 cookies，而已经死亡的机器仍然可以正常回收。面板的
 Computer 标签嵌入 `/computer/`（经隧道、会话鉴权的 noVNC）；只读 Browser 标签轮询 CDP
 JPEG，但不会因此唤醒已停止的浏览器。轻量镜像维持原有行为，仍在后端启动时通过
