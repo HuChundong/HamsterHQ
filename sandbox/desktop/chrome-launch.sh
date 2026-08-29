@@ -1,9 +1,10 @@
 #!/bin/bash
-# Interactive Chrome for the desktop session (panel / mime / exo-open).
+# Interactive Chrome for the desktop session (panel / mime / agent).
 #
-# start-desktop.sh already holds CDP on :9222 with this profile; opening a
-# URL here should reuse that process. Always pass container-safe flags —
-# Debian Chromium and the anti-detect binary both need --no-sandbox here.
+# The profile is tenant state and lives on the persistent mount. HTTP/media
+# cache is expendable working data and stays on the VM's /tmp. The higher-level
+# start-desktop-browser command owns process reuse and readiness; this file is
+# the one low-level Chrome invocation shared by every caller.
 set -eu
 
 if [ -x /opt/chrome/chrome ]; then
@@ -21,12 +22,20 @@ if [ -f /opt/chrome/vk_swiftshader_icd.json ]; then
   export VK_ICD_FILENAMES=/opt/chrome/vk_swiftshader_icd.json
 fi
 
+profile="${CHROME_PROFILE_DIR:-/mnt/browser-profile}"
+cache="${CHROME_CACHE_DIR:-/tmp/desktop-chrome-cache}"
+umask 077
+mkdir -p "$profile" "$cache"
+
+flags=()
+while IFS= read -r flag; do
+  case "$flag" in ''|'#'*) continue ;; esac
+  flags+=("$flag")
+done < /app/sandbox/desktop-chrome-flags
+
 exec "$REAL" \
-  --no-sandbox \
-  --disable-dev-shm-usage \
-  --user-data-dir=/tmp/desktop-chrome-profile \
-  --disk-cache-dir=/tmp/desktop-chrome-cache \
-  --no-first-run \
-  --start-maximized \
-  --lang=zh-CN \
+  "${flags[@]}" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$profile" \
+  --disk-cache-dir="$cache" \
   "$@"

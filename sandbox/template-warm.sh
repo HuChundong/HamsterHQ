@@ -19,7 +19,9 @@ export USER="${USER:-desktop}"
 # by this boot's theme application, never inherited from an earlier layer.
 rm -f "$HOME/.config/dsh-desktop/theme-state"
 
-# Optional page-cache warm for the anti-detect binary (old aio habit).
+# Warm only the executable's file pages. Chrome itself stays stopped: its
+# profile belongs to a tenant mount that does not exist while this tenant-free
+# template is being prepared.
 if [ -x /opt/chrome/chrome ]; then
   cat /opt/chrome/chrome >/dev/null 2>&1 || true
   find /opt/chrome -name '*.so*' -type f -exec cat {} + >/dev/null 2>&1 || true

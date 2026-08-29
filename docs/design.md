@@ -692,16 +692,20 @@ writes it into the tenant's workspace on every boot — rewritten rather than
 created once, so an image that moves the port cannot leave a volume pointing at
 the old answer.
 
-The desktop image freezes TigerVNC + KDE Plasma X11 + noVNC + headed Chrome into the
-Cube template with `create-from-image --cmd /app/sandbox/template-warm.sh`
-and `--probe 6099` (Cube 0.7). After restore those processes are already in
-memory; `start-desktop.sh` only ensures them. The panel's Computer tab embeds
-`/computer/` (session-authenticated noVNC through the tunnel). The light image
-still starts headless Chromium from `start-browser.sh` on each backend boot —
-idempotent behind a port check — and the watch-only Browser tab polls CDP
-JPEGs. Both scripts know no tenant: no identity, no mount, a profile on the
-machine's own disk, which is what makes desktop freeze legal and what a
-template hook always required.
+The desktop image freezes TigerVNC + KDE Plasma X11 + noVNC into the Cube
+template with `create-from-image --cmd /app/sandbox/template-warm.sh` and
+`--probe 6099` (Cube 0.7). After restore those processes are already in memory;
+`start-desktop.sh` only ensures them. Headed Chrome is not part of that snapshot:
+the desktop launcher and the desktop image's small `playwright-cli` wrapper race
+through one lock and start it only on first use. Both then attach to CDP `:9222`,
+so a person and an agent see the same browser rather than competing processes.
+Its `/mnt/browser-profile` is tenant state on the S3-backed volume, preserving
+cookies and Local Storage across rebuilt sandboxes; `--disk-cache-dir` points at
+`/tmp/desktop-chrome-cache`, keeping disposable transfer cache out of S3. The
+panel's Computer tab embeds `/computer/` (session-authenticated noVNC through the
+tunnel), while the watch-only Browser tab polls CDP JPEGs without waking a
+stopped browser. The light image keeps its existing boot-time headless Chromium
+from `start-browser.sh` and machine-local profile.
 
 The browser listens on loopback, and that is load-bearing: a CDP port drives
 the browser as the tenant, so anything that can reach it reads what they read

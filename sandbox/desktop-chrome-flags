@@ -1,6 +1,7 @@
 # How the desktop sandbox's headed Chrome is started: one flag per line.
-# Shared by template-warm.sh and start-desktop.sh. No --headless: the page
-# paints on DISPLAY=:0 behind TigerVNC. CDP stays on loopback :9222.
+# Read by chrome-launch.sh when the desktop or agent asks for Chrome. No
+# --headless: the page paints on DISPLAY=:0 behind TigerVNC. CDP stays on
+# loopback :9222.
 
 # The container grants no unprivileged user namespaces for Chromium's own
 # sandbox, and the isolation boundary is the tenant's machine itself.

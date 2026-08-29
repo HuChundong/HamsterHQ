@@ -344,11 +344,19 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
       && test -f /home/desktop/.config/Kvantum/kvantum.kvconfig \
       && test -f /home/desktop/.config/mimeapps.list \
       && test -x /usr/local/bin/chrome-launch \
+      && test -x /usr/local/bin/start-desktop-browser \
+      && test -x /usr/local/bin/playwright-cli \
+      && grep -q "start-desktop-browser" /usr/share/applications/google-chrome-custom.desktop \
+      && grep -q "CHROME_PROFILE_DIR:-/mnt/browser-profile" /usr/local/bin/chrome-launch \
+      && grep -q "CHROME_CACHE_DIR:-/tmp/desktop-chrome-cache" /usr/local/bin/chrome-launch \
+      && ! grep -q "chrome-launch" /app/sandbox/start-desktop.sh \
+      && test "$CHROME_PROFILE_DIR" = /mnt/browser-profile \
+      && test "$CHROME_CACHE_DIR" = /tmp/desktop-chrome-cache \
       && test -x /usr/local/bin/set-desktop-theme \
       && test "$(basename "$(readlink /usr/local/bin/google-chrome)")" = chrome-launch \
       && echo ok || echo missing' \
     2>/dev/null || echo error)
-  check 'noVNC chrome hidden, Fluent pair and default browser seeded' ok "$chrome"
+  check 'desktop theme and lazy persistent-profile browser are seeded' ok "$chrome"
 else
   echo
   echo "=== the desktop image ==="

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start (or ensure) KDE Plasma X11 + TigerVNC + noVNC + headed Chrome.
+# Start (or ensure) KDE Plasma X11 + TigerVNC + noVNC.
 #
 # template-warm.sh cold-starts this tenant-free stack before Cube snapshots it.
 # After restore every port/process check becomes a no-op; Docker simulation uses
@@ -104,21 +104,6 @@ if ! port_open 6080; then
     port_open 6080 && break
     sleep 0.25
   done
-fi
-
-# ---- headed Chrome + CDP ----
-if ! port_open 9222; then
-  flags=()
-  while IFS= read -r flag; do
-    case "$flag" in ''|'#'*) continue ;; esac
-    flags+=("$flag")
-  done < /app/sandbox/desktop-chrome-flags
-
-  setsid nohup runuser -u desktop -- env "${desktop_env[@]}" \
-    /usr/local/bin/chrome-launch "${flags[@]}" \
-      --remote-debugging-port=9222 \
-      --display="$DISPLAY" \
-      > /tmp/desktop-chrome.log 2>&1 < /dev/null &
 fi
 
 exit 0

@@ -30,12 +30,12 @@
 
 Cube 0.7 的 `create-from-image` 接受 `--cmd` 和 `--probe`。desktop 镜像用它们把**与租户无关**的栈冻进内存快照：
 
-- dbus、TigerVNC `:0`、KDE Plasma X11、`127.0.0.1:6080` 上的 noVNC、有头 Chrome + CDP `:9222`，以及 `:6099` 上的小 health
-- health 必须等到 Xvnc/noVNC、Chrome 真实页面目标、`plasmashell`、`kwin_x11` 和 Fluent 主题全部就绪，再稳定 5 秒才允许 Cube 快照；Xvnc 只通过进程和 X11 就绪状态检查，绝不裸连 `:5900`，因为未完成的 RFB 握手会触发 TigerVNC 客户端黑名单
+- dbus、TigerVNC `:0`、KDE Plasma X11、`127.0.0.1:6080` 上的 noVNC，以及 `:6099` 上的小 health；有头 Chrome 明确保持未运行
+- health 必须等到 Xvnc/noVNC、`plasmashell`、`kwin_x11` 和 Fluent 主题全部就绪，再稳定 5 秒才允许 Cube 快照；Xvnc 只通过进程和 X11 就绪状态检查，绝不裸连 `:5900`，因为未完成的 RFB 握手会触发 TigerVNC 客户端黑名单
 - 固定 1280 x 720 帧缓冲，最多每秒 45 次更新；Computer 面板把 noVNC 固定为 JPEG 画质 5、压缩 1，优先降低输入和画面延迟，而不是追求最高画质或最低带宽
 - 隐藏 noVNC 侧栏与连接状态条（`vnc.html` 上挂 CSS + 内联样式，与 weixin-bot 蓝本相同），Computer 面板只剩桌面
 - 成对的 Fluent 浅色/深色 Plasma、Kvantum、图标和光标主题；为串流桌面关闭 Baloo 与 KWin 合成
-- 默认浏览器为 `/usr/local/bin/chrome-launch`（`BROWSER_SOURCE=antidetect` 时走 `/opt/chrome`，否则 apt Chromium），经 mimeapps 接入桌面
+- 默认浏览器为 `/usr/local/bin/start-desktop-browser`（`BROWSER_SOURCE=antidetect` 时走 `/opt/chrome`，否则 apt Chromium），经 mimeapps 接入桌面并在首次使用时启动。profile 位于持久卷 `/mnt/browser-profile`；HTTP/媒体缓存位于 `/tmp/desktop-chrome-cache`，随 VM 丢弃
 - 只保留官方 Node 24；noVNC 静态资源从一次性 Debian 阶段复制，Debian Node 18 的打包依赖不进入最终镜像
 
 镜像仍然**不**声明 `CMD`。`--cmd /app/sandbox/template-warm.sh` 只覆盖模板构建那一次启动。还原后 `entrypoint.sh` 启动 dsh / 隧道 / reporter（租户才可知），并调用 `start-desktop.sh`——端口已在听时是空操作。

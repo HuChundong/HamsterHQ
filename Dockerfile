@@ -836,6 +836,8 @@ ENV DISPLAY=:0
 ENV VNC_GEOMETRY=1280x720
 ENV VNC_FRAME_RATE=45
 ENV KWIN_COMPOSE=N
+ENV CHROME_PROFILE_DIR=/mnt/browser-profile
+ENV CHROME_CACHE_DIR=/tmp/desktop-chrome-cache
 
 # noVNC chrome hide, KDE configuration and default browser.
 COPY sandbox/desktop/ /tmp/desktop-assets/
@@ -857,6 +859,9 @@ RUN mkdir -p /usr/share/applications \
   && cp /tmp/desktop-assets/kde/Desktop.profile /home/desktop/.local/share/konsole/Desktop.profile \
   && cp /tmp/desktop-assets/kde/kvantum.kvconfig /home/desktop/.config/Kvantum/kvantum.kvconfig \
   && install -m 0755 /tmp/desktop-assets/chrome-launch.sh /usr/local/bin/chrome-launch \
+  && install -m 0755 /tmp/desktop-assets/start-desktop-browser.sh /usr/local/bin/start-desktop-browser \
+  && rm /usr/local/bin/playwright-cli \
+  && install -m 0755 /tmp/desktop-assets/playwright-cli-lazy.sh /usr/local/bin/playwright-cli \
   && install -m 0755 /tmp/desktop-assets/set-desktop-theme.sh /usr/local/bin/set-desktop-theme \
   && ln -sfn /usr/local/bin/chrome-launch /usr/local/bin/chrome \
   && ln -sfn /usr/local/bin/chrome-launch /usr/local/bin/google-chrome \
@@ -894,8 +899,9 @@ RUN chmod +x /app/sandbox/start-desktop.sh /app/sandbox/template-warm.sh \
   && test "$(node --version | cut -d. -f1)" = v24 \
   && test ! -e /usr/bin/node \
   && ! dpkg-query -W nodejs libnode108 2>/dev/null \
-  && printf 'export DESKTOP_HOME=%s\nexport LANG=%s\nexport LANGUAGE=%s\nexport LC_ALL=%s\nexport SANDBOX_VARIANT=desktop\n' \
-       "$DESKTOP_HOME" "$LANG" "$LANGUAGE" "$LC_ALL" >> /app/sandbox/env.sh
+  && printf 'export DESKTOP_HOME=%s\nexport LANG=%s\nexport LANGUAGE=%s\nexport LC_ALL=%s\nexport CHROME_PROFILE_DIR=%s\nexport CHROME_CACHE_DIR=%s\nexport SANDBOX_VARIANT=desktop\n' \
+       "$DESKTOP_HOME" "$LANG" "$LANGUAGE" "$LC_ALL" \
+       "$CHROME_PROFILE_DIR" "$CHROME_CACHE_DIR" >> /app/sandbox/env.sh
 
 # ---------------------------------------------------------------- landing ----
 # Build the front door.

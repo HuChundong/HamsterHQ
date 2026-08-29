@@ -43,10 +43,10 @@ so and Restart builds a new machine from the current template.
 Cube 0.7 `create-from-image` accepts `--cmd` and `--probe`. The desktop image
 uses them to freeze a **tenant-free** stack into the memory snapshot:
 
-- dbus, TigerVNC `:0`, KDE Plasma X11, noVNC on `127.0.0.1:6080`, headed Chrome + CDP
-  `:9222`, and a tiny health server on `:6099`
-- the health server waits for Xvnc/noVNC, a real Chrome page target,
-  `plasmashell`, `kwin_x11`, and the applied Fluent theme, then requires five
+- dbus, TigerVNC `:0`, KDE Plasma X11, noVNC on `127.0.0.1:6080`, and a tiny
+  health server on `:6099`; headed Chrome is deliberately not running
+- the health server waits for Xvnc/noVNC, `plasmashell`, `kwin_x11`, and the
+  applied Fluent theme, then requires five
   stable seconds before Cube may snapshot; Xvnc is checked by process and X11
   readiness, never a bare connection to `:5900`, because failed RFB handshakes
   trigger TigerVNC's client blacklist
@@ -57,8 +57,11 @@ uses them to freeze a **tenant-free** stack into the memory snapshot:
   same cut as the weixin-bot blueprint) so the Computer pane is only the desktop
 - paired Fluent light/dark Plasma, Kvantum, icon and cursor themes, with Baloo
   and KWin compositing disabled for the streamed desktop
-- Default browser is `/usr/local/bin/chrome-launch` (anti-detect `/opt/chrome`
-  when `BROWSER_SOURCE=antidetect`, else apt Chromium), wired through mimeapps
+- Default browser is `/usr/local/bin/start-desktop-browser` (anti-detect
+  `/opt/chrome` when `BROWSER_SOURCE=antidetect`, else apt Chromium), wired
+  through mimeapps and started on first use. Its profile is
+  `/mnt/browser-profile` on the persistent volume; HTTP/media cache is
+  `/tmp/desktop-chrome-cache` and is discarded with the VM
 - only the official Node 24 runtime; noVNC assets come from a throw-away Debian
   stage so its Debian Node 18 packaging dependency does not enter the image
 
