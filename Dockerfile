@@ -30,7 +30,7 @@
 ARG DSH_VERSION=0.1.1-rc.2
 
 # ------------------------------------------------------------------- deps ----
-FROM node:24-bookworm-slim AS deps
+FROM node:24.19.0-bookworm-slim AS deps
 
 ARG APT_MIRROR=
 RUN if [ -n "$APT_MIRROR" ]; then \
@@ -160,7 +160,7 @@ RUN cargo build --release --offline && install -Dm755 target/release/dsh-agent /
 #
 # `package.json` first and the sources after, so a change to the panel's code
 # does not reinstall its toolchain.
-FROM node:24-bookworm-slim AS panel-build
+FROM node:24.19.0-bookworm-slim AS panel-build
 
 ARG NPM_REGISTRY=
 RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi
@@ -178,7 +178,7 @@ COPY packages/dsh-artifact-panel/src ./src
 RUN npm run build
 
 # ---------------------------------------------------------------- sandbox ----
-FROM node:24-bookworm-slim AS sandbox
+FROM node:24.19.0-bookworm-slim AS sandbox
 
 # The resident tools, before anything that might want them. See `agent-build`
 # for why they are a compiled binary rather than a script.
@@ -853,7 +853,7 @@ RUN chmod +x /app/sandbox/start-desktop.sh /app/sandbox/template-warm.sh \
 # can be cached forever, and one whose URL does not cannot be cached at all
 # without going stale. Replacing a screenshot used to leave the old one on
 # screen for an hour; now it is a different URL and arrives on the first load.
-FROM node:24-alpine AS landing
+FROM node:24.19.0-alpine AS landing
 # The repository's own shape, because the page names the gateway's marks by
 # their real path — `../../gateway/assets/hamster.svg`. One file per mark in the
 # tree, so a replacement reaches the front door and the sign-in page together,
@@ -956,7 +956,7 @@ ENTRYPOINT ["/docker-entrypoint-dsh.sh"]
 # Deliberately node:24-alpine and not the deps stage: the gateway authenticates
 # every tenant and holds the Docker socket, so it carries no harness code and
 # none of the build toolchain.
-FROM node:24-alpine AS gateway
+FROM node:24.19.0-alpine AS gateway
 ARG NPM_REGISTRY=
 RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi
 ENV NODE_ENV=production
@@ -1005,7 +1005,7 @@ CMD ["node", "gateway/src/server.js"]
 # What it does NOT carry is any way to reach a sandbox: no tunnel protocol, no
 # E2B client, no websockets. Its dependency list is `jose`, `pg` and the icons,
 # and that shortness is the separation showing up somewhere it can be checked.
-FROM node:24-alpine AS admin
+FROM node:24.19.0-alpine AS admin
 ENV NODE_ENV=production
 WORKDIR /app
 COPY packages/dsh-icons /packages/dsh-icons
@@ -1039,7 +1039,7 @@ CMD ["node", "admin/server.js"]
 # It carries none of the gateway's source, which is the separation showing up
 # somewhere it can be checked: its whole dependency list is `pg` and a cron
 # parser, and it knows a tenant only as an opaque username the gateway proved.
-FROM node:24-alpine AS scheduler
+FROM node:24.19.0-alpine AS scheduler
 ENV NODE_ENV=production
 WORKDIR /app
 COPY scheduler/package.json ./
