@@ -36,6 +36,12 @@ probe so those processes are already in the memory snapshot. After restore,
 Light templates still launch headless Chromium from `start-browser.sh` on
 each backend boot.
 
+The probe must describe the visible desktop, not its transport. A probe that
+checked only noVNC and CDP cut the KDE template while Plasma and Fluent theme
+application were still starting; every restored tenant then watched that work
+finish. It now requires Xvnc/noVNC, a Chrome page target, Plasma, KWin and the
+theme marker to remain ready for five seconds before the snapshot is taken.
+
 The wrong conclusion that preceded this: the runbook briefly documented
 `--start-cmd` / `--ready-cmd` on the strength of E2B's `template build`, the
 CLI of the day had neither, and the browser was moved onto every backend boot

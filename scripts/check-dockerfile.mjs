@@ -8,6 +8,8 @@ const root = join(fileURLToPath(new URL('..', import.meta.url)))
 const dockerfile = readFileSync(join(root, 'Dockerfile'), 'utf8')
 const lock = JSON.parse(readFileSync(join(root, 'sandbox/dsh-package-lock.json'), 'utf8'))
 const panelPatch = readFileSync(join(root, 'sandbox/desktop/kde/default-panel-launchers.patch'), 'utf8')
+const desktopHealth = readFileSync(join(root, 'sandbox/desktop-health.mjs'), 'utf8')
+const templateWarm = readFileSync(join(root, 'sandbox/template-warm.sh'), 'utf8')
 const problems = []
 
 const check = (condition, message) => {
@@ -56,6 +58,14 @@ check(
 )
 
 check(!dockerfile.includes('FROM sandbox AS desktop'), 'desktop must not inherit the DSH payload before KDE is installed')
+
+for (const signal of ['plasmashell', 'kwin_x11', 'theme-state', '/json/list', 'DESKTOP_HEALTH_SETTLE_MS']) {
+  check(desktopHealth.includes(signal), `desktop template health must wait for ${signal}`)
+}
+check(
+  templateWarm.includes('rm -f "$HOME/.config/dsh-desktop/theme-state"'),
+  'desktop template warm-up must clear the visible-readiness marker before boot',
+)
 
 const systemStart = dockerfile.indexOf('FROM sandbox-contract AS desktop-system')
 const finalStart = dockerfile.indexOf('FROM desktop-system AS desktop')

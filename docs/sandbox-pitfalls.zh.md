@@ -21,6 +21,8 @@ CubeSandbox 的模板不是镜像。它是镜像运行时拍下的快照，为�
 
 这条规则是一道判据，不是一刀切。后端仍然通不过（身份、挂载、隧道 URL），绝不能冻结。桌面栈——TigerVNC、KDE Plasma X11、noVNC、有头 Chrome 且 profile 在机器自己的磁盘上——能通过。Cube 0.7 的 `create-from-image` 现已接受 `--cmd` 与 `--probe`；desktop 镜像用 `/app/sandbox/template-warm.sh` 和 `:6099/health` probe，让这些进程已经在内存快照里。还原之后 `start-desktop.sh` 幂等：端口已在听就是空操作。轻量模板仍在每次后端启动时用 `start-browser.sh` 拉起无头 Chromium。
 
+探针必须描述可见桌面，而不是只描述传输端口。曾经的探针只检查 noVNC 与 CDP，导致 KDE 模板在 Plasma 和 Fluent 主题还在启动时就被截取；每个租户恢复后都要目睹剩余启动过程。现在必须等 Xvnc/noVNC、Chrome 页面目标、Plasma、KWin 和主题标记全部就绪并稳定 5 秒，才允许制作快照。
+
 此前错误的结论：运行手册曾照着 E2B 的 `template build` 写过 `--start-cmd` / `--ready-cmd`，当时的 CLI 两个都没有，浏览器就被挪到每次后端启动上。这段历史对轻量镜像仍然成立；desktop 路径用的是 Cube 后来真正长出来的参数。
 
 **多花一轮才发现的推论：** `POST /templates/{id}` 不会拾取新镜像。把已有模板指向新镜像，每个
