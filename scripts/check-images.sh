@@ -308,6 +308,16 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
       && echo ok || echo missing' \
     2>/dev/null || echo error)
   check 'KDE Plasma X11 + TigerVNC + noVNC are installed' ok "$plasma"
+  streaming=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
+    'test "$VNC_GEOMETRY" = 1280x720 \
+      && test "$VNC_FRAME_RATE" = 45 \
+      && grep -Fq '\''${VNC_GEOMETRY:-1280x720}'\'' /app/sandbox/start-desktop.sh \
+      && grep -Fq '\''${VNC_FRAME_RATE:-45}'\'' /app/sandbox/start-desktop.sh \
+      && grep -Fq '\''quality=5&compression=1'\'' \
+           /root/.dsh/profiles/web/node_modules/dsh-artifact-panel/lib/client.js \
+      && echo ok || echo drifted' \
+    2>/dev/null || echo error)
+  check 'desktop ships the 720p fluid-streaming profile' ok "$streaming"
   launchers=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
     'layout=/usr/share/plasma/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js; \
       grep -Fq '\''tasks.writeConfig("launchers", ['\'' "$layout" \

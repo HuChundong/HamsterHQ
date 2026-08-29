@@ -39,7 +39,7 @@ const readPanelBg = () => {
 const computerSrc = () => {
   const bg = encodeURIComponent(readPanelBg())
   const theme = document.body.hasAttribute('data-ds-dark-theme') ? 'dark' : 'light'
-  return `/computer/vnc.html?autoconnect=true&resize=scale&reconnect=true&path=computer/websockify&v=${VNC_REV}&theme=${theme}&bg=${bg}`
+  return `/computer/vnc.html?autoconnect=true&resize=scale&reconnect=true&quality=5&compression=1&path=computer/websockify&v=${VNC_REV}&theme=${theme}&bg=${bg}`
 }
 
 /**

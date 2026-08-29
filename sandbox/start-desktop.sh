@@ -46,9 +46,9 @@ if ! port_open 5900; then
   rm -f "/tmp/.X${DISPLAY_NUM}-lock" "/tmp/.X11-unix/X${DISPLAY_NUM}" 2>/dev/null || true
   setsid nohup runuser -u desktop -- env "${desktop_env[@]}" \
     Xvnc ":${DISPLAY_NUM}" \
-      -geometry "${VNC_GEOMETRY:-1920x1080}" \
+      -geometry "${VNC_GEOMETRY:-1280x720}" \
       -depth 24 -rfbport 5900 -SecurityTypes=None -localhost=yes -ac \
-      -FrameRate 30 \
+      -FrameRate "${VNC_FRAME_RATE:-45}" \
       > /tmp/tigervnc.log 2>&1 < /dev/null &
   for _ in $(seq 1 40); do
     port_open 5900 && break
