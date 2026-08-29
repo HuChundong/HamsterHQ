@@ -11,9 +11,10 @@
 # started later by entrypoint.sh through envd.
 set -eu
 
-export DESKTOP_HOME="${DESKTOP_HOME:-/home/desktop}"
+export DESKTOP_USER="${DESKTOP_USER:-hammy}"
+export DESKTOP_HOME="${DESKTOP_HOME:-/home/$DESKTOP_USER}"
 export HOME="$DESKTOP_HOME"
-export USER="${USER:-desktop}"
+export USER="${USER:-$DESKTOP_USER}"
 
 # This file is the final visible-desktop readiness marker. It must be written
 # by this boot's theme application, never inherited from an earlier layer.

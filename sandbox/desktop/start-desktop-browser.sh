@@ -1,6 +1,8 @@
 #!/bin/bash
 # Start the tenant's headed browser on first use and reuse it afterwards.
 set -eu
+desktop_user="${DESKTOP_USER:-hammy}"
+desktop_home="${DESKTOP_HOME:-/home/$desktop_user}"
 
 cdp_ready() {
   curl -fsS --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1
@@ -9,8 +11,8 @@ cdp_ready() {
 open_existing() {
   [ "$#" -eq 0 ] && return 0
   if [ "$(id -u)" -eq 0 ]; then
-    runuser -u desktop -- env \
-      HOME="${DESKTOP_HOME:-/home/desktop}" DISPLAY="${DISPLAY:-:0}" \
+    runuser -u "$desktop_user" -- env \
+      HOME="$desktop_home" DISPLAY="${DISPLAY:-:0}" \
       CHROME_PROFILE_DIR="${CHROME_PROFILE_DIR:-/mnt/browser-profile}" \
       CHROME_CACHE_DIR="${CHROME_CACHE_DIR:-/tmp/desktop-chrome-cache}" \
       /usr/local/bin/chrome-launch "$@" >/dev/null 2>&1 || true
@@ -35,8 +37,8 @@ if ! cdp_ready; then
   rm -f "$profile/SingletonCookie" "$profile/SingletonLock" \
     "$profile/SingletonSocket" "$profile/DevToolsActivePort"
   if [ "$(id -u)" -eq 0 ]; then
-    setsid nohup runuser -u desktop -- env \
-      HOME="${DESKTOP_HOME:-/home/desktop}" DISPLAY="${DISPLAY:-:0}" \
+    setsid nohup runuser -u "$desktop_user" -- env \
+      HOME="$desktop_home" DISPLAY="${DISPLAY:-:0}" \
       CHROME_PROFILE_DIR="${CHROME_PROFILE_DIR:-/mnt/browser-profile}" \
       CHROME_CACHE_DIR="${CHROME_CACHE_DIR:-/tmp/desktop-chrome-cache}" \
       /usr/local/bin/chrome-launch "$@" \

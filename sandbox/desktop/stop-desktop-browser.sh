@@ -1,6 +1,7 @@
 #!/bin/bash
 # Ask Chrome to flush its persistent profile before the VM is reclaimed.
 set -eu
+desktop_user="${DESKTOP_USER:-hammy}"
 
 if ! curl -fsS --max-time 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
   exit 0
@@ -47,7 +48,7 @@ fi
 # committing its SQLite stores. Wait for every non-zombie Chrome process; PID 1
 # may leave reaped children visible in a container, but zombies hold no files.
 chrome_running() {
-  ps -u desktop -o stat=,comm= \
+  ps -u "$desktop_user" -o stat=,comm= \
     | awk '$2 == "chrome" && $1 !~ /^Z/ { found=1 } END { exit found ? 0 : 1 }'
 }
 for _ in $(seq 1 40); do

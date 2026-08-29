@@ -73,11 +73,17 @@ check(
 
 const desktopStart = readFileSync(join(root, 'sandbox/start-desktop.sh'), 'utf8')
 check(
-  desktopStart.includes('pgrep -u desktop -x Xvnc')
+  desktopStart.includes('pgrep -u "$DESKTOP_USER" -x Xvnc')
     && desktopStart.includes('xdpyinfo')
     && !desktopStart.includes('port_open 5900')
     && !desktopStart.includes('chrome-launch'),
   'desktop startup must use process/X11 readiness instead of a bare VNC connection',
+)
+check(
+  dockerfile.includes('ENV DESKTOP_USER=hammy')
+    && dockerfile.includes('ENV DESKTOP_HOME=/home/hammy')
+    && !dockerfile.includes('/home/desktop'),
+  'the interactive desktop account must be hammy',
 )
 
 const chromeLaunch = readFileSync(join(root, 'sandbox/desktop/chrome-launch.sh'), 'utf8')
