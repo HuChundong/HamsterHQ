@@ -82,12 +82,20 @@ check(
 
 const chromeLaunch = readFileSync(join(root, 'sandbox/desktop/chrome-launch.sh'), 'utf8')
 const lazyBrowser = readFileSync(join(root, 'sandbox/desktop/start-desktop-browser.sh'), 'utf8')
+const browserStop = readFileSync(join(root, 'sandbox/desktop/stop-desktop-browser.sh'), 'utf8')
+const runtimes = readFileSync(join(root, 'gateway/src/runtimes.js'), 'utf8')
 const walletConfig = readFileSync(join(root, 'sandbox/desktop/kde/kwalletrc'), 'utf8')
 check(
   chromeLaunch.includes('${CHROME_PROFILE_DIR:-/mnt/browser-profile}')
     && chromeLaunch.includes('${CHROME_CACHE_DIR:-/tmp/desktop-chrome-cache}')
     && lazyBrowser.includes('start-desktop-browser: Chrome did not expose CDP'),
   'desktop Chrome must start on demand with persistent profile and ephemeral cache',
+)
+check(
+  browserStop.includes('method: "Browser.close"')
+    && runtimes.includes('await flushBrowserProfile(handle)')
+    && (runtimes.match(/await flushBrowserProfile\(handle\)/g) ?? []).length === 2,
+  'both runtimes must flush the desktop browser profile before reclaim',
 )
 check(
   walletConfig.includes('[Wallet]')

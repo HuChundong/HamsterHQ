@@ -46,6 +46,14 @@ ready for five seconds before the snapshot is taken. Chrome is deliberately
 absent, so probing CDP would both wake it and put tenant-independent profile
 state back into the template.
 
+Putting the profile on the volume is necessary but does not by itself make a
+fresh login durable. The first persistence probe wrote a marker into the
+profile and saw it on a second Cube VM, then incorrectly looked complete; a
+real cookie was absent because Chrome had not committed it before the first VM
+was destroyed. Reclaim now asks the browser to `Browser.close` and waits a
+bounded interval. Acceptance has to read a real persistent cookie after a
+second cold restore, not infer login persistence from an arbitrary file.
+
 The first version of that stronger probe made a worse mistake: it tested
 `:5900` with a bare TCP connection every 500 ms. Xvnc counts a client that
 disconnects before the RFB handshake as a failure, blacklists the loopback

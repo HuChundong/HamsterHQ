@@ -704,7 +704,10 @@ cookies and Local Storage across rebuilt sandboxes; `--disk-cache-dir` points at
 `/tmp/desktop-chrome-cache`, keeping disposable transfer cache out of S3.
 KWallet is disabled and Chrome uses its basic profile store so the first launch
 cannot block on a wallet password; the persistent volume must therefore be
-protected as credential-bearing storage. The
+protected as credential-bearing storage. Before either runtime reclaims a
+sandbox, the gateway asks Chrome to `Browser.close` through loopback CDP; that
+bounded best-effort close commits newly changed cookies before the volume moves
+to another VM, while an already-dead machine can still be reclaimed. The
 panel's Computer tab embeds `/computer/` (session-authenticated noVNC through the
 tunnel), while the watch-only Browser tab polls CDP JPEGs without waking a
 stopped browser. The light image keeps its existing boot-time headless Chromium
