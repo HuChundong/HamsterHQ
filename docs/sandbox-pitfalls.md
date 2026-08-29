@@ -42,6 +42,14 @@ application were still starting; every restored tenant then watched that work
 finish. It now requires Xvnc/noVNC, a Chrome page target, Plasma, KWin and the
 theme marker to remain ready for five seconds before the snapshot is taken.
 
+The first version of that stronger probe made a worse mistake: it tested
+`:5900` with a bare TCP connection every 500 ms. Xvnc counts a client that
+disconnects before the RFB handshake as a failure, blacklists the loopback
+address after several attempts, and Cube faithfully froze that blacklist. A
+restored tenant then waited about 20 seconds before noVNC could reach Xvnc.
+Check the Xvnc process and the X11 display instead; do not probe a stateful
+protocol by opening its socket and abandoning the handshake.
+
 The wrong conclusion that preceded this: the runbook briefly documented
 `--start-cmd` / `--ready-cmd` on the strength of E2B's `template build`, the
 CLI of the day had neither, and the browser was moved onto every backend boot

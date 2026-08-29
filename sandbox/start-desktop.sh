@@ -42,7 +42,11 @@ if [ ! -S /run/dbus/system_bus_socket ]; then
 fi
 
 # ---- TigerVNC ----
-if ! port_open 5900; then
+# Never probe :5900 with a bare TCP connect. Xvnc treats a connection that
+# does not complete the RFB handshake as a failed client and blacklists the
+# loopback address after several attempts. A template health loop once froze
+# that blacklist into every restored sandbox.
+if ! pgrep -u desktop -x Xvnc >/dev/null 2>&1; then
   rm -f "/tmp/.X${DISPLAY_NUM}-lock" "/tmp/.X11-unix/X${DISPLAY_NUM}" 2>/dev/null || true
   setsid nohup runuser -u desktop -- env "${desktop_env[@]}" \
     Xvnc ":${DISPLAY_NUM}" \
@@ -50,11 +54,14 @@ if ! port_open 5900; then
       -depth 24 -rfbport 5900 -SecurityTypes=None -localhost=yes -ac \
       -FrameRate "${VNC_FRAME_RATE:-45}" \
       > /tmp/tigervnc.log 2>&1 < /dev/null &
-  for _ in $(seq 1 40); do
-    port_open 5900 && break
-    sleep 0.25
-  done
 fi
+
+# X11 readiness is a real protocol exchange and has no effect on VNC's client
+# failure counter. It also works for both a cold Docker boot and a restored VM.
+for _ in $(seq 1 40); do
+  runuser -u desktop -- env DISPLAY="$DISPLAY" xdpyinfo >/dev/null 2>&1 && break
+  sleep 0.25
+done
 
 # ---- KDE Plasma X11 ----
 if ! pgrep -u desktop -x plasmashell >/dev/null 2>&1 \

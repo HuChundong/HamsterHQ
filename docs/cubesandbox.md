@@ -47,7 +47,9 @@ uses them to freeze a **tenant-free** stack into the memory snapshot:
   `:9222`, and a tiny health server on `:6099`
 - the health server waits for Xvnc/noVNC, a real Chrome page target,
   `plasmashell`, `kwin_x11`, and the applied Fluent theme, then requires five
-  stable seconds before Cube may snapshot; open ports alone are not readiness
+  stable seconds before Cube may snapshot; Xvnc is checked by process and X11
+  readiness, never a bare connection to `:5900`, because failed RFB handshakes
+  trigger TigerVNC's client blacklist
 - a fixed 1280 x 720 framebuffer at up to 45 updates/s; the Computer pane keeps
   noVNC at JPEG quality 5 and compression 1 to favour input/frame latency over
   maximum visual fidelity or minimum bandwidth
