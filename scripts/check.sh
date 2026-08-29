@@ -35,6 +35,7 @@ for check in \
   scripts/check-pages.mjs \
   scripts/check-landing.mjs \
   scripts/check-assets.mjs \
+  scripts/check-dockerfile.mjs \
   scripts/check-icons.mjs \
   scripts/check-docs.mjs \
   scripts/check-forwarded.mjs \

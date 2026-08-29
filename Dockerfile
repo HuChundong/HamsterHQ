@@ -8,18 +8,24 @@
 # version bump plus the acceptance run.
 #
 # Stages:
-#   deps       one npm install, shared by everything below
-#   sandbox    one tenant's dsh, beside this project's own plugins (light)
-#   desktop    KDE Plasma X11 + TigerVNC + noVNC on top of sandbox
+#   deps             one harness install, shared by everything below
+#   sandbox-runtime  slow, stable tools with no harness or project payload
+#   sandbox-contract paths and process metadata shared by both variants
+#   sandbox-compose  the frequently changing harness and project payload
+#   sandbox          light tenant image assembled from that payload
+#   desktop-system   KDE Plasma X11 + Fluent, independent of the harness
+#   desktop           desktop-system plus the same sandbox-compose payload
 #   shell      boot the composition once and save what it serves
 #   web        nginx over the frontend build and that shell
 #   gateway    the authenticating front door; no harness code at all
 #   admin      the operator's console; its own service, its own credential
 #   scheduler  the clock behind scheduled tasks; no way to reach a sandbox
 
-# The harness version this deployment runs. A build argument rather than a
-# lockfile entry, so a deployment can move between published versions without
-# editing a file that also pins this project's own dependencies.
+# The harness version this deployment runs. sandbox/dsh-package-lock.json holds
+# the resolved graph for this default so ordinary builds use npm ci instead of
+# making Arborist place the entire graph again. A deliberate one-off override
+# still works through the fallback in `deps`; a shipped upgrade changes this
+# line and refreshes that lock together, then runs the acceptance suite.
 #
 # Declared here, before any FROM, because two stages need it and a default
 # declared inside one is invisible to the others: `deps` installs this version,
@@ -61,14 +67,38 @@ WORKDIR /app
 # while the harness is on 0.1.0-rc.8 — a shell four releases behind the backend
 # it renders, chosen silently at build time. The two halves ship as one release
 # and are installed as one.
-# npm 11's Arborist crosses the default V8 heap limit while placing the large
-# dsh-web-app dependency graph, then spends most of the build in garbage
-# collection. The cap is a ceiling rather than a reservation; a larger build
-# host uses it only when this graph needs it.
-RUN NODE_OPTIONS=--max-old-space-size=8192 \
-    npm install --omit=dev --no-audit --no-fund \
-      "@deepseek-ai/dsh@${DSH_VERSION}" \
-      "@deepseek-ai/dsh-web-frontend@${DSH_VERSION}"
+# The lock's root dependency declarations become package.json, so the version
+# has one human-maintained home above while npm ci still gets the exact manifest
+# it requires. The check reads the actual package entries, not the semver ranges
+# at the lock root. If an operator explicitly overrides DSH_VERSION without
+# refreshing the lock, the build remains possible but takes the slower resolver
+# path and writes no misleading lock into the image.
+COPY sandbox/dsh-package-lock.json ./package-lock.json
+RUN node -e '\
+      const fs = require("node:fs"); \
+      const lock = require("./package-lock.json"); \
+      fs.writeFileSync("package.json", JSON.stringify({ \
+        name: "hamsterhq-harness", private: true, \
+        dependencies: lock.packages[""].dependencies, \
+      }, null, 2) + "\n");'
+RUN --mount=type=cache,target=/root/.npm \
+    if node -e '\
+      const lock = require("./package-lock.json"); \
+      const wanted = process.argv[1]; \
+      process.exit( \
+        lock.packages["node_modules/@deepseek-ai/dsh"]?.version === wanted \
+        && lock.packages["node_modules/@deepseek-ai/dsh-web-frontend"]?.version === wanted \
+          ? 0 : 1);' "$DSH_VERSION"; then \
+      NODE_OPTIONS=--max-old-space-size=8192 \
+        npm ci --omit=dev --no-audit --no-fund; \
+    else \
+      echo "build: lock does not cover DSH_VERSION=$DSH_VERSION; resolving the override"; \
+      rm -f package-lock.json; \
+      NODE_OPTIONS=--max-old-space-size=8192 \
+        npm install --omit=dev --no-audit --no-fund --package-lock=false \
+          "@deepseek-ai/dsh@${DSH_VERSION}" \
+          "@deepseek-ai/dsh-web-frontend@${DSH_VERSION}"; \
+    fi
 
 
 # Declared before any FROM that interpolates it: `FROM envd-${TARGETARCH}`
@@ -178,16 +208,7 @@ COPY packages/dsh-artifact-panel/src ./src
 RUN npm run build
 
 # ---------------------------------------------------------------- sandbox ----
-FROM node:24.19.0-bookworm-slim AS sandbox
-
-# The resident tools, before anything that might want them. See `agent-build`
-# for why they are a compiled binary rather than a script.
-#
-# Run once, here, because here is the target architecture: a binary built for
-# the other one answers `exec format error`, and this is the last moment that
-# is a build failure rather than a sandbox that quietly reports nothing.
-COPY --from=agent-build /out/dsh-agent /usr/local/bin/dsh-agent
-RUN dsh-agent 2>&1 | grep -q 'unknown command'
+FROM node:24.19.0-bookworm-slim AS sandbox-runtime
 
 ARG APT_MIRROR=
 RUN if [ -n "$APT_MIRROR" ]; then \
@@ -477,12 +498,11 @@ ARG TZ=UTC
 ENV TZ=${TZ}
 RUN ln -snf "/usr/share/zoneinfo/$TZ" /etc/localtime && echo "$TZ" > /etc/timezone
 
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/package.json ./package.json
-COPY sandbox/entrypoint.sh sandbox/start-browser.sh sandbox/migrate-storage-paths.mjs \
-     sandbox/browser-flags sandbox/cordis.patch.yml sandbox/cordis.model.patch.yml ./sandbox/
-RUN chmod +x /app/sandbox/entrypoint.sh /app/sandbox/start-browser.sh
+# ------------------------------------------------------ sandbox-contract ----
+# Everything below is metadata shared by the light and desktop variants. It is
+# deliberately separated from the harness: changing DSH_VERSION or a project
+# plugin must not invalidate either the slow runtime layers above or KDE below.
+FROM sandbox-runtime AS sandbox-contract
 
 # The entry a tenant's backend runs: the same `lib/bin.js` the npm package ships
 # as `dsh`, named explicitly so the entrypoint does not depend on PATH.
@@ -494,29 +514,43 @@ ENV DSH_BIN=/app/node_modules/@deepseek-ai/dsh/lib/bin.js
 ENV MOUNT=/mnt
 ENV WORKSPACE=/mnt/workspace
 
-# Where the IMAGE keeps its own harness home. Only `profiles/` in here is ever
-# used at runtime: the entrypoint links it into the tenant's DSH_HOME, because
-# the harness hardcodes that location and that one directory belongs to the
-# image rather than to the tenant.
+# Where the image keeps the profile composed by `sandbox-compose`.
 ENV IMAGE_DSH_HOME=/root/.dsh
-
-# THE BUILD RUNS AGAINST THE IMAGE'S HOME. Everything below that composes a
-# profile writes into it — `--dump-config` materializes the flat fallback
-# `profiles/node_modules`, and the plugin install fills `profiles/web`. Pointing
-# DSH_HOME at the mount this early sent both into a directory that only exists
-# at runtime, and the image shipped a profile the harness could not boot.
-# It is switched to the tenant's home further down, before `env.sh` records it.
-ENV DSH_HOME=$IMAGE_DSH_HOME
 
 # The tenant's workspace is also their home, so the in-app directory picker
 # opens on it rather than on an empty /root.
 ENV HOME=/mnt/workspace
 
-# The container is the sandbox. Asking a tenant to approve each file write and
-# each command would be guarding the inside of a box that exists to be written
-# in — and the approval prompt has nowhere to go in a headless container. The
-# boundary that matters is the container itself, plus the gateway in front of it.
+# The container is the sandbox. The meaningful approval boundary is outside it.
 ENV DSH_PERMISSION_MODE=danger-full-access
+
+# Node uses this system bundle for CubeEgress's deployment-owned root.
+ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+
+# See migrate-storage-paths.mjs. Raise this only with a matching migration.
+ENV SANDBOX_LAYOUT_VERSION=2
+ENV DSH_HOME=/mnt/dsh
+
+WORKDIR /mnt/workspace
+EXPOSE 49983
+ENTRYPOINT ["/usr/local/bin/cube-entrypoint.sh"]
+
+# ------------------------------------------------------- sandbox-compose ----
+# The frequently changing payload. DSH upgrades and project plugin edits stop
+# here; the finished directories are copied into both final variants.
+FROM sandbox-contract AS sandbox-compose
+
+# Run the resident binary once in the target architecture before it can become
+# a runtime-only failure.
+COPY --from=agent-build /out/dsh-agent /usr/local/bin/dsh-agent
+RUN dsh-agent 2>&1 | grep -q 'unknown command'
+
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/package.json ./package.json
+COPY sandbox/entrypoint.sh sandbox/start-browser.sh sandbox/migrate-storage-paths.mjs \
+     sandbox/browser-flags sandbox/cordis.patch.yml sandbox/cordis.model.patch.yml ./sandbox/
+RUN chmod +x /app/sandbox/entrypoint.sh /app/sandbox/start-browser.sh
 
 # The CubeEgress root, when the operator has dropped one in. It is what makes
 # credential injection possible: CubeEgress terminates TLS to rewrite the
@@ -527,15 +561,10 @@ COPY sandbox/egress-ca/ /usr/local/share/ca-certificates/
 RUN find /usr/local/share/ca-certificates -type f ! -name '*.crt' -delete \
     && update-ca-certificates
 
-# Node verifies against its own bundled roots and ignores the system store, so
-# installing the root above is not enough on its own — the harness is a Node
-# process.
-ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
-
 # Warm the web profile at build time; it otherwise initializes on first boot,
 # putting that work on the path of the tenant's first request. It also creates
 # the profile directory the plugins below are installed into.
-RUN node "$DSH_BIN" web --dump-config > /dev/null 2>&1 || true
+RUN DSH_HOME="$IMAGE_DSH_HOME" node "$DSH_BIN" web --dump-config > /dev/null 2>&1 || true
 
 # This project's own halves of the composition, installed into the profile
 # rather than into /app.
@@ -594,8 +623,6 @@ RUN npm install --omit=dev --no-audit --no-fund --install-links \
 #
 #   1  volume at /persist, workspace reached through a symlink
 #   2  volume at /mnt, workspace and DSH_HOME as real directories under it
-ENV SANDBOX_LAYOUT_VERSION=2
-
 # Readable build stamp for operators and the Settings → Sandbox UI. Date-shaped
 # (YYYY-MM-DD or YYYY-MM-DD.N), never a git hash: the same string is the image
 # tag, the Cube template alias suffix, and CUBE_TEMPLATE_ID's trailing part.
@@ -603,11 +630,6 @@ ENV SANDBOX_LAYOUT_VERSION=2
 ARG SANDBOX_VERSION=dev
 ENV SANDBOX_VERSION=$SANDBOX_VERSION
 RUN printf '%s\n' "$SANDBOX_VERSION" > /app/sandbox/VERSION
-
-# The tenant's harness state, on the mount beside their files. Set HERE, after
-# everything that composes a profile has run against the image's own home and
-# before this file records what the backend will start with.
-ENV DSH_HOME=/mnt/dsh
 
 RUN for name in PATH DSH_BIN DSH_HOME IMAGE_DSH_HOME MOUNT WORKSPACE SANDBOX_LAYOUT_VERSION SANDBOX_VERSION HOME DSH_PERMISSION_MODE NODE_ENV \
                 NODE_EXTRA_CA_CERTS TZ VIRTUAL_ENV MPLBACKEND MPLCONFIGDIR \
@@ -640,9 +662,9 @@ COPY --from=cube-tools /usr/local/bin/cube-entrypoint.sh /usr/local/bin/cube-ent
 # with.
 RUN mkdir -p "$WORKSPACE" "$DSH_HOME" \
  && rm -rf "$WORKSPACE"/.[!.]* "$WORKSPACE"/* 2>/dev/null || true
-WORKDIR /mnt/workspace
-EXPOSE 49983
-ENTRYPOINT ["/usr/local/bin/cube-entrypoint.sh"]
+
+# The light image is exactly the composed payload on the shared contract.
+FROM sandbox-compose AS sandbox
 
 # ---------------------------------------------------------- fluent-theme ----
 # Fluent's Plasma/Kvantum surface and its matching icon/cursor family are
@@ -720,14 +742,18 @@ RUN if [ -n "$APT_MIRROR" ]; then \
  && apt-get update \
  && apt-get install -y --no-install-recommends novnc
 
-# ---------------------------------------------------------------- desktop ----
-# KDE Plasma X11 + TigerVNC + noVNC + headed Chrome on the light sandbox.
+# ------------------------------------------------------- desktop-system ----
+# KDE Plasma X11 + TigerVNC + noVNC + headed Chrome on the stable runtime.
 #
-# Built as a separate image (`hamsterhq-desktop`) so the light template stays
-# the rollback path. Cube create-from-image freezes this stack with
+# This stage must not depend on sandbox-compose: the harness and project plugins
+# change far more often than the operating-system desktop. The final desktop
+# copies that payload in after this stage is complete.
+#
+# Built as a separate image (`hamsterhq-desktop`) so the light template remains
+# the rollback path. Cube create-from-image freezes the final image with
 # `--cmd /app/sandbox/template-warm.sh --probe 6099`; tenant boots only ensure
 # it via start-desktop.sh (no-op after a memory restore).
-FROM sandbox AS desktop
+FROM sandbox-contract AS desktop-system
 
 ARG APT_MIRROR=
 RUN if [ -n "$APT_MIRROR" ]; then \
@@ -831,6 +857,23 @@ RUN mkdir -p /usr/share/applications \
        /usr/share/novnc/vnc.html \
   && chown -R desktop:desktop /home/desktop/.config /home/desktop/.local \
   && rm -rf /tmp/desktop-assets
+
+# ---------------------------------------------------------------- desktop ----
+# Rebase the high-frequency sandbox payload onto the cached desktop system.
+# COPY --link makes these payload layers independent of desktop-system's digest,
+# so a theme-only change can also reuse the already composed DSH filesystem.
+FROM desktop-system AS desktop
+
+ARG SANDBOX_VERSION=dev
+ENV SANDBOX_VERSION=$SANDBOX_VERSION
+
+COPY --link --from=sandbox-compose /app/ /app/
+COPY --link --from=sandbox-compose /root/.dsh/ /root/.dsh/
+COPY --link --from=sandbox-compose /usr/local/bin/dsh-agent /usr/local/bin/dsh-agent
+COPY --link --from=sandbox-compose /usr/bin/envd /usr/bin/envd
+COPY --link --from=sandbox-compose /usr/local/bin/cube-entrypoint.sh /usr/local/bin/cube-entrypoint.sh
+COPY --link --from=sandbox-compose /usr/local/share/ca-certificates/ /usr/local/share/ca-certificates/
+COPY --link --from=sandbox-compose /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY sandbox/start-desktop.sh sandbox/template-warm.sh sandbox/desktop-health.mjs \
      sandbox/desktop-chrome-flags /app/sandbox/

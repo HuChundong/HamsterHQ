@@ -96,10 +96,24 @@ and this deployment's own brand are cordis plugins, named in
 of the profile's `node_modules` like any other. Upgrading DSH is a version
 bump and an acceptance run.
 
-Every image is a target of [`Dockerfile`](../Dockerfile) with the
-repository root as its build context. One `npm install` in the `deps` stage is
-shared by all of them, and the toolchain that builds `node-pty` stays in that
-stage rather than shipping in what runs.
+Every image is a target of [`Dockerfile`](../Dockerfile) with the repository
+root as its build context. The harness graph is resolved once in `deps` and
+shared by every consumer; its checked-in lock belongs to the pinned default
+version, so a normal upgrade refreshes that lock and uses `npm ci` rather than
+asking npm to place the whole graph again. An explicit version override still
+has a resolver fallback for experiments. The toolchain that builds `node-pty`
+stays in `deps` rather than shipping in what runs.
+
+The sandbox is split by change frequency. `sandbox-runtime` holds the expensive,
+stable apt, Python, OfficeCLI and browser layers; `sandbox-contract` holds the
+paths and process metadata both variants promise; `sandbox-compose` adds DSH,
+the project plugins and configuration. The light image ends there. KDE is
+installed independently from `sandbox-contract` in `desktop-system`, and the
+final desktop receives the same composed payload through linked copy layers.
+Consequently a DSH or plugin change rebuilds the payload and shell harvest but
+does not reinstall Plasma, while a desktop-theme change does not resolve DSH.
+[`scripts/check-dockerfile.mjs`](../scripts/check-dockerfile.mjs) enforces these
+stage boundaries and keeps the lock aligned with `DSH_VERSION`.
 
 `@deepseek-ai/dsh-web-frontend` is installed by name alongside `dsh` rather than
 arriving through it. cordis resolves plugins by package name at load time, so

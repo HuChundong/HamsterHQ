@@ -73,9 +73,18 @@ harness 以钉住的版本从 npm 安装。这里没有任何东西去改它：�
 [`sandbox/harvest.patch.yml`](../sandbox/harvest.patch.yml) 里按名字声明，并像其他插件一样从
 profile 的 `node_modules` 解析。升级 DSH 就是改一个版本号，再跑一遍验收。
 
-每个镜像都是 [`Dockerfile`](../Dockerfile) 的一个 target，构建上下文为仓库
-根目录。`deps` 阶段里一次 `npm install` 供所有镜像共用，而编译 `node-pty` 的工具链留在那个
-阶段，不会进入真正运行的镜像。
+每个镜像都是 [`Dockerfile`](../Dockerfile) 的一个 target，构建上下文为仓库根目录。
+harness 依赖图只在 `deps` 中解析一次，并由所有使用方共享；仓库里的 lock 对应默认钉住的版本，
+因此正常升级会同步刷新 lock 并使用 `npm ci`，而不是让 npm 再放置一遍完整依赖图。显式覆盖版本
+仍保留一条供试验使用的解析回退路径。编译 `node-pty` 的工具链留在 `deps`，不会进入真正运行的镜像。
+
+沙箱按变化频率分层。`sandbox-runtime` 装昂贵而稳定的 apt、Python、OfficeCLI 与浏览器；
+`sandbox-contract` 保存两种镜像共同承诺的路径和进程元数据；`sandbox-compose` 再加入 DSH、
+项目插件与配置，轻量镜像到这里结束。KDE 从 `sandbox-contract` 独立安装到 `desktop-system`，
+最终 desktop 再通过独立的复制层拿到同一份组合载荷。因此 DSH 或插件变化只重建载荷与外壳采集，
+不会重装 Plasma；桌面主题变化也不会重新解析 DSH。
+[`scripts/check-dockerfile.mjs`](../scripts/check-dockerfile.mjs) 会守住这些阶段边界，并检查 lock 与
+`DSH_VERSION` 一致。
 
 `@deepseek-ai/dsh-web-frontend` 是与 `dsh` 并列显式安装的，而不是通过它带进来。cordis 在
 加载时按包名解析插件，因此一份组合需要哪些包无法从依赖图推导——前端就无法从 CLI 沿依赖图
