@@ -662,6 +662,14 @@ onto one path. The static harvest now preserves complete URL identity for both
 entries and batches; the mapping and patch coverage are checked by
 `scripts/check-shell-assets.mjs`.
 
+The runtime patch initially used `open: false` beside `printUrl: false`, assuming
+the configuration used the CLI flag's name. Upstream's schema retains unknown
+keys, so it silently supplied `openBrowser: true`; the patch also replaced the
+configuration that `--no-open` had set. Headless acceptance still passed, but
+the production desktop opened a browser on backend startup. The patch now uses
+`openBrowser: false`, and `check-images.sh` resolves it through the published
+web-app schema to check the effective values rather than grepping the YAML.
+
 ## What generalizes
 
 - **A snapshot cannot hold what is only knowable later.** Everything

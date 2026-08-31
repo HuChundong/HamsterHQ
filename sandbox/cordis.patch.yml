@@ -78,7 +78,7 @@
 - id: web-runtime
   config:
     printUrl: false
-    open: false
+    openBrowser: false
 
 - id: session-controller
   config:
