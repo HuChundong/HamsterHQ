@@ -475,13 +475,20 @@ HTTP 426。错误假设是：只改路由名就能保留普通 GET 的行为。R
 操作，不复制 Remote 帧协议。`verify/verify-ws.mjs` 检查公开入口的升级，
 `verify/verify-turn.mjs` 在真实浏览器中检查模型回复能否流式显示。
 
+已认证的升级在冷启动时仍然太早：首个 `session/modelCatalog` 虽然返回 HTTP 200，
+却带着 `gateway/service-unavailable`，因为 `sessionController` 尚未激活。错误结论是
+Remote 通道就绪就意味着业务服务也就绪；已有沙箱上的浏览器和定时任务检查调用得更晚，
+因此都通过了。隧道现在把 `sessionController` 声明为启动顺序依赖；
+`verify-cold-start.mjs` 只重建指定验收账号的沙箱，要求首个会话调用及随后的会话创建
+直接成功，不插入等待，也不重试。
+
 同一版本把模块资源改成 `/plugins/??...&rev=...`。旧的逐模块路径可以丢掉查询参数，新格式
 却会因此把不同脚本写进同一个位置。静态采集现在为条目与批次保留完整 URL 身份，映射与补丁
 覆盖由 `scripts/check-shell-assets.mjs` 检查。
 
 运行时补丁最初在 `printUrl: false` 旁写了 `open: false`，误以为配置字段与 CLI 选项同名。
 上游 schema 会保留未知字段，并静默补上默认的 `openBrowser: true`；补丁又覆盖了
-`--no-open` 已设置的配置。无头验收仍然通过，生产桌面却在后端启动时打开了浏览器。
+`--no-open` 已设置的配置。无头验收仍然通过，生产后端却在启动时尝试打开浏览器。
 补丁现改为 `openBrowser: false`，`check-images.sh` 使用发布包的 web-app schema 解析补丁，
 检查实际生效的值，而不是只搜索 YAML 字面量。
 

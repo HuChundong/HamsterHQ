@@ -656,6 +656,15 @@ gateway. That proves the operation the browser needs, without reproducing the
 Remote wire format. `verify/verify-ws.mjs` checks the public upgrade and
 `verify/verify-turn.mjs` checks a streamed model reply in a real browser.
 
+An authenticated upgrade was still too early on a cold machine: the first
+`session/modelCatalog` returned HTTP 200 with `gateway/service-unavailable`
+because `sessionController` was not active yet. The wrong conclusion was that
+a ready Remote carrier meant its business services were ready too. Warm-browser
+and scheduled-turn checks passed because they called later. The tunnel now
+injects `sessionController` as an ordering dependency; `verify-cold-start.mjs`
+restarts only its acceptance tenant and requires the very first session call
+and subsequent session creation to succeed, without a delay or retry.
+
 The same release moved module assets to `/plugins/??...&rev=...`. Stripping the
 query, which worked for the former per-module paths, collapsed distinct scripts
 onto one path. The static harvest now preserves complete URL identity for both
@@ -666,7 +675,7 @@ The runtime patch initially used `open: false` beside `printUrl: false`, assumin
 the configuration used the CLI flag's name. Upstream's schema retains unknown
 keys, so it silently supplied `openBrowser: true`; the patch also replaced the
 configuration that `--no-open` had set. Headless acceptance still passed, but
-the production desktop opened a browser on backend startup. The patch now uses
+the production backend attempted to open a browser on startup. The patch uses
 `openBrowser: false`, and `check-images.sh` resolves it through the published
 web-app schema to check the effective values rather than grepping the YAML.
 

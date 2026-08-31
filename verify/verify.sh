@@ -872,6 +872,14 @@ else
 fi
 
 echo
+echo '=== Cold start: the first session call is ready ==='
+docker compose cp verify-login.mjs gateway:/app/verify-login.mjs > /dev/null 2>&1 || NODE_FAIL=1
+docker compose cp harness-rpc.mjs gateway:/app/harness-rpc.mjs > /dev/null 2>&1 || NODE_FAIL=1
+docker compose cp verify-cold-start.mjs gateway:/app/verify-cold-start.mjs > /dev/null 2>&1 || NODE_FAIL=1
+docker compose exec -T -e GATEWAY=http://web -e "COLD_START_USER=$ALICE" \
+  gateway node /app/verify-cold-start.mjs || NODE_FAIL=1
+
+echo
 if [ "$FAIL" -eq 0 ] && [ "$NODE_FAIL" -eq 0 ]; then
   printf '=== all acceptance checks passed (%d HTTP checks plus the suites above) ===\n\n' "$PASS"
   exit 0

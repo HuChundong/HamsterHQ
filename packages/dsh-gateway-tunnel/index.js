@@ -12,8 +12,10 @@
  * instead of sampling it: the service exists only after
  * `dsh-client-connection` has mounted the `/api` route this forwards to.
  *
- * The Remote stream route is mounted separately, so the last step before
- * dialling is still a probe — see waitForDownlinks.
+ * `sessionController` also has to be active: a mounted Remote route can answer
+ * service-unavailable while its business service is still starting. The stream
+ * route is mounted separately, so the last step before dialling is still a
+ * probe — see waitForDownlinks.
  *
  * Requests cross loopback with a cookie issued by the host's own Connection
  * service. This keeps upstream authentication, body limits and route composition
@@ -41,7 +43,8 @@ export const name = 'gateway-tunnel'
  * `connection` is what orders this against the `/api` route: the service is
  * created in the same apply that registers the route, so its presence means
  * the surface this forwards to exists. `typertGateway` gates the plane behind it,
- * which answers 404 until it is mounted.
+ * which answers 404 until it is mounted. `sessionController` holds the tunnel
+ * until session calls can run, not merely until their route accepts requests.
  *
  * `timer` is not an ordering constraint but a correctness one, and it was
  * missing. cordis refuses a service the reading context did not inject, and it
@@ -52,7 +55,7 @@ export const name = 'gateway-tunnel'
  * roughly what one expects, so it survived. `timer` is the composition's second
  * entry, mounted long before this one.
  */
-export const inject = ['connection', 'typertGateway', 'timer']
+export const inject = ['connection', 'typertGateway', 'sessionController', 'timer']
 
 /** Delay before redialing after the tunnel drops. */
 const RECONNECT_DELAY_MS = 1000
