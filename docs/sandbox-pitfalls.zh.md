@@ -488,7 +488,7 @@ Remote 通道就绪就意味着业务服务也就绪；已有沙箱上的浏览�
 
 运行时补丁最初在 `printUrl: false` 旁写了 `open: false`，误以为配置字段与 CLI 选项同名。
 上游 schema 会保留未知字段，并静默补上默认的 `openBrowser: true`；补丁又覆盖了
-`--no-open` 已设置的配置。无头验收仍然通过，生产桌面却在后端启动时打开了浏览器。
+`--no-open` 已设置的配置。无头验收仍然通过，生产后端却在启动时尝试打开浏览器。
 补丁现改为 `openBrowser: false`，`check-images.sh` 使用发布包的 web-app schema 解析补丁，
 检查实际生效的值，而不是只搜索 YAML 字面量。
 

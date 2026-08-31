@@ -675,7 +675,7 @@ The runtime patch initially used `open: false` beside `printUrl: false`, assumin
 the configuration used the CLI flag's name. Upstream's schema retains unknown
 keys, so it silently supplied `openBrowser: true`; the patch also replaced the
 configuration that `--no-open` had set. Headless acceptance still passed, but
-the production desktop opened a browser on backend startup. The patch now uses
+the production backend attempted to open a browser on startup. The patch uses
 `openBrowser: false`, and `check-images.sh` resolves it through the published
 web-app schema to check the effective values rather than grepping the YAML.
 
