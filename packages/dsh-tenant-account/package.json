@@ -12,7 +12,8 @@
   "dsh": {
     "client": {
       "inject": [
-        "slots"
+        "slots",
+        "connection"
       ],
       "platform": "web"
     }

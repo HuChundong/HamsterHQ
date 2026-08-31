@@ -9,7 +9,9 @@
  */
 
 import process from 'node:process'
+import { randomUUID } from 'node:crypto'
 import { signIn } from './verify-login.mjs'
+import { harnessRpc } from './harness-rpc.mjs'
 
 const GATEWAY = process.env.GATEWAY ?? 'http://localhost:8080'
 
@@ -29,50 +31,41 @@ function check(label, ok, detail) {
   else failed += 1
 }
 
-/**
- * Issue one unary RPC as a given tenant.
- * @param {string} cookie - that tenant's session cookie.
- * @param {string} method - the RPC method name.
- * @param {object} payload - the method payload.
- * @returns {Promise<object>} the raw `result`, successful or not.
- */
-async function rpc(cookie, method, payload) {
-  const response = await fetch(`${GATEWAY}/api/${method}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Cookie: cookie },
-    body: JSON.stringify({ type: 'client-request', rpcId: `r-${Math.random().toString(36).slice(2)}`, method, payload }),
-  })
-  return (await response.json()).result
-}
-
 const alice = await signIn(GATEWAY, process.env.VERIFY_ALICE ?? 'delivered+alice@resend.dev')
 const bob = await signIn(GATEWAY, process.env.VERIFY_BOB ?? 'delivered+bob@resend.dev')
+const aliceRpc = await harnessRpc(GATEWAY, alice)
+const bobRpc = await harnessRpc(GATEWAY, bob)
 
-const created = await rpc(alice, 'session.create', { cwd: '/mnt/workspace' })
+const created = await aliceRpc.call('session/create', { request: { cwd: '/mnt/workspace' } })
+if (!created.ok) throw new Error(`create failed: ${JSON.stringify(created.error)}`)
 const aliceSession = created.value.sessionId
 console.log(`\nalice created ${aliceSession}`)
 
 console.log('\n=== 9. One tenant cannot see another tenant\'s sessions ===')
 
-const aliceList = await rpc(alice, 'session.list', {})
+const aliceList = await aliceRpc.call('session/list', { _request: {} })
 const aliceIds = JSON.stringify(aliceList.value ?? {})
-check('alice sees her own session', aliceIds.includes(aliceSession), aliceList.ok === true ? 'listed' : 'list failed')
+check('alice sees her own session', aliceList.ok === true && aliceIds.includes(aliceSession), aliceList.ok === true ? 'listed' : 'list failed')
 
-const bobList = await rpc(bob, 'session.list', {})
+const bobList = await bobRpc.call('session/list', { _request: {} })
 const bobIds = JSON.stringify(bobList.value ?? {})
-check('bob does not see it in his list', !bobIds.includes(aliceSession), bobList.ok === true ? 'absent' : 'list failed')
+check('bob does not see it in his list', bobList.ok === true && !bobIds.includes(aliceSession), bobList.ok === true ? 'absent' : 'list failed')
 
 console.log('\n=== 10. One tenant cannot read another tenant\'s session ===')
 
-const stolen = await rpc(bob, 'session.history', { sessionId: aliceSession })
-check('bob cannot read her history', stolen.ok !== true, stolen.ok === true ? 'READ IT' : `refused: ${stolen.error?.code}`)
+const page = { request: { address: { kind: 'session', sessionId: aliceSession }, throughSeq: -1 } }
+const own = await aliceRpc.call('session/page', page)
+check('alice can read her history', own.ok === true, own.ok ? 'readable' : own.error?.code)
+const stolen = await bobRpc.call('session/page', page)
+check('bob cannot read her history', stolen.error?.code === 'session/not-found', stolen.ok === true ? 'READ IT' : `refused: ${stolen.error?.code}`)
 
-const hijacked = await rpc(bob, 'session.prompt', {
+const hijacked = await bobRpc.call('session/prompt', { request: {
+  requestId: randomUUID(),
   sessionId: aliceSession,
   mode: 'queue',
   content: [{ type: 'text', text: 'this must not run' }],
-})
-check('bob cannot prompt into her session', hijacked.ok !== true, hijacked.ok === true ? 'PROMPTED' : `refused: ${hijacked.error?.code}`)
+} })
+check('bob cannot prompt into her session', hijacked.error?.code === 'session/not-found', hijacked.ok === true ? 'PROMPTED' : `refused: ${hijacked.error?.code}`)
 
 console.log(`\n=== ${passed} passed, ${failed} failed ===\n`)
 process.exit(failed === 0 ? 0 : 1)

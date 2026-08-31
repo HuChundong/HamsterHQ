@@ -453,6 +453,32 @@ Computer 面板嵌入的是 `/computer/vnc.html`。noVNC 把 WebSocket 拼成
 `:6080/websockify`。控制台里 `/computer/package.json` 的 404 是另一件事，
 且不挡连接：Debian 的 novnc 包在 `vnc.html` 旁没有 `package.json`。
 
+## 复制一份核心包，就多了一份作用域身份
+
+把定时任务插件漏声明的 tools 导入补成普通依赖后，导入检查通过了，会话创建却报
+`deployment:persona` 重复。最初以为是上游 preset 坏了，实际原因是安装出了两套核心
+依赖：`dsh-scope` 持有模块局部 Symbol，一份模块认不出另一份创建的 scope，于是把
+preset 的人设注册到了全局。
+
+插件现在把宿主包声明为 peer；镜像不另装 peer，而是在 profile 中链接宿主现有的 npm
+包，不修改 harness 字节。`check-images.sh` 断言两边解析到同一个 tools 模块；会话与
+真实对话验收再覆盖单纯导入检查看不到的作用域行为。
+
+## Remote 升级不能沿用旧的 HTTP 探测
+
+升级到 0.1.2-alpha.2 时，隧道最初仍轮询新的 `/api/remote.mux`，等待旧事件下行曾返回的
+HTTP 426。错误假设是：只改路由名就能保留普通 GET 的行为。Remote gateway 单独注册升级
+路由，普通 HTTP 则进入 RPC 处理器。于是 DSH 已经监听，隧道却始终不向网关报到，浏览器
+一直等待一个其实已经完成的冷启动。
+
+隧道现在先建立并关闭一条已认证的 WebSocket，再拨号到网关。它证明的是浏览器真正需要的
+操作，不复制 Remote 帧协议。`verify/verify-ws.mjs` 检查公开入口的升级，
+`verify/verify-turn.mjs` 在真实浏览器中检查模型回复能否流式显示。
+
+同一版本把模块资源改成 `/plugins/??...&rev=...`。旧的逐模块路径可以丢掉查询参数，新格式
+却会因此把不同脚本写进同一个位置。静态采集现在为条目与批次保留完整 URL 身份，映射与补丁
+覆盖由 `scripts/check-shell-assets.mjs` 检查。
+
 ## 能推广的部分
 
 - **快照装不下「之后才知道」的东西。** 一切与租户相关的，都必须在还原之后才抵达。

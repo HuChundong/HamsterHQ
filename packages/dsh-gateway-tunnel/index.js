@@ -12,17 +12,12 @@
  * instead of sampling it: the service exists only after
  * `dsh-client-connection` has mounted the `/api` route this forwards to.
  *
- * Not all of it, though. The two `/api/events.*` upgrade routes come from a
- * nested inject inside that same plugin, which nothing orders this after, so
- * the last step before dialling is still a probe — see `waitForDownlinks`.
+ * The Remote stream route is mounted separately, so the last step before
+ * dialling is still a probe — see waitForDownlinks.
  *
- * Requests still cross the loopback interface rather than being handed to the
- * route's handler in memory. dsh pins its configuration methods
- * (`settings.*`, `credentials.*`, `agentPreset.*`, `host.*`) to callers whose
- * `Host` is loopback, and the check lives inside the shared fetch handler, so
- * an in-memory call would have to construct the same request anyway — while
- * also reaching past the body limits and the route's own composition. One
- * loopback round trip buys behaviour identical to a browser's.
+ * Requests cross loopback with a cookie issued by the host's own Connection
+ * service. This keeps upstream authentication, body limits and route composition
+ * intact; no signing algorithm or in-memory RPC dispatch is reproduced here.
  *
  * @module dsh-gateway-tunnel
  */
@@ -30,6 +25,7 @@
 import http from 'node:http'
 import process from 'node:process'
 import WebSocket from 'ws'
+import { localSession } from './local-session.js'
 import {
   authorityFor,
   chunkBody,
@@ -44,7 +40,7 @@ export const name = 'gateway-tunnel'
 /**
  * `connection` is what orders this against the `/api` route: the service is
  * created in the same apply that registers the route, so its presence means
- * the surface this forwards to exists. `apiProxy` gates the plane behind it,
+ * the surface this forwards to exists. `typertGateway` gates the plane behind it,
  * which answers 404 until it is mounted.
  *
  * `timer` is not an ordering constraint but a correctness one, and it was
@@ -56,14 +52,14 @@ export const name = 'gateway-tunnel'
  * roughly what one expects, so it survived. `timer` is the composition's second
  * entry, mounted long before this one.
  */
-export const inject = ['connection', 'apiProxy', 'timer']
+export const inject = ['connection', 'typertGateway', 'timer']
 
 /** Delay before redialing after the tunnel drops. */
 const RECONNECT_DELAY_MS = 1000
 
 /**
  * Mount the tunnel.
- * @param {import('@deepseek-ai/cordis').Context} ctx - the plugin context, with `connection` and `apiProxy` injected.
+ * @param {import('@deepseek-ai/cordis').Context} ctx - the plugin context, with `connection` and `typertGateway` injected.
  */
 export function apply(ctx) {
   /**
@@ -112,6 +108,25 @@ export function apply(ctx) {
     throw new Error('gateway-tunnel: GATEWAY_TUNNEL_URL, SANDBOX_ID and SANDBOX_TOKEN are required')
   }
   const localAuthority = `127.0.0.1:${ctx.get('webServer').port}`
+  let session
+
+  /**
+   * Replace the gateway cookie with a session valid only inside this sandbox.
+   * noVNC is a different service and must never receive the DSH credential.
+   * @param {Record<string, string>} headers - browser request headers.
+   * @param {string} authority - local destination.
+   * @returns {Record<string, string>} headers for the selected local service.
+   */
+  const localHeaders = (headers, authority) => {
+    const rewritten = rewriteRequestHeaders(headers, authority)
+    if (authority === localAuthority) {
+      if (session === undefined || session.expiresAt - Date.now() < 60_000) {
+        session = localSession(ctx.connection, localAuthority)
+      }
+      rewritten.cookie = session.cookie
+    }
+    return rewritten
+  }
 
   /** @type {WebSocket | undefined} */
   let socket
@@ -143,7 +158,7 @@ export function apply(ctx) {
       port: Number(port),
       method: frame.method,
       path,
-      headers: rewriteRequestHeaders(frame.headers, authority),
+      headers: localHeaders(frame.headers, authority),
     }, (response) => {
       send({ t: 'httpres', id: frame.id, status: response.statusCode ?? 502, headers: response.headers })
       response.on('data', (chunk) => {
@@ -179,7 +194,7 @@ export function apply(ctx) {
   const startWebSocket = (frame) => {
     const authority = authorityFor(frame.path, localAuthority)
     const path = localPathFor(frame.path)
-    const headers = rewriteRequestHeaders(frame.headers, authority)
+    const headers = localHeaders(frame.headers, authority)
     delete headers.host
     for (const key of Object.keys(headers)) {
       if (key.startsWith('sec-websocket-')) delete headers[key]
@@ -304,27 +319,25 @@ export function apply(ctx) {
   /**
    * Resolve once the downlink upgrade routes exist.
    *
-   * `inject` gets this plugin as far as `apiProxy`, but the two `/api/events.*`
-   * upgrade routes are registered by a *nested* inject inside
-   * `dsh-client-connection` that waits on the same service — so nothing orders
-   * this plugin after it. Dialling first makes the gateway release held
-   * upgrades against a host that has no route for them yet, which reaches the
-   * browser as a failed handshake on a freshly built sandbox.
+   * Service injection waits for the Remote gateway, but its stream carrier
+   * mounts independently. Probe an actual authenticated WebSocket upgrade;
+   * a plain GET is handled by the unary RPC route in current DSH releases.
    *
-   * A plain GET to those paths answers 426 once they are mounted, which is a
-   * statement about the route rather than a guess about timing.
-   *
-   * @returns {Promise<void>} resolves when both downlinks are routable.
+   * @returns {Promise<void>} resolves when the Remote downlink is routable.
    */
   const waitForDownlinks = async () => {
-    for (;;) {
-      const codes = await Promise.all(['/api/events.mux', '/api/events.host'].map(
-        (path) => fetch(`http://${localAuthority}${path}`, { headers: { Host: localAuthority } })
-          .then((response) => response.status)
-          .catch(() => 0),
-      ))
-      if (codes.every((code) => code === 426)) return
-      await new Promise((resolve) => { setTimeout(resolve, 100) })
+    while (!disposed) {
+      const ready = await new Promise((resolve) => {
+        const probe = new WebSocket(`ws://${localAuthority}/api/remote.mux`, {
+          headers: localHeaders({}, localAuthority),
+          handshakeTimeout: 5000,
+        })
+        probe.once('open', () => { probe.close(); resolve(true) })
+        probe.once('error', () => { resolve(false) })
+        probe.once('close', () => { resolve(false) })
+      })
+      if (ready) return
+      await new Promise((resolve) => { setTimeout(resolve, 250) })
     }
   }
 

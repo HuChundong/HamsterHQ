@@ -627,6 +627,41 @@ Pass `path=computer/websockify` on the iframe URL. The tunnel then strips
 `/computer/package.json` is separate and non-fatal: Debian's novnc package
 ships no `package.json` next to `vnc.html`.
 
+## A copied core package is a second scope
+
+Declaring the scheduled plugin's missing tools import as an ordinary dependency
+made its import check pass, but session creation failed with a duplicate
+`deployment:persona`. The initial diagnosis was a broken upstream preset. The
+cause was two installed core graphs: `dsh-scope` owns a module-local Symbol, so
+one copy could not recognize scopes created by the other and registered a
+preset's persona globally.
+
+The plugin declares the host package as a peer. The image omits peer installation
+and resolves that peer through a profile-local link to the host's existing npm
+package. No harness bytes are changed. `check-images.sh` asserts that both
+resolutions reach the same tools module; the session and real-turn acceptance
+checks cover the scope behavior that an import-only check missed.
+
+## A Remote upgrade cannot be tested with the old HTTP probe
+
+During the 0.1.2-alpha.2 upgrade, the tunnel initially kept polling the new
+`/api/remote.mux` path for HTTP 426, as it had for the old event downlinks. The
+wrong assumption was that moving the route name preserved its plain-GET
+behavior. The Remote gateway registers an upgrade route separately; ordinary
+HTTP reaches the RPC handler instead. DSH was listening, but the tunnel never
+announced itself and browser calls waited for a cold start that had finished.
+
+The tunnel now opens and closes an authenticated WebSocket before dialing the
+gateway. That proves the operation the browser needs, without reproducing the
+Remote wire format. `verify/verify-ws.mjs` checks the public upgrade and
+`verify/verify-turn.mjs` checks a streamed model reply in a real browser.
+
+The same release moved module assets to `/plugins/??...&rev=...`. Stripping the
+query, which worked for the former per-module paths, collapsed distinct scripts
+onto one path. The static harvest now preserves complete URL identity for both
+entries and batches; the mapping and patch coverage are checked by
+`scripts/check-shell-assets.mjs`.
+
 ## What generalizes
 
 - **A snapshot cannot hold what is only knowable later.** Everything

@@ -33,7 +33,7 @@
 # DSH_VERSION` to bring this default into its own scope — which is the only way
 # to read it after a FROM, and which is what was missing when the footer went
 # blank.
-ARG DSH_VERSION=0.1.1-rc.2
+ARG DSH_VERSION=0.1.2-alpha.2
 
 # ------------------------------------------------------------------- deps ----
 FROM node:24.19.0-bookworm-slim AS deps
@@ -587,7 +587,10 @@ COPY --from=panel-build /panel/lib /src/packages/dsh-artifact-panel/lib
 # points rather than from the profile — which left the frame protocol
 # unresolvable and the tunnel plugin dead on its first import. Copies put the
 # plugin and everything it needs under the profile, where the registry looks.
-RUN npm install --omit=dev --no-audit --no-fund --install-links \
+# Host packages are peers. A second copy of dsh-scope has different Symbols,
+# so preset registrations lose their scope. Resolve the peer to the same npm
+# installation the host uses; never install a second harness inside a plugin.
+RUN npm install --omit=dev --omit=peer --no-audit --no-fund --install-links \
       --prefix "$IMAGE_DSH_HOME/profiles/web" \
       /src/packages/dsh-gateway-tunnel \
       /src/packages/dsh-sandbox-host \
@@ -595,6 +598,9 @@ RUN npm install --omit=dev --no-audit --no-fund --install-links \
       /src/packages/dsh-artifact-panel \
       /src/packages/dsh-scheduled-tasks \
       /src/packages/dsh-brand \
+  && mkdir -p "$IMAGE_DSH_HOME/profiles/web/node_modules/@deepseek-ai" \
+  && ln -s /app/node_modules/@deepseek-ai/dsh-tools \
+       "$IMAGE_DSH_HOME/profiles/web/node_modules/@deepseek-ai/dsh-tools" \
   && rm -rf /root/.npm /src
 
 # Project the environment above into a file the entrypoint sources.
@@ -954,7 +960,7 @@ RUN npm run build
 # set does not match the backend it talks to.
 FROM sandbox AS shell
 WORKDIR /app
-COPY web/harvest-shell.mjs sandbox/harvest.patch.yml web/patch-loopback.mjs ./web/
+COPY web/harvest-shell.mjs web/shell-assets.mjs sandbox/harvest.patch.yml web/patch-loopback.mjs ./web/
 # Harvested against the IMAGE's harness home, not the tenant's.
 #
 # `DSH_HOME` points at the mount, where `profiles/` is a link the entrypoint
@@ -980,6 +986,7 @@ FROM nginx:alpine AS web
 RUN apk add --no-cache openssl
 COPY --from=deps /app/node_modules/@deepseek-ai/dsh-web-frontend/dist /usr/share/nginx/html
 COPY --from=shell /shell /usr/share/nginx/html
+COPY --from=shell /shell/dsh-combos.conf /etc/nginx/dsh-combos.conf
 # The landing page, which is what an anonymous visitor to `/` is shown. Its own
 # root rather than a directory under the shell's, because the shell's root is
 # upstream's published build and anything added to it is one npm release away

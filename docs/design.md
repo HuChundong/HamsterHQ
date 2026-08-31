@@ -70,25 +70,19 @@ The sandbox needs no inbound reachability, no published port, and no dsh
 configuration change: dsh keeps its default loopback binding and its default
 empty `trustedHosts`.
 
-It also has a consequence worth stating plainly. dsh guards `/api` with a fence
-that pins its configuration methods — `settings.*`, `credentials.*`,
-`agentPreset.*`, `host.pickDirectory`, `host.openPath`, `llm.discoverModels` —
-to loopback callers, and a declared `trustedHosts` authority cannot reach them.
-Because the tunnel client replays every request across the sandbox's own
-loopback interface, those methods keep working, so the frontend's Settings and
-Models pages stay functional. A deployment that instead exposed the sandbox
-port would serve ordinary methods and answer 403 for all of them.
+Since 0.1.2-alpha.2, DSH requires its own signed browser cookie even for
+loopback RPC. The tunnel obtains one through Connection's public
+`authenticatedUrl` and `authorizeIndex` methods, caches it in memory and renews
+it before expiry. It never copies signing logic or forwards the gateway cookie.
 
-The same rewriting disarms the fence, which is a confused-deputy defense (DNS
-rebinding and cross-site), never an authentication layer — dsh ships none and
-records remote-deployment authentication as deferred work. **Authentication at
-the gateway is therefore the only thing protecting an agent that runs shell
-commands.** Everything under `/api`, HTTP and WebSocket alike, is refused
-before it can reach a tunnel unless it carries a valid session.
+The gateway remains the tenant authentication boundary. DSH's local cookie
+owns one host, not a gateway account: every HTTP request and WebSocket upgrade
+must resolve to the correct tenant before reaching that host's tunnel.
 
 ## DSH is a dependency, not part of this
 
-The harness is installed from npm at a pinned version. Nothing here patches it:
+The harness is installed from npm at a pinned version. Apart from the one
+[documented exception](../AGENTS.md#dsh-is-a-dependency-and-stays-one),
 the tunnel, the remote-host surfaces, the account controls, the artifact panel,
 and this deployment's own brand are cordis plugins, named in
 [`sandbox/cordis.patch.yml`](../sandbox/cordis.patch.yml) and
@@ -317,17 +311,16 @@ It runs inside the dsh process it serves, inserted into the composition by
 existing ids, so adding a plugin takes an explicit `insert` list.
 
 What that buys is not mainly the ~22 MB a second Node runtime cost per sandbox.
-It is that `inject: ['connection', 'apiProxy']` *states* when the `/api` surface
+It is that `inject: ['connection', 'typertGateway']` *states* when the `/api` surface
 exists, where a separate process could only probe for it — and dialled too early
 twice before that probe was right, once before the socket accepted connections
 and once before the API plane was mounted. The gateway releases held browser
 requests the moment a tunnel appears, so both reached a person.
 
 Requests still cross the loopback interface rather than being handed to the
-route's handler in memory. dsh's loopback pin lives inside the shared fetch
-handler, so an in-memory call would have to construct an equivalent request
-anyway, while also reaching past the route's body limits and composition. One
-loopback round trip buys behaviour identical to a browser's.
+route's handler in memory. The host's authentication and request checks stay
+inside the shared handler, alongside body limits and route composition. The
+loopback round trip exercises the same path as DSH's own browser client.
 
 ## When the machine is up and the backend is not
 
@@ -383,8 +376,8 @@ The gateway's session cookie is stripped as well: authentication is settled at
 the gateway, and forwarding the cookie would place one tenant's session token
 inside a container that tenant's own agent can read.
 
-WebSocket upgrades pass the same fence, so `/api/events.mux` and
-`/api/events.host` need the identical rewriting; the client additionally drops
+The tunnel adds the host-issued DSH cookie only for the harness authority,
+never for noVNC. WebSocket upgrades at `/api/remote.mux` use the same rewriting; the client additionally drops
 the browser's `sec-websocket-*` headers so the local handshake key is the one
 `ws` minted and can verify.
 
@@ -489,12 +482,10 @@ about is already reachable, and a document worth reading opens in whatever the
 desktop associates with it. Moving the backend into a sandbox takes that premise
 away, and several surfaces are built on it.
 
-The harness has one signal for this — `host.describe().canOpenPath`, which is
-already false here, because it asks the platform and finds Linux with no display
-server. `sandbox/cordis.patch.yml` states it outright anyway, as `nativeOpen:
-false` on the `api-gateway` entry: the detected answer is correct by coincidence
-of the base image, and anything that later put a DISPLAY into this container
-would flip it back.
+The harness exposes native-open capability through its SessionController and
+SettingsController. `sandbox/cordis.patch.yml` explicitly disables `nativeOpen`
+on both entries, so adding a display server cannot silently enable host-local
+file opening for a remote browser.
 
 Where a surface consults that signal, it already degrades: the agent-preset page
 offers "show location" instead of "open location", and the deliverables row
@@ -853,8 +844,8 @@ SANDBOX_RUNTIME=cube COMPOSE_FILE=../compose.yml:../compose.cube.yml \
 It signs two tenants in and checks the properties the deployment exists to
 provide: unauthenticated calls and upgrades are refused, each tenant gets their
 own sandbox, the backend listens on loopback so the tunnel is the only way to
-it, the loopback-pinned configuration methods survive the tunnel rewriting, both
-`/api` downlinks open, a real model turn completes, and neither tenant can list,
+it, authenticated configuration methods survive the tunnel, the
+`/api/remote.mux` downlink opens, a real model turn completes, and neither tenant can list,
 read, or prompt into the other's sessions. Where the runtime withholds the model
 credential, it also checks that the sandbox holds only the placeholder.
 

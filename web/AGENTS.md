@@ -62,7 +62,7 @@ where a changed mark or screenshot reaches some visitors and not others, and
 which one a visitor got depended on which page they opened first.
 
 `patch-loopback.mjs` runs in the `shell` stage after `harvest-shell.mjs` and
-fails the image build in three ways, all deliberate: the target file is gone,
+fails the image build in three ways, all deliberate: a target module or batch is gone,
 the shell is already patched — which means the script ran twice and the second
 run had nothing to do — or the expression it matches is not there exactly once,
 which is what a DSH upgrade that reshaped the decision looks like. In that last
@@ -70,5 +70,11 @@ case the error tells the next reader to update the expression or, better, to
 delete the script if the release made the decision configurable.
 
 Because a build can be green and a tag can be moved by hand,
-`scripts/check-images.sh` greps the bundle nginx will actually serve for the
+`scripts/check-images.sh` greps every Connection copy nginx will actually serve for the
 patched value. That is the assertion that catches a patch lost to a cached layer.
+
+The shell now carries query-addressed combo scripts. `harvest-shell.mjs` saves
+both module entries and batches, while `shell-assets.mjs` maps each complete URL
+to a distinct file. nginx uses the generated exact request-URI map; dropping the
+query would collapse all bundles into one. `check-shell-assets.mjs` checks that
+mapping and that the existing loopback patch reaches every served copy.

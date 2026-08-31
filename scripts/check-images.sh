@@ -249,6 +249,15 @@ check 'pip has an index' 1 "$([ -n "$index" ] && echo 1 || echo 0)"
 printf '        pip  -> %s\n' "${index:-unset}"
 
 echo
+# Core scope identity must be shared with the host, not installed twice.
+shared=$(docker run --rm --entrypoint node "$SANDBOX" -e "
+  const { createRequire } = require('node:module')
+  const host = createRequire('/app/package.json')
+  const plugin = createRequire('$PROFILE/node_modules/dsh-scheduled-tasks/package.json')
+  console.log(host.resolve('@deepseek-ai/dsh-tools') === plugin.resolve('@deepseek-ai/dsh-tools') ? 'shared' : 'duplicated')
+" 2>/dev/null || echo error)
+check 'scheduled tools share the host dependency instance' shared "$shared"
+
 echo "=== the web image ==="
 
 # The one patch this repository applies to the harness. It fails the build when
@@ -256,9 +265,15 @@ echo "=== the web image ==="
 # image are separable (a cached layer, a hand-tagged image), and a served bundle
 # that lost the patch is a deployment where nobody can keep a preference and
 # nothing says so. Asserted against the bytes nginx will actually serve.
-patched=$(docker run --rm --entrypoint sh "$WEB" -c \
-  "grep -c 'isLoopback: true' /usr/share/nginx/html/plugins/@deepseek-ai/dsh-client-connection/client.js" 2>/dev/null || echo error)
-check 'the settings plane is enabled for non-loopback browsers' 1 "$patched"
+patched=$(docker run --rm --entrypoint sh "$WEB" -c '
+  cd /usr/share/nginx/html
+  test -s dsh-connection-assets.txt || exit 1
+  while IFS= read -r asset; do
+    grep -q "isLoopback: true /\* HamsterHQ:" ".${asset}" || exit 1
+  done < dsh-connection-assets.txt
+  echo patched
+' 2>/dev/null || echo error)
+check 'all served Connection copies persist non-loopback settings' patched "$patched"
 
 echo
 echo "=== the gateway image ==="

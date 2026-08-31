@@ -1,10 +1,9 @@
 /**
  * WebSocket half of the acceptance run.
  *
- * The two `/api` downlinks are the part most likely to break silently: their
- * upgrades pass the same trust fence as the HTTP calls, and the frontend treats
- * either socket ending as loss of the whole connection generation. A stack that
- * answers every HTTP call correctly can still be unusable if these do not open.
+ * The Remote downlink is easy to break silently: its upgrade passes the same
+ * authentication checks as HTTP calls. A stack that answers every HTTP call
+ * can still be unusable when its streaming connection does not open.
  */
 
 import process from 'node:process'
@@ -60,14 +59,14 @@ function openDownlink(path, cookie, authenticated) {
 
 const cookie = await signIn(GATEWAY, USER)
 
-console.log('\n=== 7. Both /api downlinks open through the tunnel ===')
-for (const path of ['/api/events.mux', '/api/events.host']) {
+console.log('\n=== 7. The Remote downlink opens through the tunnel ===')
+for (const path of ['/api/remote.mux']) {
   const result = await openDownlink(path, cookie, true)
   check(`authenticated ${path}`, result.open, result.detail)
 }
 
 console.log('\n=== 8. Downlinks are refused without a session ===')
-for (const path of ['/api/events.mux', '/api/events.host']) {
+for (const path of ['/api/remote.mux']) {
   const result = await openDownlink(path, cookie, false)
   check(`unauthenticated ${path} is refused`, !result.open, result.open ? 'opened' : result.detail)
 }

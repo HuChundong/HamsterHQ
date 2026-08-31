@@ -16,5 +16,8 @@
       ],
       "platform": "web"
     }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "0.1.2-alpha.2"
   }
 }

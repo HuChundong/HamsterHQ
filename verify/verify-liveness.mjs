@@ -100,7 +100,8 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 80))
 const first = subscribe()
 await settle()
 check('with no tunnel, the stream opens and says it is not up', () => {
-  assert.deepEqual(first.latest(), { ok: false, recover: false })
+  assert.equal(first.latest().ok, false)
+  assert.equal(first.latest().recover, false)
 })
 
 // The tunnel connects and nothing has been measured yet. This is the case the
@@ -110,7 +111,8 @@ live = true
 stats.livenessChanged(SANDBOX)
 await settle()
 check('a tunnel connecting is news at once, with no report yet', () => {
-  assert.deepEqual(first.latest(), { ok: true })
+  assert.equal(first.latest().ok, true)
+  assert.equal(first.latest().stats.cpu, undefined)
 })
 
 // Figures arrive and are carried beside the state.

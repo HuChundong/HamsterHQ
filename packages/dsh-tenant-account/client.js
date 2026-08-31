@@ -767,22 +767,10 @@ window.__ModuleLoader__.load({
           setAsking(false)
           return
         }
-        // Reloaded rather than left to recover: the frontend still holds an
-        // event socket to a backend that has just been removed. But reloading
-        // the instant the release returns races the cold start — the page opens
-        // /api/events.mux while the tunnel is still dialling, the browser aborts
-        // that upgrade (nginx 499), and the harness does not reopen it. REST
-        // keeps working, so the UI looks alive while streaming messages never
-        // arrive until a second refresh. Waiting on host.describe first builds
-        // the replacement and blocks until it has dialled in, so the reload
-        // opens the event sockets against a tunnel that is already there.
+        // Wait for the replacement's Remote gateway before reloading, so the
+        // browser opens its streaming connection against a ready tunnel.
         try {
-          await fetch('/api/host.describe', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: '{}',
-          })
+          await plugin.connection.rpc.call('/api', 'session/modelCatalog', { args: {} })
         } catch {
           // Reload anyway: the old socket is dead either way, and the next
           // page load is what recovery and a second attempt both need.
@@ -1778,7 +1766,7 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'locale'],
+      inject: ['slots', 'locale', 'connection'],
       /**
        * Register the account section.
        * @param {object} ctx - client root context.

@@ -6,7 +6,7 @@
  * wants to talk about is already reachable, a produced file opens in whatever
  * the desktop associates with it, and the configuration document opens in an
  * editor. None of that holds when the backend runs in a sandbox — and the
- * harness has a signal that says so, `host.describe().canOpenPath`, which is
+ * harness has a signal that says so, `settings.canOpenAgentPresetDirectory()`, which is
  * already false on a Linux container with no display server.
  *
  * This plugin supplies what that signal reports missing, instead of hiding the
@@ -199,7 +199,7 @@ export function apply(ctx, config) {
       ctx.logger?.warn?.(`sandbox-host: ${endpoint} failed: ${error.message}`)
       return internal(error.message)
     }
-  }, { authority: 'trusted-host' })
+  })
 
   // The browser plane. Same fence as `/files` and the same envelope; the
   // wording of an unreachable browser is the panel's, so `status` answers
@@ -223,7 +223,7 @@ export function apply(ctx, config) {
       ctx.logger?.warn?.(`sandbox-host: browser ${endpoint} failed: ${error.message}`)
       return internal(error.message)
     }
-  }, { authority: 'trusted-host' })
+  })
 
   ctx.effect(() => {
     const timer = setInterval(() => { void uploads.sweep().catch(() => {}) }, SWEEP_INTERVAL_MS)

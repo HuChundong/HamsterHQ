@@ -23,6 +23,12 @@ check(
 
 const pinned = dockerfile.match(/^ARG DSH_VERSION=(\S+)$/m)?.[1]
 check(Boolean(pinned), 'Dockerfile must pin ARG DSH_VERSION')
+const scheduled = JSON.parse(readFileSync(join(root, 'packages/dsh-scheduled-tasks/package.json'), 'utf8'))
+check(
+  scheduled.peerDependencies?.['@deepseek-ai/dsh-tools'] === pinned,
+  'the scheduled plugin must declare the pinned host tools package as a peer',
+)
+
 
 for (const name of ['@deepseek-ai/dsh', '@deepseek-ai/dsh-web-frontend']) {
   const resolved = lock.packages?.[`node_modules/${name}`]?.version

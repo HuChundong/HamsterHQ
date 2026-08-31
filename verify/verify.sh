@@ -2,8 +2,8 @@
 # End-to-end acceptance for the multi-tenant gateway.
 #
 # Checks the three properties the deployment exists to provide: nothing reaches
-# a sandbox unauthenticated, each tenant gets their own, and the loopback-pinned
-# configuration methods survive the tunnel's header rewriting.
+# a sandbox unauthenticated, each tenant gets their own, and authenticated
+# configuration methods survive the tunnel.
 #
 # Runs against either sandbox runtime. Everything about a tenant's sandbox goes
 # through the sandbox helpers below, because the two runtimes offer nothing in
@@ -33,8 +33,12 @@ check() {
 }
 
 api() {  # api <cookiejar> <method> -> status
-  curl -s -o /dev/null -w '%{http_code}' -m 120 -b "$1" \
-    -X POST "$GATEWAY/api/$2" -H 'Content-Type: application/json' -d '{}'
+  if command -v node > /dev/null 2>&1; then
+    GATEWAY="$GATEWAY" node api-status.mjs "$1" "$2"
+  else
+    docker compose exec -T -e GATEWAY=http://web gateway \
+      node /app/api-status.mjs /dev/stdin "$2" < "$1"
+  fi
 }
 
 # Addresses the acceptance run registers. Resend's own sink, which accepts and
@@ -220,6 +224,9 @@ trap 'rm -f "$JAR_A" "$JAR_B" "$JAR_NONE"' EXIT
 # Suite failures, counted separately from the HTTP checks and reported together
 # at the end.
 NODE_FAIL=0
+for helper in harness-rpc.mjs api-status.mjs; do
+  docker compose cp "$helper" "gateway:/app/$helper" > /dev/null 2>&1 || NODE_FAIL=1
+done
 
 echo
 echo '=== 0a. What bounds the mail this can be made to send ==='
@@ -264,7 +271,7 @@ fi
 
 echo
 echo '=== 1. Anonymous requests: private surfaces refused, public assets served ==='
-check 'POST /api/host.describe without a session' 401 "$(api "$JAR_NONE" host.describe)"
+check 'POST /api/session/modelCatalog without a session' 401 "$(api "$JAR_NONE" session/modelCatalog)"
 # `/` is the landing page for anyone without a session, served at that address
 # rather than redirected to one — see "The landing page" in README.md. What must
 # not happen is the application answering there, so the body is checked and not
@@ -353,12 +360,12 @@ check 'signing in again keeps the same account' "$ALICE_ID" \
 echo
 echo '=== 3. Ordinary methods reach the tenant sandbox ==='
 echo '     (the first call waits for the container to start and dsh to boot)'
-check "alice: host.describe" 200 "$(api "$JAR_A" host.describe)"
-check "bob:   host.describe" 200 "$(api "$JAR_B" host.describe)"
+check "alice: session/modelCatalog" 200 "$(api "$JAR_A" session/modelCatalog)"
+check "bob:   session/modelCatalog" 200 "$(api "$JAR_B" session/modelCatalog)"
 
 echo
-echo '=== 4. Loopback-pinned methods survive the tunnel rewriting ==='
-for method in settings.describe credentials.describe llm.discoverModels agentPreset.read; do
+echo '=== 4. Authenticated configuration methods survive the tunnel ==='
+for method in settings/describe credentials/describe settings/canOpenAgentPresetDirectory; do
   check "alice: $method" 200 "$(api "$JAR_A" "$method")"
 done
 
@@ -521,11 +528,25 @@ echo '     (run inside the gateway container, the one place with ws installed)'
 # The shared sign-in goes in first: the three suites import it, and it is what
 # reads their code out of the deployment's own store.
 docker compose cp verify-login.mjs gateway:/app/verify-login.mjs > /dev/null 2>&1 || NODE_FAIL=1
-for script in verify-ws.mjs verify-turn.mjs verify-isolation.mjs; do
+docker compose cp harness-rpc.mjs gateway:/app/harness-rpc.mjs > /dev/null 2>&1 || NODE_FAIL=1
+for script in verify-ws.mjs verify-isolation.mjs; do
   docker compose cp "$script" "gateway:/app/$script" > /dev/null || { NODE_FAIL=1; continue; }
-  docker compose exec -T -e GATEWAY=http://localhost:8080 -e "VERIFY_ALICE=$ALICE" -e "VERIFY_BOB=$BOB" \
+  docker compose exec -T -e GATEWAY=http://web -e "VERIFY_ALICE=$ALICE" -e "VERIFY_BOB=$BOB" \
     gateway node "/app/$script" || NODE_FAIL=1
 done
+
+# The model turn exercises the shipped browser's own streaming client.
+TURN_COOKIE=$(awk -F '\t' 'NF == 7 { printf "%s=%s;", $6, $7 }' "$JAR_A" | sed 's/;$//')
+export TURN_COOKIE
+for browser_suite in verify-turn.mjs verify-settings.mjs; do
+  if node -e "require('module').createRequire('$PWD/package.json').resolve('playwright')" 2>/dev/null; then
+    GATEWAY="$GATEWAY" node "$browser_suite" || NODE_FAIL=1
+  else
+    "${BROWSER_RUN[@]}" -e TURN_COOKIE "$BROWSER_IMAGE" \
+      sh -c "$BROWSER_INSTALL && node $browser_suite" || NODE_FAIL=1
+  fi
+done
+unset TURN_COOKIE
 
 # A scheduled task, from a tenant with no sandbox.
 #
@@ -537,7 +558,7 @@ echo
 echo '=== 11. A scheduled task wakes a destroyed sandbox and runs ==='
 echo '     (minutes, on purpose: it waits for a cold machine to come back)'
 if docker compose cp verify-schedule.mjs gateway:/app/verify-schedule.mjs > /dev/null 2>&1; then
-  docker compose exec -T -e GATEWAY=http://localhost:8080 -e "VERIFY_ALICE=$ALICE" \
+  docker compose exec -T -e GATEWAY=http://web -e "VERIFY_ALICE=$ALICE" \
     gateway node /app/verify-schedule.mjs || NODE_FAIL=1
 else
   echo '  SKIP: could not copy the suite into the gateway container'
@@ -621,7 +642,7 @@ echo
 echo '=== 11b. The computer plane is session-gated ==='
 docker compose cp verify-login.mjs gateway:/app/verify-login.mjs > /dev/null 2>&1 || NODE_FAIL=1
 docker compose cp verify-computer.mjs gateway:/app/verify-computer.mjs > /dev/null 2>&1 || NODE_FAIL=1
-docker compose exec -T -e GATEWAY=http://localhost:8080 -e "VERIFY_ALICE=$ALICE" \
+docker compose exec -T -e GATEWAY=http://web -e "VERIFY_ALICE=$ALICE" \
   gateway node /app/verify-computer.mjs || NODE_FAIL=1
 
 echo
@@ -636,7 +657,7 @@ SHELL_HTML=$(curl -s -m 30 -b "$JAR_A" "$GATEWAY/app")
 check 'GET /app still answers' 200 \
   "$(curl -s -o /dev/null -w '%{http_code}' -m 30 -b "$JAR_A" "$GATEWAY/app")"
 check 'it carries the boot manifest' 1 "$(printf '%s' "$SHELL_HTML" | grep -c '__DSH_BOOT__')"
-BUNDLE=$(printf '%s' "$SHELL_HTML" | grep -o '/plugins/[^"?]*client\.js' | head -1)
+BUNDLE=/plugins/@deepseek-ai/dsh-client-connection/client.js
 # Both of this project's client plugins have to appear in the graph the shell
 # boots from. A path-loaded entry mounts its host half and contributes no client
 # half at all, and a plugin left out of the harvest patch has a host half in
@@ -666,12 +687,12 @@ if docker compose exec -T gateway node -e 'import("/app/gateway/src/persistence.
   # machine — a different VM with a different id — and the file has to be in it.
   # That is the whole claim: the sandbox is disposable and the tenant's work is
   # not.
-  api "$JAR_A" host.describe > /dev/null
+  api "$JAR_A" session/modelCatalog > /dev/null
   MARKER="kept-$$"
   BEFORE=$(sandbox_handles_of "$ALICE" | head -1)
   sandbox_sh "$BEFORE" "printf '%s' '$MARKER' > /mnt/workspace/.verify-marker" > /dev/null
   sandbox_remove_all
-  api "$JAR_A" host.describe > /dev/null
+  api "$JAR_A" session/modelCatalog > /dev/null
   AFTER=$(sandbox_handles_of "$ALICE" | head -1)
   check 'the sandbox really is a different one' 1 "$([ "$AFTER" != "$BEFORE" ] && echo 1 || echo 0)"
   check 'the workspace came back with it' "$MARKER" \
@@ -690,8 +711,8 @@ login "$BOB" "$JAR_OUT" > /dev/null
 curl -s -o /dev/null -b "$JAR_OUT" -c "$JAR_OUT" -X POST "$GATEWAY/logout"
 docker compose restart gateway > /dev/null 2>&1
 until curl -sf -m 2 "$GATEWAY/login" -o /dev/null; do sleep 1; done
-check 'a live session still works afterwards' 200 "$(api "$JAR_R" host.describe)"
-check 'a signed-out browser is unauthenticated' 401 "$(api "$JAR_OUT" host.describe)"
+check 'a live session still works afterwards' 200 "$(api "$JAR_R" session/modelCatalog)"
+check 'a signed-out browser is unauthenticated' 401 "$(api "$JAR_OUT" session/modelCatalog)"
 # The one that matters, and the reason the access token is short-lived. Signing
 # out revokes every refresh token the account holds, so nothing can renew — an
 # access token that outlives the click is worth at most its fifteen minutes, and
@@ -755,7 +776,7 @@ echo '=== 17. A backend that died leaves the machine, and a way back in ==='
 if [ "$RUNTIME" = docker ]; then
   RECOVER_JAR=$(mktemp)
   login "$ALICE" "$RECOVER_JAR" > /dev/null
-  api "$RECOVER_JAR" host.describe > /dev/null
+  api "$RECOVER_JAR" session/modelCatalog > /dev/null
   RECOVER_HANDLE=$(docker ps --filter "label=$DSH_LABEL=$ALICE" --format '{{.Names}}' | head -1)
   RECOVER_NET=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$RECOVER_HANDLE")
 
@@ -812,7 +833,7 @@ if [ "$RUNTIME" = docker ]; then
   # and where the pty route is one hop away.
   docker compose cp verify-login.mjs gateway:/app/verify-login.mjs > /dev/null 2>&1 || NODE_FAIL=1
   docker compose cp verify-terminal.mjs gateway:/app/verify-terminal.mjs > /dev/null 2>&1 || NODE_FAIL=1
-  docker compose exec -T -e GATEWAY=http://localhost:8080 -e "VERIFY_ALICE=$ALICE" \
+  docker compose exec -T -e GATEWAY=http://web -e "VERIFY_ALICE=$ALICE" \
     gateway node /app/verify-terminal.mjs || NODE_FAIL=1
 
   # Erasing is refused without the acknowledgement the dialog collects, so that
@@ -837,7 +858,7 @@ if [ "$RUNTIME" = docker ]; then
   RECOVER_BACK=0
   RECOVER_WAITED=0
   while [ "$RECOVER_WAITED" -lt 180 ]; do
-    if [ "$(api "$RECOVER_JAR" host.describe)" = 200 ]; then RECOVER_BACK=1; break; fi
+    if [ "$(api "$RECOVER_JAR" session/modelCatalog)" = 200 ]; then RECOVER_BACK=1; break; fi
     sleep 3
     RECOVER_WAITED=$((RECOVER_WAITED + 3))
   done
