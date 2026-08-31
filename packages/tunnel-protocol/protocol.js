@@ -133,11 +133,9 @@ export function chunkBody(body) {
  * sends exactly the markers that fence rejects, so forwarding them verbatim
  * turns every call into a 403.
  *
- * Rewriting them is also what keeps the loopback-pinned methods reachable —
- * `settings.*`, `credentials.*`, `agentPreset.*`, `host.pickDirectory`,
- * `host.openPath`, and `llm.discoverModels` pass the fence with an empty trust
- * list, so a declared `trustedHosts` authority cannot reach them and only a
- * loopback `Host` can.
+ * This establishes the local request authority, not authentication. The tunnel
+ * plugin obtains DSH's own browser cookie and adds it only on the harness leg;
+ * the gateway cookie is stripped here and never reaches a tenant process.
  *
  * Hop-by-hop headers are dropped because the tunnel, not the origin request,
  * owns framing and connection lifetime on this leg.

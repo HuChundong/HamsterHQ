@@ -37,8 +37,8 @@ const PATIENCE_MS = 10 * 60 * 1000
 /** How often to ask whether the run has been recorded. */
 const POLL_MS = 5000
 
-/** The interval the task is created at, in seconds. Short, to keep the suite short. */
-const EVERY_SECONDS = Number(process.env.SCHEDULE_EVERY_SECONDS ?? 300)
+/** Delay before a one-time task; does not lower the account's recurrence limits. */
+const DELAY_SECONDS = Number(process.env.SCHEDULE_DELAY_SECONDS ?? 90)
 
 let cookie
 
@@ -88,8 +88,8 @@ const created = await schedule('POST', '/tasks', {
   task: {
     title: 'acceptance',
     prompt: 'Reply with exactly the word READY and nothing else.',
-    kind: 'every',
-    rule: { seconds: EVERY_SECONDS },
+    kind: 'at',
+    rule: { at: new Date(Date.now() + DELAY_SECONDS * 1000).toISOString() },
   },
 })
 if (created.value?.ok !== true) {

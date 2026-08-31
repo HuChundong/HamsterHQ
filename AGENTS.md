@@ -15,7 +15,7 @@ harness is not a change this project can ship.
 
 Upgrading is a version bump, a rebuild, and an acceptance run — in that order,
 and the acceptance run is not optional. The harness surfaces this project
-depends on (`window.__DSH_BOOT__`, `/plugins`, the loopback-pinned configuration
+depends on (`window.__DSH_BOOT__`, `/plugins`, the authenticated configuration
 methods) are not versioned APIs, so an upgrade is only known-good once the suite
 says so.
 
@@ -25,12 +25,12 @@ issue and a documented limitation here — not a patch layer that silently forks
 **There is exactly one exception, and it is `web/patch-loopback.mjs`.** DSH
 decides whether the settings plane is reachable from `location.hostname`, so
 every tenant of a deployment reached by a domain name keeps no preference at
-all — not the theme, not the language, not the conversation settings. The lock
-is deliberate upstream and correct there: `trustedHosts` is a DNS-rebinding
-fence, not authentication, so the configuration plane stays loopback-only until
-a real authentication layer exists. This deployment is that layer, and the
-tunnel already makes the server accept these writes; only the browser declines
-to send them. Configuration cannot express it, composition cannot reorder around
+all — not the theme, not the language, not the conversation settings.
+Since 0.1.2-alpha.2, upstream authenticates even loopback RPC, but the browser
+still chooses memory persistence by hostname. The gateway authenticates tenants,
+and the tunnel obtains a separate local DSH session through Connection's public
+methods; the browser's hostname check still prevents these accepted writes.
+Configuration cannot express it, composition cannot reorder around
 it, and flipping the flag from a plugin lands after `ui-theme` has already
 bound. The script carries the full argument and the evidence for each of those.
 

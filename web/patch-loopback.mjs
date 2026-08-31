@@ -9,7 +9,7 @@
  *
  * `@deepseek-ai/dsh-client-connection`'s browser half computes, once, at apply:
  *
- *     isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname)
+ *     isLoopback: transport?.ownsHost === true || pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname)
  *
  * and `@deepseek-ai/dsh-client-ui-settings` binds every settings namespace with
  * `connection.isLoopback ? "host" : "memory"`. On `"memory"` a preference lives
@@ -20,21 +20,15 @@
  *
  * ## Why upstream is right, and why we are not upstream
  *
- * The lock is deliberate. The server pins `settings.*`, `credentials.*`,
- * `host.*` and `llm.discoverModels` to loopback callers even on a trusted-host
- * deployment, and says why: `trustedHosts` is a DNS-rebinding fence, explicitly
- * not authentication, so the configuration plane stays loopback-same-origin
- * *until a real authentication layer exists*. A LAN browser talking straight to
- * dsh genuinely must not reach that plane, and the client's `"memory"` fallback
- * correctly declines to try.
+ * Since 0.1.2-alpha.2, DSH authenticates even loopback RPC with a signed
+ * browser cookie. Its client still selects memory persistence by hostname or
+ * an embedding transport's ownsHost flag. The ordinary web entry supplies no
+ * such transport, so a gateway-authenticated domain still loses preferences.
  *
- * This deployment is the authentication layer that comment is waiting for. The
- * gateway authenticates every request before it is forwarded, each tenant
- * reaches only their own sandbox, and the tunnel rewrites `Host` to a loopback
- * authority while stripping `Origin`, `Cookie` and the Fetch-Metadata headers —
- * so the server-side pin already passes, and has to: a browser on `localhost`
- * and a browser on a domain produce byte-identical requests by the time dsh
- * sees them, and the one on `localhost` persists its settings today.
+ * Our gateway authenticates the tenant; the tunnel obtains a separate local
+ * session through Connection's public authenticatedUrl/authorizeIndex methods.
+ * The gateway cookie never reaches the sandbox. Host rewriting and the local
+ * cookie together satisfy the upstream server's checks without weakening them.
  *
  * The client is therefore refusing to send something the server would accept,
  * on the strength of a hostname it reads out of its own address bar.
@@ -67,9 +61,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
-
-/** The built client bundle that owns the flag, relative to the shell directory. */
-const TARGET = 'plugins/@deepseek-ai/dsh-client-connection/client.js'
+import { bootGraph, moduleAssets } from './shell-assets.mjs'
 
 /**
  * The expression as the published bundle writes it.
@@ -78,7 +70,7 @@ const TARGET = 'plugins/@deepseek-ai/dsh-client-connection/client.js'
  * enough to survive a reshaping is lenient enough to match something else, and
  * the failure this guards against is precisely a reshaping.
  */
-const FROM = 'isLoopback: pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),'
+const FROM = 'isLoopback: transport?.ownsHost === true || pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),'
 
 /**
  * What it becomes. The comment travels into the bundle so that anyone reading
@@ -93,34 +85,21 @@ if (shell === undefined) {
   process.exit(2)
 }
 
-const file = path.join(shell, TARGET)
-const source = await readFile(file, 'utf8').catch(() => undefined)
-if (source === undefined) {
-  console.error(`patch-loopback: ${file} is not there.`)
-  console.error('  The harvested shell no longer carries dsh-client-connection under that path.')
-  process.exit(1)
+const graph = bootGraph(await readFile(path.join(shell, 'index.html'), 'utf8'))
+const files = moduleAssets(graph, '@deepseek-ai/dsh-client-connection')
+const pending = []
+for (const file of files) {
+  const source = await readFile(path.join(shell, file), 'utf8')
+  const occurrences = source.split(FROM).length - 1
+  if (source.includes(TO) || occurrences !== 1) {
+    throw new Error(`patch-loopback: ${file}: expected one unpatched decision, found ${occurrences}; review upstream before shipping`)
+  }
+  pending.push({ file, source })
 }
-
-// Already patched is not success: it means this ran twice over one shell, and
-// the second run had nothing to do. Say so rather than passing quietly.
-if (source.includes(TO)) {
-  console.error(`patch-loopback: ${TARGET} is already patched; this script ran twice.`)
-  process.exit(1)
+// Validate every executable copy before touching any of them. The initial
+// batch and single-module combo must agree with the compatibility alias.
+for (const { file, source } of pending) {
+  await writeFile(path.join(shell, file), source.replace(FROM, TO))
 }
-
-const occurrences = source.split(FROM).length - 1
-if (occurrences !== 1) {
-  console.error(`patch-loopback: expected exactly one occurrence, found ${occurrences}.`)
-  console.error('')
-  console.error('  Looked for:')
-  console.error(`    ${FROM}`)
-  console.error('')
-  console.error('  DSH has changed how the browser half decides `isLoopback`. Read')
-  console.error('  web/patch-loopback.mjs for what this patch is for and what to check,')
-  console.error('  then either update the expression above or — better — drop this script')
-  console.error('  entirely if the release made the decision configurable.')
-  process.exit(1)
-}
-
-await writeFile(file, source.replace(FROM, TO))
-console.log(`patch-loopback: ${TARGET} — the settings plane is enabled for this deployment's browsers`)
+await writeFile(path.join(shell, 'dsh-connection-assets.txt'), files.join('\n') + '\n')
+console.log(`patch-loopback: ${files.length} served copies enable gateway-authenticated settings`)

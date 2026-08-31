@@ -23,13 +23,9 @@
  *
  * ## How a run happens
  *
- * Through dsh's own `/api`, over loopback, with the same two calls a browser
- * makes: `session.create` then `session.prompt`. Reaching into `ctx.agents`
- * directly was the first cut and it was wrong — creating an agent means
- * resolving an agent preset into a composition, which is `dsh-host-apiproxy`'s
- * private work, and reproducing it here would be a copy of harness internals
- * that breaks on an upgrade with no error anybody would attribute to this file.
- * The public surface is the one the acceptance suite already proves end to end.
+ * Through the public SessionController service: create a session, then prompt
+ * it. The controller resolves the agent preset and composition just as it does
+ * for browser calls. No private agent construction or wire protocol is copied.
  *
  * ## What it does when it cannot reach the server
  *
@@ -44,6 +40,7 @@
  */
 
 import process from 'node:process'
+import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name = 'scheduled-tasks'
@@ -58,7 +55,7 @@ export const name = 'scheduled-tasks'
  * backend down with it. `dsh-gateway-tunnel` has the scar; this plugin arms a
  * timer far more often than that one redials.
  */
-export const inject = ['agents', 'tools', 'timer', 'webServer']
+export const inject = ['agents', 'tools', 'timer', 'sessionController']
 
 /** How long to wait for the whole of one scheduled turn before giving up on it. */
 const RUN_TIMEOUT_MS = 30 * 60 * 1000
@@ -335,38 +332,16 @@ export function apply(ctx, config) {
    * @returns {Promise<{status: string, detail: string|null, sessionId: string|null}>} what to report.
    */
   const run = async (prompt) => {
-    const port = ctx.get('webServer')?.port
-    if (port === undefined) throw new Error('no web server to reach /api through')
-    const base = `http://127.0.0.1:${port}/api`
-
-    /**
-     * One unary RPC against dsh's own surface.
-     * @param {string} method - the RPC method name.
-     * @param {object} payload - its payload.
-     * @returns {Promise<object>} the value.
-     */
-    const rpc = async (method, payload) => {
-      const response = await fetch(`${base}/${method}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'client-request', rpcId: `sched-${Math.random().toString(36).slice(2)}`, method, payload }),
-        signal: AbortSignal.timeout(60_000),
-      })
-      const body = await response.json()
-      if (body?.result?.ok !== true) {
-        throw new Error(`${method}: ${JSON.stringify(body?.result?.error ?? body)}`)
-      }
-      return body.result.value
-    }
-
-    const { sessionId } = await rpc('session.create', { cwd })
+    const { sessionId } = await ctx.sessionController.create({ cwd })
 
     // Watching for the turn to end has to be armed BEFORE the prompt: the
     // agent can go running and idle again inside a fast turn, and a listener
     // attached afterwards would wait for a transition that already happened.
     const watch = whenTurnEnds(sessionId)
     try {
-      await rpc('session.prompt', { sessionId, mode: 'queue', content: [{ type: 'text', text: prompt }] })
+      await ctx.sessionController.prompt({
+        requestId: randomUUID(), sessionId, mode: 'queue', content: [{ type: 'text', text: prompt }],
+      }, AbortSignal.timeout(60_000))
     } catch (error) {
       // A prompt that never landed leaves nothing to wait for, and the watcher
       // would otherwise hold its listener and a half-hour timer until a turn

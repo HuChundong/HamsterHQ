@@ -78,6 +78,10 @@
 # only by the tunnel. It does not change which client plugins compose, but a
 # harvest that disagreed with the sandbox about anything would be a harvest
 # nobody could reason about.
-- id: api-gateway
+- id: session-controller
+  config:
+    nativeOpen: false
+
+- id: settings-controller
   config:
     nativeOpen: false

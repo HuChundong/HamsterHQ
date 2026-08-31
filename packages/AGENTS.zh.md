@@ -60,3 +60,7 @@ client，并要求它 import 时不抛、注册了自己的 loader entry、导�
 的浏览器半边则还有 `sandbox/harvest.patch.yml`、`Dockerfile` 里那条 `--install-links` 装进
 profile 的安装、以及如果它的依赖必须从那里解析得到则还有 `scripts/check-images.sh`。然后是
 重建——sandbox 镜像，而如果是 client 的改动，还有 `web`。
+
+宿主 API 包是插件的 peer，不能成为第二套 harness 安装。镜像让定时任务插件的 tools peer
+解析到宿主现有的 npm 模块。`check-dockerfile.mjs` 保证声明版本与版本 pin 一致，
+`check-images.sh` 要求两边解析到同一模块；复制 scope Symbol 会让 preset 错误地注册到全局。

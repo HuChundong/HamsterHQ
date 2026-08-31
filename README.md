@@ -36,8 +36,8 @@ Four decisions carry the design:
 - **Sandboxes attach outbound.** A tenant's backend never accepts a connection
   — it dials the gateway and serves `/api` back over that socket. No inbound
   reachability, no published port, no change to dsh's loopback binding.
-- **The gateway is the only authentication boundary.** dsh ships none, and the
-  agent behind it runs shell commands on the tenant's behalf. Every `/api`
+- **The gateway authenticates tenants.** DSH separately authenticates its local
+  browser connection; the tunnel obtains that session from DSH itself. Every `/api`
   request, HTTP and WebSocket alike, resolves to a session before it reaches a
   tunnel.
 - **One tenant per process.** dsh's `/api` surface is single-occupancy and its

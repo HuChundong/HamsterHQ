@@ -390,6 +390,13 @@ location ~ \.map$ {
   return 404;
 }
 
+location = /plugins/ {
+  auth_request /_auth;
+  error_page 401 = @login;
+  add_header Cache-Control "no-cache";
+  try_files $dsh_combo_asset =404;
+}
+
 location /plugins/ {
   auth_request /_auth;
   error_page 401 = @login;

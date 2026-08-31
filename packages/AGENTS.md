@@ -79,3 +79,9 @@ name, `sandbox/harvest.patch.yml` if it has a browser half worth baking into the
 shell, the `Dockerfile` for the `--install-links` install into the profile, and
 `scripts/check-images.sh` if its dependencies must resolve from there. Then a
 rebuild — of the sandbox image and, for a client change, of `web` as well.
+
+Host API packages are peers of a plugin, not a second harness installation.
+The image resolves the scheduled plugin's tools peer to the host's existing npm
+module. `check-dockerfile.mjs` keeps its declared version aligned with the pin,
+and `check-images.sh` requires both resolutions to reach the same module;
+duplicating scope Symbols makes preset registration global by mistake.

@@ -56,3 +56,8 @@ release 把那个决定变成可配置的了，就把这个脚本删掉。
 因为一次构建可以是绿的、而一个 tag 可以被手工移动，`scripts/check-images.sh` 会去 grep
 nginx 实际将要服务的那个 bundle，找那个被 patch 过的值。那条断言抓的是一个丢在缓存层里的
 补丁。
+
+外壳现在使用查询参数寻址的组合脚本。`harvest-shell.mjs` 同时保存模块条目与批次，
+`shell-assets.mjs` 把每个完整 URL 映射到独立文件。nginx 使用生成的精确请求 URI 映射；
+丢掉查询参数会让所有 bundle 落到同一处。`check-shell-assets.mjs` 检查映射与现有环回补丁
+是否覆盖每一个被服务的副本。

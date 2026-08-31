@@ -21,12 +21,15 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
+import { assetPath, bootGraph, comboMap, shellAssets } from './shell-assets.mjs'
 
 /** Where dsh is booted for the harvest. */
 const AUTHORITY = '127.0.0.1:3080'
 
 /** How long to wait for the composition to come up before giving up on the build. */
 const BOOT_TIMEOUT_MS = 180_000
+let cookie
+let launchUrl
 
 const outputDir = process.argv[2]
 if (outputDir === undefined) {
@@ -40,26 +43,34 @@ if (outputDir === undefined) {
  * @returns {Promise<{status: number, body: Buffer}>} the response.
  */
 async function get(path) {
-  const response = await fetch(`http://${AUTHORITY}${path}`, { headers: { Host: AUTHORITY } })
+  const response = await fetch(`http://${AUTHORITY}${path}`, {
+    headers: { Host: AUTHORITY, ...cookie === undefined ? {} : { Cookie: cookie } },
+    redirect: 'manual',
+    signal: AbortSignal.timeout(5000),
+  })
   return { status: response.status, body: Buffer.from(await response.arrayBuffer()) }
 }
 
 /**
- * Resolve once `/api` answers, which is later than the socket opening: dsh
- * registers the route before the service behind it exists and answers 404 in
- * between.
+ * Resolve after the CLI reports a settled composition and its local browser
+ * token has been exchanged for a cookie.
  * @param {number} deadline - epoch milliseconds after which to fail.
  * @returns {Promise<void>} resolves when the host is serving.
  */
 async function waitForBoot(deadline) {
   for (;;) {
     if (Date.now() > deadline) throw new Error('harvest-shell: dsh did not boot in time')
-    const probe = await fetch(`http://${AUTHORITY}/api/host.describe`, {
-      method: 'POST',
-      headers: { Host: AUTHORITY, 'content-type': 'application/json' },
-      body: '{}',
-    }).catch(() => undefined)
-    if (probe?.status === 200) return
+    if (host.exitCode !== null) throw new Error(`harvest-shell: dsh exited with ${host.exitCode}`)
+    if (launchUrl !== undefined) {
+      const response = await fetch(launchUrl, {
+        headers: { Host: AUTHORITY }, redirect: 'manual', signal: AbortSignal.timeout(5000),
+      }).catch(() => undefined)
+      const setCookie = response?.headers.getSetCookie()
+      if (response?.status === 303 && setCookie?.length === 1) {
+        cookie = setCookie[0].split(';', 1)[0]
+        return
+      }
+    }
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
 }
@@ -83,8 +94,32 @@ const patch = process.env.DSH_PATCH ?? '/app/web/harvest.patch.yml'
 // command opens a browser, and this one runs inside a build.
 const host = spawn('node', [process.env.DSH_BIN ?? '/app/node_modules/@deepseek-ai/dsh/lib/bin.js', 'web', '--patch', patch, '--port', '3080', '--no-open'], {
   cwd: process.cwd(),
-  stdio: ['ignore', 'inherit', 'inherit'],
+  stdio: ['ignore', 'pipe', 'pipe'],
 })
+
+// The CLI announces this URL only after its Loader settles. Consume the
+// documented token exchange privately; a build log must not retain its token.
+for (const stream of [host.stdout, host.stderr]) {
+  let pending = ''
+  stream.setEncoding('utf8')
+  stream.on('data', (chunk) => {
+    pending += chunk
+    const lines = pending.split('\n')
+    pending = lines.pop()
+    for (const line of lines) {
+      const match = /dsh web: (http:\/\/\S+)/.exec(line)
+      if (match !== null) {
+        const url = new URL(match[1])
+        if (url.host !== AUTHORITY || !url.searchParams.has('token')) {
+          host.kill('SIGTERM')
+          continue
+        }
+        launchUrl = url.href
+      }
+      process.stderr.write(line.replace(/([?&]token=)[^\s)]+/g, '$1[redacted]') + '\n')
+    }
+  })
+}
 
 try {
   await waitForBoot(Date.now() + BOOT_TIMEOUT_MS)
@@ -102,22 +137,28 @@ try {
   //
   // Anchored on `</script>` in either case: the injected row is one element
   // holding one assignment, so the first close after the value is its own.
-  const manifest = /(?:window\.__DSH_BOOT__|globalThis\[(?:"|')__DSH_BOOT__(?:"|')\])\s*=\s*(\{.*?\})<\/script>/s.exec(html)
-  if (manifest === null) throw new Error('harvest-shell: no boot manifest in the served index.html')
-  const graph = JSON.parse(manifest[1].replaceAll('\\u003c', '<'))
-
-  const entries = Array.isArray(graph) ? graph : (graph.entries ?? Object.values(graph).flat())
-  const rows = entries.filter((entry) => typeof entry?.url === 'string')
+  const graph = bootGraph(html)
+  const rows = shellAssets(graph).filter((entry) => typeof entry?.url === 'string')
   if (rows.length === 0) throw new Error('harvest-shell: the boot manifest names no bundles')
-
+  const urls = new Set()
   for (const row of rows) {
+    if (urls.has(row.url)) continue
     const bundle = await get(row.url)
     if (bundle.status !== 200) throw new Error(`harvest-shell: ${row.url} answered ${bundle.status}`)
-    // Saved under the path without its ?rev= query: nginx resolves a request to
-    // the file and ignores the query, and the revision is already pinned by the
-    // manifest that was harvested alongside it.
-    save(row.url.split('?')[0], bundle.body)
+    // Combo identity includes the full query. Save each response separately
+    // and let nginx map the exact published URL to its harvested bytes.
+    save(assetPath(row.url), bundle.body)
+    urls.add(row.url)
+    if (row.id !== undefined) save(`/plugins/${row.id}/client.js`, bundle.body)
+    const mapUrl = /\/\/# sourceMappingURL=(\S+)/.exec(bundle.body.toString('utf8'))?.[1]
+    if (mapUrl?.startsWith('/plugins/')) {
+      const sourceMap = await get(mapUrl)
+      if (sourceMap.status !== 200) throw new Error(`harvest-shell: source map answered ${sourceMap.status}`)
+      save(assetPath(mapUrl), sourceMap.body)
+      urls.add(mapUrl)
+    }
   }
+  save('/dsh-combos.conf', Buffer.from(comboMap(urls)))
 
   console.log(`harvest-shell: saved index.html and ${rows.length} client bundle(s) to ${outputDir}`)
 } finally {
