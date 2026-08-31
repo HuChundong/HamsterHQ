@@ -479,6 +479,12 @@ HTTP 426。错误假设是：只改路由名就能保留普通 GET 的行为。R
 却会因此把不同脚本写进同一个位置。静态采集现在为条目与批次保留完整 URL 身份，映射与补丁
 覆盖由 `scripts/check-shell-assets.mjs` 检查。
 
+运行时补丁最初在 `printUrl: false` 旁写了 `open: false`，误以为配置字段与 CLI 选项同名。
+上游 schema 会保留未知字段，并静默补上默认的 `openBrowser: true`；补丁又覆盖了
+`--no-open` 已设置的配置。无头验收仍然通过，生产桌面却在后端启动时打开了浏览器。
+补丁现改为 `openBrowser: false`，`check-images.sh` 使用发布包的 web-app schema 解析补丁，
+检查实际生效的值，而不是只搜索 YAML 字面量。
+
 ## 能推广的部分
 
 - **快照装不下「之后才知道」的东西。** 一切与租户相关的，都必须在还原之后才抵达。

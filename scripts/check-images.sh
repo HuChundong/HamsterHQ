@@ -35,6 +35,18 @@ check() {  # check <label> <expected> <actual>
 
 echo "=== the sandbox image ==="
 
+# Resolve the deployed patch through upstream's own schema. Unknown keys are
+# retained while defaults still apply: open:false did not disable openBrowser.
+handoff=$(docker run --rm --entrypoint node "$SANDBOX" --input-type=module -e "
+  import { readFileSync } from 'node:fs'
+  import { parse } from 'yaml'
+  import { Config } from '@deepseek-ai/dsh-web-app'
+  const patch = parse(readFileSync('/app/sandbox/cordis.patch.yml', 'utf8'))
+  const config = Config(patch.find((row) => row.id === 'web-runtime')?.config ?? {})
+  console.log(config.openBrowser === false && config.printUrl === false ? 'private' : 'announces-or-opens')
+" 2>/dev/null || echo error)
+check 'the harness neither announces nor opens its local URL' private "$handoff"
+
 # Resolved from the profile, because that is where the client-module registry
 # looks — resolving from /app would pass here and contribute no client half in
 # production.
