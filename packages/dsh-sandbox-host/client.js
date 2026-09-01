@@ -688,6 +688,18 @@ window.__ModuleLoader__.load({
           the same colour in dark, so a fill can silently equal its own
           background. An overlay cannot. */
       .${P}-sandbox:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 5%)); }
+      /* Native trigger rows receive the same fill from React's active class.
+         A row rendered through this plugin's portal is outside that indexed
+         list, so pointer movement never gives it the class. Paint the portal
+         row from the shared theme token, and clear the native row whose stale
+         active state would otherwise leave two choices highlighted. */
+      .${P}-plus-upload:is(:hover, :focus-visible) {
+        background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+      }
+      [role='listbox']:has(.${P}-plus-upload:is(:hover, :focus-visible))
+        [role='option']:not(.${P}-plus-upload) {
+        background: transparent;
+      }
       .${P}-sandbox-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .${P}-sandbox-title { font-size: 12px; color: var(--dsw-alias-label-tertiary, #81858c); line-height: 16px; }
       .${P}-sandbox-state {
@@ -1089,6 +1101,7 @@ window.__ModuleLoader__.load({
         React.createElement(
           React.Fragment,
           null,
+          React.createElement(Style),
           React.createElement('div', { className: look.heading, role: 'presentation' }, t('attach.group')),
           React.createElement(
             'button',
@@ -1096,7 +1109,8 @@ window.__ModuleLoader__.load({
               type: 'button',
               role: 'option',
               'aria-selected': false,
-              className: look.option,
+              className: `${look.option} ${P}-plus-upload`,
+              'data-dsh-sandbox-host': 'plus-upload',
               // The composer keeps focus through its own chrome the same way.
               onMouseDown: (event) => { event.preventDefault() },
               onClick: () => {
