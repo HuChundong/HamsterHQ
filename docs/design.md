@@ -539,12 +539,15 @@ attachment plane is images only, and says so — generic files are deferred
 upstream pending a lifecycle and provider contract.)
 
 The card itself is rendered where dsh renders its own image thumbnails: inside
-the composer card, above the textarea. No slot reaches there — that position is
-the `accessory` prop on the composer bar — so the node is moved into place after
-render, and the `+` menu's "附件" group is a second panel drawn above the real
-one. Both place the plugin's own nodes where no public slot reaches, both key
-on ARIA roles rather than hashed class names, and both are reported upstream;
-see [sandbox-pitfalls](sandbox-pitfalls.md).
+the composer card, above the editor. Dsh now exposes that position as the
+single `conversation.input.attachments` slot, but the shipped image UI occupies
+it; replacing that entry would make generic files visible by removing image
+attachments. The plugin therefore keeps its additive `conversation.input.dock`
+entry and portals a container beside the image rail, locating the shipped input
+scrollport by its `data-input-scroll` marker rather than a hashed class name.
+The `+` menu group likewise portals into the real panel by ARIA roles. Both
+remaining composition gaps are reported upstream; see
+[sandbox-pitfalls](sandbox-pitfalls.md).
 
 The endpoints live on `/files`, a channel of dsh's own RPC registry, and not on
 `/api`. `/api` accepts exactly one interceptor and dsh's `typert-gateway` holds
