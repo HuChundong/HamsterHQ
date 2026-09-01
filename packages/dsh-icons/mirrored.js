@@ -9,7 +9,7 @@
  */
 
 /** The harness version this table was generated against; must equal DSH_VERSION. */
-export const MIRRORED_FROM = "0.1.2-alpha.2"
+export const MIRRORED_FROM = "0.1.2-alpha.4"
 
 /** @type {Record<string, {viewBox: string, paths: string[]}>} */
 export const mirrored = {
