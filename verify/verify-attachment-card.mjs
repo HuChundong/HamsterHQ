@@ -35,6 +35,37 @@ try {
   }
   await composer.waitFor({ state: 'visible', timeout: CARD_TIMEOUT_MS })
 
+  // The injected upload row is rendered through a portal, outside the trigger
+  // menu's indexed candidates. Its pointer state must still look exactly like
+  // a native row, without leaving the native keyboard highlight behind it.
+  const launcher = page.locator('button[aria-haspopup="listbox"]').first()
+  await launcher.click()
+  const menu = page.locator('[role="listbox"]').first()
+  const uploadOption = menu.locator('[data-dsh-sandbox-host="plus-upload"]').first()
+  await uploadOption.waitFor({ state: 'visible' })
+  await uploadOption.hover()
+  const hover = await uploadOption.evaluate((node) => {
+    const probe = globalThis.document.createElement('span')
+    probe.style.background = 'var(--dsw-alias-interactive-bg-hover)'
+    globalThis.document.body.append(probe)
+    const expected = globalThis.getComputedStyle(probe).backgroundColor
+    probe.remove()
+    const transparent = 'rgba(0, 0, 0, 0)'
+    const nativeBackgrounds = [...node.closest('[role="listbox"]')
+      .querySelectorAll('[role="option"]:not([data-dsh-sandbox-host="plus-upload"])')]
+      .map((option) => globalThis.getComputedStyle(option).backgroundColor)
+    return {
+      actual: globalThis.getComputedStyle(node).backgroundColor,
+      expected,
+      nativeClear: nativeBackgrounds.every((background) => background === transparent),
+    }
+  })
+  if (hover.actual !== hover.expected) {
+    throw new Error(`the upload option hover is ${hover.actual}, expected ${hover.expected}`)
+  }
+  if (!hover.nativeClear) throw new Error('a native option stays highlighted behind the upload option')
+  await launcher.click()
+
   await page.evaluate(({ name }) => {
     const transfer = new globalThis.DataTransfer()
     transfer.items.add(new globalThis.File(['attachment card acceptance'], name, { type: 'text/plain' }))
