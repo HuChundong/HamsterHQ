@@ -747,14 +747,17 @@ window.__ModuleLoader__.load({
      *
      * The slot this registers into (`conversation.input.dock`) paints a row
      * ABOVE the composer card, and dsh's image thumbnails sit INSIDE it, above
-     * the textarea. That seat — `accessory` on the composer bar's owner props —
-     * is not a slot, so this puts a container of its own where the rail lives
-     * and renders into it through a portal.
+     * the editor. Dsh now exposes that rail as
+     * `conversation.input.attachments`, but it is a single slot already
+     * occupied by the shipped image UI. Taking it would make generic files
+     * visible by removing image attachments. This instead puts a container of
+     * its own beside that rail and renders into it through a portal.
      *
-     * No public slot reaches the image rail, so this locates a container by
-     * structure (the textarea) and renders through a portal; reported upstream.
-     * It keys on the textarea rather than on the card's hashed class name, and
-     * it re-seats its container when React rebuilds the composer.
+     * No additive slot reaches the image rail, so this locates the shipped
+     * input scrollport by its data marker and renders through a portal;
+     * reported upstream. It keys on that marker rather than on the card's
+     * hashed class name, and re-seats its container when React rebuilds the
+     * composer.
      *
      * @param {object} props - the session standard kit.
      * @returns {object|null} the cards, or nothing to show.
@@ -808,19 +811,18 @@ window.__ModuleLoader__.load({
         if (container.isConnected) return
         const dock = anchor.current
         if (dock === null) return
-        // The textarea belonging to THIS composer, found by walking up from a
-        // node React keeps in the dock row rather than by a document-wide
-        // query — so another textarea elsewhere on the page cannot claim it.
-        // The walk stops at the first ancestor that contains one, which is the
-        // input bar; the card is that textarea's own scroll region's parent.
+        // The input scrollport belonging to THIS composer, found by walking up
+        // from a node React keeps in the dock row rather than by a
+        // document-wide query — so another editor elsewhere on the page cannot
+        // claim it. Dsh marks the scrollport explicitly; the textarea this used
+        // to key on disappeared when the composer moved to Lexical in 0.1.2.
         let scope = dock.parentElement
-        let input = null
-        while (scope !== null && input === null) {
-          input = scope.querySelector('textarea')
-          if (input === null) scope = scope.parentElement
+        let scroll = null
+        while (scope !== null && scroll === null) {
+          scroll = scope.querySelector('[data-input-scroll]')
+          if (scroll === null) scope = scope.parentElement
         }
-        const scroll = input?.parentElement?.parentElement
-        if (scroll === undefined || scroll === null || scroll.parentElement === null) return
+        if (scroll === null || scroll.parentElement === null) return
         scroll.before(container)
         setSeat(container)
       })

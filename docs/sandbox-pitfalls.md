@@ -430,19 +430,21 @@ one sits next to something it does offer.
   `toggleSource('command', …)`, which seeds the menu with that one name. A
   registered source therefore appears when the person types `/` and never under
   `+` — which is where a person looks for "add something to this message".
-- **The card position is a prop, not a slot.** dsh's image thumbnails render
-  through `accessory` on the composer bar's owner props, inside the card above
-  the textarea. Every input region a plugin can take is outside the card.
+- **The card position is a single slot, not an additive one.** Dsh's image
+  thumbnails now render through `conversation.input.attachments`, inside the
+  card above the editor. The shipped image UI occupies that single cell, so a
+  generic-file entry there replaces the image rail instead of sitting beside
+  it. Every additive input region remains outside the card.
 - **A user message can only be replaced whole.** `conversation.chat.node` key
   `user` can be shadowed, but `UserMessageNodeView` delegates to
   `UserStyleBubble` and `MessageIconActions`, neither exported — so drawing an
   attachment as a chip in the sent message means reimplementing the transcript's
   most common row.
 
-Two of the three have no public slot that reaches that position, so the plugin
-places its own nodes there through a React portal: a group added to the `+`
-menu's own panel, and a container of this plugin's own placed where the image
-rail sits. Both are reported upstream.
+Two of the three still have no additive slot that reaches their position, so
+the plugin places its own nodes there through a React portal: a group added to
+the `+` menu's own panel, and a container of this plugin's own placed beside the
+image rail without shadowing it. Both are reported upstream.
 
 The `+` group started as a second panel drawn above the real one, which read as
 two cards for one menu. Putting it inside instead also made the styling honest:
@@ -461,11 +463,14 @@ blank-to-active flip — calls `removeChild` on a node that is no longer there,
 throws, and throws again on every retry. A portal inverts the ownership: React
 renders into a container whose position it does not own, and this side owns
 nothing React renders.
-Both key on ARIA roles (`[role=listbox]`, `aria-expanded`, the textarea) rather
-than on hashed CSS-module names, and both read a live element's computed
-style instead of restating it, so a theme change or an upstream restyle carries
-across. Neither survives a change to the composer's shape, and both go away the
-day the seats exist.
+The Dsh 0.1.2 editor migration is the exact cost of depending on that shape. It
+removed the textarea for a Lexical `contenteditable`, so uploads completed and
+their notices reached the agent while the placement walk found nothing and the
+card never entered the DOM. The new walk keys on Dsh's explicit
+`data-input-scroll` marker; the browser acceptance check uploads a real file,
+waits for its visible card, and removes it again. The menu still keys on ARIA
+roles (`[role=listbox]` and `aria-expanded`). Neither portal names a hashed
+CSS-module class, and both go away when additive seats exist.
 
 The third was reported with the others rather than placed the same way, at
 [discussion 2741](https://github.com/deepseek-ai/deepseek-harness/discussions/2741).

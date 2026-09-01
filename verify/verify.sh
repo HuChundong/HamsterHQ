@@ -535,10 +535,11 @@ for script in verify-ws.mjs verify-isolation.mjs; do
     gateway node "/app/$script" || NODE_FAIL=1
 done
 
-# The model turn exercises the shipped browser's own streaming client.
+# Browser-only product paths: a generic file card, one streamed model turn,
+# and settings that survive a fresh browser context.
 TURN_COOKIE=$(awk -F '\t' 'NF == 7 { printf "%s=%s;", $6, $7 }' "$JAR_A" | sed 's/;$//')
 export TURN_COOKIE
-for browser_suite in verify-turn.mjs verify-settings.mjs; do
+for browser_suite in verify-attachment-card.mjs verify-turn.mjs verify-settings.mjs; do
   if node -e "require('module').createRequire('$PWD/package.json').resolve('playwright')" 2>/dev/null; then
     GATEWAY="$GATEWAY" node "$browser_suite" || NODE_FAIL=1
   else
