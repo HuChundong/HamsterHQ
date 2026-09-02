@@ -49,6 +49,7 @@ for check in \
   scripts/check-service-env.mjs \
   scripts/check-paging.mjs \
   scripts/check-panel-paths.mjs \
+  scripts/check-panel-open.mjs \
   scripts/check-uploads.mjs
 do
   node "$check" >/dev/null

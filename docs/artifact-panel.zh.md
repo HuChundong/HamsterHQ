@@ -59,18 +59,22 @@
 
 dsh 的 `ui-deliverables` **已经**在每轮末尾渲染了产出文件的 chip 行。我们不自己算产出、不渲染任何列表——只把点击接管过来。
 
-接管点是 `ctx.workspaces.openPath`：对话里所有文件打开都汇入这一个方法（工具行的路径链接、产出文件 chip、正文里的文件提及，都由 `ui-conversation` 解析成绝对路径后调它），而它默认把文件交给宿主操作系统——在沙箱里等于什么都不做。包一层即可：
+接管点是 `ctx.remote.session.openWorkspacePath`：对话里所有文件打开都汇入这一个生成的 Remote 方法（工具行的路径链接、产出文件 chip、正文里的文件提及，都由 `ui-chat` 解析成绝对路径后调它），而它默认把文件交给宿主操作系统。在无桌面的沙箱里，这会变成 `spawn xdg-open ENOENT`。
+
+生成的 Remote 方法是可配置的 getter 属性。直接赋值在严格模式下会抛错，在非严格模式下则会静默保留原 transport getter，所以包装层必须替换属性描述符，并在卸载时原样还原：
 
 ```js
-const original = workspaces.openPath   // 必须是原始引用，不是 bound 副本
-workspaces.openPath = (path) => { ... }
+const descriptor = Object.getOwnPropertyDescriptor(sessionRemote, 'openWorkspacePath')
+const original = sessionRemote.openWorkspacePath
+Object.defineProperty(sessionRemote, 'openWorkspacePath', { value: wrapped, configurable: true })
+// 卸载时：Object.defineProperty(sessionRemote, 'openWorkspacePath', descriptor)
 ```
 
-存原始引用而非 bound 副本是有原因的：可能有多个插件包同一个方法，只有还原原始引用才能让任意顺序的卸载都不破链。
+包装层收到绝对路径后，返回与 Host 接受打开请求时相同的成功 Remote 结果，再打开面板 tab。这样既维持了 `ui-chat` 的调用约定，也不会把请求送到原生打开器。
 
-**接管不了就必须放行。** 面板被互斥停用、还没挂载、或者当前没有会话时，包装层要原样调用 `original`，而不是吞掉这次调用。一个开不了文件的面板去拦截"打开文件"，症状是用户点了以后什么都没发生——比不拦截更糟。
+**接管不了就必须放行。** 请求没有绝对路径时，包装层要原样调用 `original`，而不是吞掉这次调用，让不在面板契约内的输入继续得到 harness 自己的校验与行为。
 
-轮末尾还是一条带优先级的渲染链，可以抢在 `ui-deliverables` 之前渲染自己的 chip 行。**我们不这么做**：既然 `openPath` 已经被包了，原生 chip 点下去就已经进面板，替换那行 UI 只会多一处对上游渲染结构的耦合。
+轮末尾还是一条带优先级的渲染链，可以抢在 `ui-deliverables` 之前渲染自己的 chip 行。**我们不这么做**：既然 `openWorkspacePath` 已经被包了，原生 chip 点下去就已经进面板，替换那行 UI 只会多一处对上游渲染结构的耦合。
 
 ### 联动规则
 

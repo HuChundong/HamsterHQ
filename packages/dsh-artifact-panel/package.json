@@ -12,9 +12,11 @@
   "dsh": {
     "client": {
       "inject": [
-        "slots",
-        "workspaces",
-        "sessions"
+        "@deepseek-ai/dsh-api-gateway",
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer"
       ],
       "platform": "web",
       "main": "./lib/client.js"

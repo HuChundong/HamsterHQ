@@ -83,6 +83,7 @@ import { Aside, Crumbs, FileBody, FoldButton } from './file-view.js'
 import { DICTIONARY, LOCALE_NS, say, setPlugin, useT } from './i18n.js'
 import { icon, turn } from './icons.js'
 import { iconFor, viewerFor } from './kinds.js'
+import { installPathOpen } from './path-open.js'
 import { boot, h, primitives, React, ReactDomClient } from './runtime.js'
 import { EMPTY_GROUP, store, useStore } from './store.js'
 import { CSS } from './styles.js'
@@ -565,7 +566,7 @@ window.__ModuleLoader__.load({
       // `connection` is the RPC channel registry, which the browser-preview
       // pane calls `/browser` through; everything else here goes through the
       // gateway's own panel routes and needs no service for it.
-      inject: ['slots', 'workspaces', 'sessions', 'locale', 'connection'],
+      inject: ['slots', 'sessions', 'locale', 'connection', 'remote', 'remote.session'],
 
       /**
        * Mount the browser half.
@@ -631,48 +632,20 @@ window.__ModuleLoader__.load({
 
         // Take over opening a file.
         //
-        // `ctx.workspaces.openPath` is the one door every file open in the
-        // conversation goes through — a path link in a tool row, the produced
-        // files at the end of a turn, a file mentioned in prose: `ui-conversation`
-        // resolves each against the session's cwd and calls this. Its default is
-        // to hand the path to the host operating system, which in a sandbox
-        // reached through a browser is a request to open a file on a machine
-        // nobody is sitting at. Wrapping the one method reroutes all three
-        // sources at once; there is nothing to wire up per source.
-        ctx.effect(() => {
-          const workspaces = ctx.workspaces
-          // The RAW method, never a bound copy. Several plugins may wrap this
-          // one method, and only restoring exactly what was found keeps a
-          // chain of them unbroken however the unloads interleave.
-          const original = workspaces.openPath
-          workspaces.openPath = (path) => {
-            // Every path, not only the ones under the workspace.
-            //
-            // Calling through used to be the polite answer for a path this
-            // could not show. It is not an answer here at all: the default
-            // hands the path to the host operating system, and the host is a
-            // container reached through a browser — there is no desktop and
-            // no `xdg-open`, ever. So the fallthrough could only ever produce
-            // `spawn xdg-open ENOENT`, and it did, for exactly the files a
-            // person is most likely to click: the ones the agent just wrote
-            // somewhere like `/tmp`.
-            //
-            // Reading is not scoped to the workspace — the gateway serves any
-            // path in the sandbox, because the tenant is root in there and
-            // refusing protects nothing. What stays scoped is the tree, which
-            // is why an outside path opens without being revealed in it.
-            if (typeof path === 'string' && path.startsWith('/')) {
-              store.openTab({ id: path, label: basename(path), path, icon: iconFor(path) })
-              store.write({ open: true })
-              // The callers ignore the result; resolving says "handled".
-              return Promise.resolve()
-            }
-            // Anything that is not an absolute path is not a file open this
-            // understands, and the harness may know what to do with it.
-            return original.call(workspaces, path)
-          }
-          return () => { workspaces.openPath = original }
-        }, 'artifact-panel: open files in the panel')
+        // `ctx.remote.session.openWorkspacePath` is the one door every file
+        // open in the conversation goes through — a path link in a tool row,
+        // the produced files at the end of a turn, a file mentioned in prose.
+        // ui-chat resolves each against the session cwd before calling it. The
+        // default hands the path to the host operating system, which in a
+        // remote sandbox means running xdg-open on a machine nobody sits at.
+        // Wrapping the one Remote method reroutes all three sources at once.
+        ctx.effect(() => installPathOpen(ctx.remote.session, (path) => {
+          // Every absolute path, not only the ones under the workspace. The
+          // gateway serves any path in the tenant's sandbox; only the tree is
+          // workspace-scoped, so an outside path opens without being revealed.
+          store.openTab({ id: path, label: basename(path), path, icon: iconFor(path) })
+          store.write({ open: true })
+        }), 'artifact-panel: open files in the panel')
 
         // Session log (harness) → Computer → panel toggle. Computer is not a
         // TOOLS entry: higher priority than the sidebar empty-state choices,

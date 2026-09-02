@@ -19,6 +19,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import assert from 'node:assert/strict'
 import { join, resolve } from 'node:path'
 import process from 'node:process'
 import vm from 'node:vm'
@@ -143,6 +144,66 @@ function shell() {
   return { context, entries }
 }
 
+/**
+ * Apply the actual bundled panel and exercise the DSH session Remote seam.
+ *
+ * Import-only coverage missed the old patch because assigning a method that
+ * no caller used is valid JavaScript. This fixture deliberately offers no
+ * Workspace Controller opener; only the alpha.4 Remote method can succeed.
+ *
+ * @param {object} plugin - the artifact panel entry's exported plugin.
+ * @returns {Promise<void>} after both intercepted and delegated calls settle.
+ */
+async function checkArtifactPanelOpen(plugin) {
+  const nativeCalls = []
+  const nativeOpen = async (request) => {
+    nativeCalls.push(request)
+    return { ok: false, error: { message: 'path open failed: spawn xdg-open ENOENT' } }
+  }
+  const sessionRemote = {}
+  const generatedGetter = () => nativeOpen
+  Object.defineProperty(sessionRemote, 'openWorkspacePath', {
+    configurable: true,
+    enumerable: true,
+    get: generatedGetter,
+  })
+
+  const effects = new Map()
+  const noop = () => undefined
+  const ctx = {
+    connection: {},
+    locale: { register: () => noop },
+    remote: { session: sessionRemote },
+    sessions: {
+      list: {
+        getSnapshot: () => ({ current: 'session-check' }),
+        subscribe: () => noop,
+      },
+    },
+    slots: { inject: () => noop },
+    effect: (setup, label) => {
+      const cleanup = setup()
+      effects.set(label, cleanup)
+      return cleanup
+    },
+  }
+
+  assert(plugin.inject.includes('remote.session'))
+  plugin.apply(ctx)
+  const result = await sessionRemote.openWorkspacePath({ path: '/mnt/workspace/report.md' })
+  // The plugin object came from a vm realm, so compare the public fields
+  // rather than asking deepStrictEqual to accept a foreign Object prototype.
+  assert.equal(result.ok, true)
+  assert.equal(result.value?.opened, true)
+  assert.deepEqual(nativeCalls, [])
+
+  await sessionRemote.openWorkspacePath({ path: 'report.md' })
+  assert.deepEqual(nativeCalls, [{ path: 'report.md' }])
+
+  effects.get('artifact-panel: open files in the panel')()
+  assert.equal(Object.getOwnPropertyDescriptor(sessionRemote, 'openWorkspacePath')?.get, generatedGetter)
+}
+
 const problems = []
 
 for (const { name, relative, file } of served()) {
@@ -169,6 +230,13 @@ for (const { name, relative, file } of served()) {
     }
     if (entry.exports?.inject !== undefined && !Array.isArray(entry.exports.inject)) {
       problems.push(`${relative}: inject is not a list of service names`)
+    }
+    if (name === 'dsh-artifact-panel') {
+      try {
+        await checkArtifactPanelOpen(entry.exports)
+      } catch (error) {
+        problems.push(`${relative}: file-open takeover failed — ${error.message}`)
+      }
     }
   }
   console.log(`  ${name}: imports cleanly, ${String(entries.length)} entr${entries.length === 1 ? 'y' : 'ies'}`)
