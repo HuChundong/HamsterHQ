@@ -59,18 +59,22 @@ Either opens it; the same control collapses it when it is open. **The panel does
 
 dsh's `ui-deliverables` **already** renders a row of produced-file chips at the end of each turn. We compute no artifacts and render no list — we take over the click.
 
-The seam is `ctx.workspaces.openPath`: every file opening in the conversation converges on that one method (path links in tool rows, produced-file chips, file mentions in prose — `ui-conversation` resolves them to absolute paths and calls it), and its default hands the file to the host operating system, which inside a sandbox does nothing. Wrapping it is enough:
+The seam is `ctx.remote.session.openWorkspacePath`: every file opening in the conversation converges on that generated Remote method (path links in tool rows, produced-file chips, file mentions in prose — `ui-chat` resolves them to absolute paths and calls it), and its default hands the file to the host operating system. In a headless sandbox that means `spawn xdg-open ENOENT`.
+
+Generated Remote methods are configurable getter properties. Plain assignment either throws in strict code or silently leaves the transport getter in place, so the wrapper replaces and later restores the exact descriptor:
 
 ```js
-const original = workspaces.openPath   // the original reference, not a bound copy
-workspaces.openPath = (path) => { ... }
+const descriptor = Object.getOwnPropertyDescriptor(sessionRemote, 'openWorkspacePath')
+const original = sessionRemote.openWorkspacePath
+Object.defineProperty(sessionRemote, 'openWorkspacePath', { value: wrapped, configurable: true })
+// on disposal: Object.defineProperty(sessionRemote, 'openWorkspacePath', descriptor)
 ```
 
-Keeping the original reference rather than a bound copy matters: more than one plugin may wrap one method, and only restoring the original lets them unload in any order without breaking the chain.
+The wrapper answers an absolute path with the same successful Remote result the Host would return after accepting it, then opens the panel tab. This keeps `ui-chat`'s caller contract intact without sending anything to the native opener.
 
-**What cannot be taken over must be passed through.** When the panel is disabled by the mutual exclusion below, has not mounted, or has no session, the wrapper calls `original` unchanged rather than swallowing the call. A panel that cannot open files intercepting "open file" shows up as a click that does nothing, which is worse than not intercepting.
+**What cannot be taken over must be passed through.** A request without an absolute path calls `original` unchanged rather than swallowing the call, so an input outside this panel's contract still receives the harness's own validation and behavior.
 
-The end-of-turn render chain is priority-ordered, so we could draw our own chip row ahead of `ui-deliverables`. **We do not**: with `openPath` wrapped, the native chips already land in the panel, and replacing that row would only add a second coupling to upstream's render structure.
+The end-of-turn render chain is priority-ordered, so we could draw our own chip row ahead of `ui-deliverables`. **We do not**: with `openWorkspacePath` wrapped, the native chips already land in the panel, and replacing that row would only add a second coupling to upstream's render structure.
 
 ### What follows from the wrap
 
