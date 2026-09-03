@@ -1,8 +1,9 @@
 /**
  * Scheduled tasks, browser half.
  *
- * One control in the sidebar's foot and one dialog behind it. The control sits
- * where it does because of what the shell actually offers: the sidebar
+ * One control in the sidebar's foot opens the manager as a dialog; the compact
+ * Computer pane mounts that same manager below its desktop card. The control
+ * sits where it does because of what the shell actually offers: the sidebar
  * declares five child slots, and four of them — the two brand seats, the
  * workspace region and the settings seat — are `single` and already taken.
  * `sidebar.footer.action` is the one list slot, which is what a second
@@ -37,6 +38,7 @@ window.__ModuleLoader__.load({
   factory: (require) => {
     const React = require('react')
     const ReactDom = require('react-dom')
+    const ReactDomClient = require('react-dom/client')
 
     /** The plugin's client context, kept for the locale service the hook reads. */
     let plugin
@@ -176,6 +178,14 @@ window.__ModuleLoader__.load({
     const U = 'dsh-scheduled-tasks'
 
     /**
+     * The compact seat exposed by dsh-artifact-panel's Computer pane.
+     *
+     * The clients cannot import one another. A tree-side check holds this
+     * duplicated DOM contract equal to the panel's exported constant.
+     */
+    const PANEL_ANCHOR = 'data-dsh-scheduled-tasks-panel'
+
+    /**
      * The one glyph, copied rather than imported.
      *
      * The shell reads this file as source with `require` bound to its own
@@ -286,8 +296,18 @@ window.__ModuleLoader__.load({
         font-family: var(--dsw-font-family);
         color: var(--dsw-alias-label-primary);
       }
+      .${U}-manager { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+      .${U}-inline {
+        display: flex; flex-direction: column; min-height: 0;
+        padding: 16px 2px 8px;
+        border-top: 1px solid var(--dsw-alias-border-l1);
+        font-family: var(--dsw-font-family);
+        color: var(--dsw-alias-label-primary);
+        container-type: inline-size;
+      }
       .${U}-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
       .${U}-heading { font-size: 15px; font-weight: 500; }
+      .${U}-inline .${U}-head { margin-bottom: 6px; }
       .${U}-dismiss {
         flex: none; width: 28px; height: 28px; padding: 0;
         border: none; border-radius: 8px;
@@ -305,13 +325,14 @@ window.__ModuleLoader__.load({
         font-size: 12px; line-height: 18px;
       }
       .${U}-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+      .${U}-inline .${U}-list { flex: none; overflow-y: visible; }
       .${U}-item {
         display: flex; align-items: flex-start; gap: 12px;
         padding: 10px 0;
         border-top: 1px solid var(--dsw-alias-border-l1);
       }
       .${U}-item-body { flex: 1; min-width: 0; }
-      .${U}-item-title { font-size: 13px; font-weight: 500; }
+      .${U}-item-title { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
       .${U}-item-title[data-off='true'] { color: var(--dsw-alias-label-secondary); }
       .${U}-item-line {
         margin-top: 3px;
@@ -363,6 +384,11 @@ window.__ModuleLoader__.load({
         color: var(--dsw-alias-label-primary-foreground);
       }
       .${U}-button:disabled { opacity: .55; cursor: default; }
+      .${U}-inline-new { flex: none; }
+      @container (max-width: 520px) {
+        .${U}-item { flex-direction: column; }
+        .${U}-item-actions { align-self: flex-end; }
+      }
     `
 
     /**
@@ -441,12 +467,17 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * The dialog, and everything a tenant can do to their schedule.
+     * Everything a tenant can do to their schedule.
      *
-     * @param {{onClose: () => void}} props - how to dismiss it.
+     * One component serves the modal and the compact Computer pane. The chrome
+     * differs; the task state, mutations and form do not. That keeps "all the
+     * dialog's functions in the sidebar" literal instead of maintaining a
+     * second list that will drift from it.
+     *
+     * @param {{inline?: boolean, onClose?: () => void}} props - the seat and its dismissal.
      * @returns {object} the element.
      */
-    const Dialog = ({ onClose }) => {
+    const ScheduleManager = ({ inline = false, onClose = () => {} }) => {
       const t = useT()
       const [state, setState] = React.useState({ phase: 'loading', tasks: [] })
       const [editing, setEditing] = React.useState(null)
@@ -467,16 +498,17 @@ window.__ModuleLoader__.load({
 
       React.useEffect(() => { void load() }, [load])
 
-      // Escape closes, because a dialog that can only be dismissed by finding
-      // its button is a dialog that traps whoever opened it by accident.
+      // Escape closes only the modal. In the inline manager Escape belongs to
+      // the rest of the shell and must not make the persistent section vanish.
       React.useEffect(() => {
+        if (inline) return undefined
         /**
          * @param {KeyboardEvent} event - the key.
          */
         const onKey = (event) => { if (event.key === 'Escape') onClose() }
         document.addEventListener('keydown', onKey)
         return () => { document.removeEventListener('keydown', onKey) }
-      }, [onClose])
+      }, [inline, onClose])
 
       /**
        * Say what a task's rule is, in words.
@@ -573,21 +605,64 @@ window.__ModuleLoader__.load({
           state.problem === undefined
             ? null
             : React.createElement('div', { className: `${U}-problem` }, t(`error.${state.problem}`)),
-          React.createElement(
-            'div',
-            { className: `${U}-actions` },
-            React.createElement('button', {
-              type: 'button', className: `${U}-button`, onClick: onClose,
-            }, t('close')),
-            state.phase === 'unavailable'
-              ? null
-              : React.createElement('button', {
-                type: 'button', className: `${U}-button`, 'data-primary': 'true',
-                onClick: () => setEditing({}),
-              }, t('new')),
-          ),
+          inline
+            ? null
+            : React.createElement(
+              'div',
+              { className: `${U}-actions` },
+              React.createElement('button', {
+                type: 'button', className: `${U}-button`, onClick: onClose,
+              }, t('close')),
+              state.phase === 'unavailable'
+                ? null
+                : React.createElement('button', {
+                  type: 'button', className: `${U}-button`, 'data-primary': 'true',
+                  onClick: () => setEditing({}),
+                }, t('new')),
+            ),
         )
 
+      return React.createElement(
+        'div',
+        { className: `${U}-manager` },
+        React.createElement(
+          'div',
+          { className: `${U}-head` },
+          React.createElement('div', {
+            className: `${U}-heading`, role: 'heading', 'aria-level': '2',
+          }, t('title')),
+          inline
+            ? state.phase !== 'ready' || editing !== null
+              ? null
+              : React.createElement('button', {
+                type: 'button',
+                className: `${U}-button ${U}-inline-new`,
+                'data-primary': 'true',
+                onClick: () => setEditing({}),
+              }, t('new'))
+            : React.createElement(
+              'button',
+              {
+                type: 'button',
+                className: `${U}-dismiss`,
+                title: t('close'),
+                'aria-label': t('close'),
+                onClick: onClose,
+              },
+              '\u00d7',
+            ),
+        ),
+        body,
+      )
+    }
+
+    /**
+     * The modal seat for the manager.
+     *
+     * @param {{onClose: () => void}} props - how to dismiss it.
+     * @returns {object} the element.
+     */
+    const Dialog = ({ onClose }) => {
       return ReactDom.createPortal(
         React.createElement(
           'div',
@@ -601,23 +676,7 @@ window.__ModuleLoader__.load({
           React.createElement(
             'div',
             { className: `${U}-dialog`, role: 'dialog', 'aria-modal': 'true' },
-            React.createElement(
-              'div',
-              { className: `${U}-head` },
-              React.createElement('div', { className: `${U}-heading` }, t('title')),
-              React.createElement(
-                'button',
-                {
-                  type: 'button',
-                  className: `${U}-dismiss`,
-                  title: t('close'),
-                  'aria-label': t('close'),
-                  onClick: onClose,
-                },
-                '\u00d7',
-              ),
-            ),
-            body,
+            React.createElement(ScheduleManager, { onClose }),
           ),
         ),
         document.body,
@@ -782,6 +841,60 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** The persistent manager mounted below the compact Computer card. */
+    const InlineManager = () => {
+      const t = useT()
+      return React.createElement(
+        'section',
+        { className: `${U}-inline`, 'aria-label': t('title') },
+        React.createElement(ScheduleManager, { inline: true }),
+      )
+    }
+
+    /**
+     * Follow the Computer pane's compact seat and give it an independent root.
+     *
+     * The artifact panel itself is an independent React root on document.body,
+     * so a portal from the shell's root does not carry reliable event handling
+     * into it. A root on the seat owns its own listeners and disappears whenever
+     * the Computer pane is maximised, closed or switched away from.
+     *
+     * @returns {() => void} stop following and unmount the current manager.
+     */
+    const mountInlineManager = () => {
+      let target = null
+      let root = null
+
+      const detach = () => {
+        target = null
+        if (root === null) return
+        const stale = root
+        root = null
+        // A target normally disappears during another root's commit. Deferring
+        // avoids synchronously unmounting one root while React is committing the
+        // other one.
+        setTimeout(() => { stale.unmount() }, 0)
+      }
+
+      const reconcile = () => {
+        const next = document.querySelector(`[${PANEL_ANCHOR}]`)
+        if (next === target) return
+        detach()
+        if (next === null) return
+        target = next
+        root = ReactDomClient.createRoot(next)
+        root.render(React.createElement(InlineManager))
+      }
+
+      reconcile()
+      const observer = new MutationObserver(reconcile)
+      observer.observe(document.body, { childList: true, subtree: true })
+      return () => {
+        observer.disconnect()
+        detach()
+      }
+    }
+
     /**
      * Column the real footerActions flex row.
      *
@@ -861,7 +974,6 @@ window.__ModuleLoader__.load({
         React.createElement(
           'div',
           { 'data-dsh-footer-stack': '', ref: stackRef },
-          React.createElement('style', null, CSS),
           React.createElement(
             'button',
             {
@@ -896,6 +1008,17 @@ window.__ModuleLoader__.load({
           () => ctx.locale.register(NS, DICTIONARY),
           'scheduled-tasks: dictionaries',
         )
+
+        // Shared by the shell-root modal and the independent inline root.
+        ctx.effect(() => {
+          const style = document.createElement('style')
+          style.setAttribute('data-dsh-scheduled-tasks-style', '')
+          style.textContent = CSS
+          document.head.appendChild(style)
+          return () => { style.remove() }
+        }, 'scheduled-tasks: styles')
+
+        ctx.effect(mountInlineManager, 'scheduled-tasks: computer panel')
 
         // `sidebar.footer.action` is a list slot sorted by `order`, and
         // `dsh-sandbox-host` holds 100 with the sandbox row. Below that number

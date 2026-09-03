@@ -15,7 +15,7 @@
  * @module computer-pane
  */
 
-import { NS } from './constants.js'
+import { NS, SCHEDULE_PANEL_ANCHOR } from './constants.js'
 import { useT } from './i18n.js'
 import { h, React } from './runtime.js'
 
@@ -70,9 +70,17 @@ const paintNovncTheme = (doc) => {
 
 /**
  * Interactive desktop: an iframe onto the gateway's `/computer/` plane.
+ *
+ * Compact, the desktop is a 1280:720 card at the top of the panel and the
+ * scheduled-tasks plugin owns the manager mounted below it. Maximised, the
+ * desktop keeps the whole pane as it did before. The two modes are structural,
+ * not a different URL, so changing modes does not invent another computer
+ * surface or another schedule implementation.
+ *
+ * @param {{maximised?: boolean}} props - whether the panel fills the window.
  * @returns {object} the element.
  */
-export function ComputerPane() {
+export function ComputerPane({ maximised = false }) {
   const t = useT()
   const frame = React.useRef(null)
   // Iframe src is fixed for the life of this mount so a theme flip does not
@@ -107,7 +115,10 @@ export function ComputerPane() {
     }
   }, [])
 
-  return h('div', { className: `${NS}-computer` },
+  return h('div', {
+    className: `${NS}-computer`,
+    'data-maximised': String(maximised),
+  },
     h('div', { className: `${NS}-computer-bar` },
       h('span', { className: `${NS}-crumb-name` }, t('tool.computer')),
       h('a', {
@@ -116,11 +127,16 @@ export function ComputerPane() {
         target: '_blank',
         rel: 'noopener noreferrer',
       }, t('computer.open'))),
-    h('iframe', {
-      ref: frame,
-      className: `${NS}-computer-frame`,
-      title: t('tool.computer'),
-      src: frameSrc,
-      allow: 'clipboard-read; clipboard-write',
+    h('div', { className: `${NS}-computer-card` },
+      h('iframe', {
+        ref: frame,
+        className: `${NS}-computer-frame`,
+        title: t('tool.computer'),
+        src: frameSrc,
+        allow: 'clipboard-read; clipboard-write',
+      })),
+    maximised ? null : h('div', {
+      className: `${NS}-computer-schedule`,
+      [SCHEDULE_PANEL_ANCHOR]: '',
     }))
 }

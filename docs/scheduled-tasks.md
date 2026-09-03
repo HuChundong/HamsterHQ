@@ -243,16 +243,22 @@ read somewhere in `gateway/src`; attaching it is that read.
 
 ## Where it is visible
 
-Two surfaces, and the split follows from the sandbox being off most of the time.
+The gateway serves the authenticated `/schedule/*` plane, so the manager works
+whether or not the tenant's sandbox is running. That is exactly when somebody
+asks why last night's task did not happen; opening the list must not start the
+machine it is reporting on.
 
-The **gateway serves the list**, on its own page. It is the only surface that
-works when the machine is not running, which is exactly when a tenant asks why
-something did not happen. It shows each task, its next occurrence, and the
-outcome of its last few runs, and it can delete one.
+The shell presents one full manager in two places. The left-sidebar footer opens
+it as a dialog. When Computer is open at normal panel width, the same
+`ScheduleManager` is mounted below the 1280:720 desktop card. Both presentations
+list every task and its next and last run, and both can create, edit, enable,
+disable and delete. The compact presentation is removed in maximised mode so the
+desktop can take the window; restoring the panel mounts it again and reloads the
+durable gateway list.
 
-The **shell shows the same list, read-only**, from the plugin, beside the three
-tools. A tenant looking at their conversation should not have to leave it to see
-what is scheduled; a tenant whose sandbox is gone should not have to start one.
+The manager remains owned by `dsh-scheduled-tasks`. The artifact panel declares
+only a DOM seat below Computer, and `check-computer-layout.mjs` prevents that
+cross-plugin seat from silently drifting.
 
 ## What is deliberately not here
 

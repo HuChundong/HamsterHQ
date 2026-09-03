@@ -6,15 +6,15 @@
 
 ## In one sentence
 
-**The right-hand side holds two things: tools the user opens, and results the agent produced.**
+**A tab holds one of two things: a tool the user opens, or a result the agent produced.**
 
-That sentence is the test. Anything that wants in is asked which of the two it is; something that is neither does not go in this panel. The restraint is the existence of the test, not the number of features.
+That sentence is the test for the tab strip. Anything that wants to become a tab is asked which of the two it is; something that is neither does not become a peer tab. Supporting controls may sit inside the surface they govern — the schedule manager under Computer is one — without turning into another workbench tab.
 
 ## The organising rule: active and passive
 
 Tabs are sorted by **where they come from**, and that division is the skeleton of the whole thing.
 
-**Active** — tools the user reaches for, which stay: Files, Terminal, Canvas, Browser.
+**Active** — tools the user reaches for, which stay: Files, Terminal, Canvas, Browser, and Computer from the session header.
 
 **Passive** — what the agent produced during the session, which the user looks at: previews of produced files (markdown, code, images, HTML).
 
@@ -27,7 +27,7 @@ The active/passive split is the reason to refuse: **a new tab is either a tool a
 | Not here | Why |
 |---|---|
 | A Git panel | Neither tool nor artifact — it is session narrative, and that lives on the left |
-| Sub-agent topology, background tasks | Same |
+| Sub-agent topology or generic background jobs as peer tabs | Same; Computer's schedule manager is a control for that surface, not another tab |
 | Bottom panels, split panes, merged panels | A layout system grows into an IDE, and brings its own persistence and stale-state cleanup |
 | File editing | The editor is the agent; saying what to change is faster than opening one |
 | Office and PDF preview | Heavy dependencies for little return, until somebody actually needs it |
@@ -54,6 +54,16 @@ The `+` button does two different things. With **no tabs open** it shows the pan
 - **In a session**: the left of the title row, beside the trace switch.
 
 Either opens it; the same control collapses it when it is open. **The panel does not exist by default**: until the session produces something or the user opens a tool, the right-hand side takes no width. A conversation that is only a conversation should not lose a third of the screen to an empty panel.
+
+## The Computer pane
+
+Computer has two layouts because the two panel modes ask different things of it.
+
+At the normal sidebar width, the desktop is the first thing in the pane: a rounded card with the native **1280:720** aspect. Its width follows the draggable panel width and its height follows from that ratio. noVNC therefore scales the desktop instead of filling a tall column with letterbox above and below it. The card and the schedule section beneath it sit on the panel's token-driven surface, so light, dark and deployment skins remain the source of colour.
+
+The section below is the scheduled-task manager, not a copy of it. `dsh-scheduled-tasks` owns the list, loading, create/edit form, enable/disable and two-step deletion; the artifact panel only declares an empty data-attribute seat. The scheduled plugin follows that seat and mounts its own React root there because the panel itself is a separate body-level root. `scripts/check-computer-layout.mjs` holds the seat name and the 1280:720 aspect together across the two plugins.
+
+When the panel is maximised, the schedule seat is not rendered and the desktop again takes the remaining height. Maximising is for operating the machine; restoring the sidebar brings back the compact card and its task list. The noVNC URL does not change between those structures, so the layout toggle does not define a second desktop protocol.
 
 ## The passive half is barely ours to render
 
@@ -176,7 +186,7 @@ Width and collapsed state live in the plugin's own settings. **The preference mu
 ## Platform constraints
 
 - **The build-purity gate**: a client bundle may not value-import `@dsh-external/*` or non-allowlisted `@deepseek-ai/*`. `import type {}` is erased and does not trip it.
-- **ModuleLoader does not cross plugins**: interaction between plugins is method calls, never requiring another plugin's module.
+- **ModuleLoader does not cross plugins**: never require another plugin's module. A cross-plugin surface needs an explicit owned contract — a method when behavior crosses, or the checked data-attribute seat used by the schedule manager when one plugin owns rendering inside another's layout.
 - **Skins are token-driven**: consume `--dsw-alias-*`, `--dsw-font-*`, `--ds-*` and hard-code no colour. In particular — **never consume `--dsw-specific-sidebar-fill`**, which belongs to the host's left navigation column and which some skins set to `transparent`. The panel's own surface is `--dsw-alias-bg-layer-1`.
 - **A token name must be verified before it is used.** Confirm in a real browser that the name is a defined CSS custom property on `body`. Names known to work are `--dsw-alias-interactive-bg-hover` (hover) and `--dsw-alias-button-ghost-active-fill` (pressed). **Once verified, do not write a literal fallback** — it only hides the next missing name.
 - **Translucent surfaces need a fallback**: a text surface that reads a glass value below 0.9 alpha falls back to an opaque ground, or text scrolls over the skin's background. That fallback **cannot** be written as `readToken() || fallback` — `transparent` and `rgba(...,0.16)` are both truthy strings and the `||` never fires.
