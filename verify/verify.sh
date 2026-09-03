@@ -18,6 +18,16 @@ set -uo pipefail
 
 GATEWAY="${GATEWAY:-http://localhost:8080}"
 RUNTIME="${SANDBOX_RUNTIME:-docker}"
+# A compose container cannot use the host's loopback front door. The Docker
+# simulation therefore takes the web service name, while a Cube deployment
+# uses the same published origin as the host-side checks. The latter matters
+# when HTTPS redirects an internal http://web request to the host-only port.
+INTERNAL_GATEWAY="${VERIFY_INTERNAL_GATEWAY:-}"
+if [ -z "$INTERNAL_GATEWAY" ]; then
+  if [ "$RUNTIME" = cube ]; then INTERNAL_GATEWAY="$GATEWAY"
+  else INTERNAL_GATEWAY=http://web
+  fi
+fi
 PASS=0
 FAIL=0
 
@@ -36,7 +46,7 @@ api() {  # api <cookiejar> <method> -> status
   if command -v node > /dev/null 2>&1; then
     GATEWAY="$GATEWAY" node api-status.mjs "$1" "$2"
   else
-    docker compose exec -T -e GATEWAY=http://web gateway \
+    docker compose exec -T -e "GATEWAY=$INTERNAL_GATEWAY" gateway \
       node /app/api-status.mjs /dev/stdin "$2" < "$1"
   fi
 }
@@ -531,7 +541,7 @@ docker compose cp verify-login.mjs gateway:/app/verify-login.mjs > /dev/null 2>&
 docker compose cp harness-rpc.mjs gateway:/app/harness-rpc.mjs > /dev/null 2>&1 || NODE_FAIL=1
 for script in verify-ws.mjs verify-isolation.mjs; do
   docker compose cp "$script" "gateway:/app/$script" > /dev/null || { NODE_FAIL=1; continue; }
-  docker compose exec -T -e GATEWAY=http://web -e "VERIFY_ALICE=$ALICE" -e "VERIFY_BOB=$BOB" \
+  docker compose exec -T -e "GATEWAY=$INTERNAL_GATEWAY" -e "VERIFY_ALICE=$ALICE" -e "VERIFY_BOB=$BOB" \
     gateway node "/app/$script" || NODE_FAIL=1
 done
 
@@ -559,7 +569,7 @@ echo
 echo '=== 11. A scheduled task wakes a destroyed sandbox and runs ==='
 echo '     (minutes, on purpose: it waits for a cold machine to come back)'
 if docker compose cp verify-schedule.mjs gateway:/app/verify-schedule.mjs > /dev/null 2>&1; then
-  docker compose exec -T -e GATEWAY=http://web -e "VERIFY_ALICE=$ALICE" \
+  docker compose exec -T -e "GATEWAY=$INTERNAL_GATEWAY" -e "VERIFY_ALICE=$ALICE" \
     gateway node /app/verify-schedule.mjs || NODE_FAIL=1
 else
   echo '  SKIP: could not copy the suite into the gateway container'
@@ -643,7 +653,7 @@ echo
 echo '=== 11b. The computer plane is session-gated ==='
 docker compose cp verify-login.mjs gateway:/app/verify-login.mjs > /dev/null 2>&1 || NODE_FAIL=1
 docker compose cp verify-computer.mjs gateway:/app/verify-computer.mjs > /dev/null 2>&1 || NODE_FAIL=1
-docker compose exec -T -e GATEWAY=http://web -e "VERIFY_ALICE=$ALICE" \
+docker compose exec -T -e "GATEWAY=$INTERNAL_GATEWAY" -e "VERIFY_ALICE=$ALICE" \
   gateway node /app/verify-computer.mjs || NODE_FAIL=1
 
 echo
@@ -834,7 +844,7 @@ if [ "$RUNTIME" = docker ]; then
   # and where the pty route is one hop away.
   docker compose cp verify-login.mjs gateway:/app/verify-login.mjs > /dev/null 2>&1 || NODE_FAIL=1
   docker compose cp verify-terminal.mjs gateway:/app/verify-terminal.mjs > /dev/null 2>&1 || NODE_FAIL=1
-  docker compose exec -T -e GATEWAY=http://web -e "VERIFY_ALICE=$ALICE" \
+  docker compose exec -T -e "GATEWAY=$INTERNAL_GATEWAY" -e "VERIFY_ALICE=$ALICE" \
     gateway node /app/verify-terminal.mjs || NODE_FAIL=1
 
   # Erasing is refused without the acknowledgement the dialog collects, so that
@@ -877,7 +887,7 @@ echo '=== Cold start: the first session call is ready ==='
 docker compose cp verify-login.mjs gateway:/app/verify-login.mjs > /dev/null 2>&1 || NODE_FAIL=1
 docker compose cp harness-rpc.mjs gateway:/app/harness-rpc.mjs > /dev/null 2>&1 || NODE_FAIL=1
 docker compose cp verify-cold-start.mjs gateway:/app/verify-cold-start.mjs > /dev/null 2>&1 || NODE_FAIL=1
-docker compose exec -T -e GATEWAY=http://web -e "COLD_START_USER=$ALICE" \
+docker compose exec -T -e "GATEWAY=$INTERNAL_GATEWAY" -e "COLD_START_USER=$ALICE" \
   gateway node /app/verify-cold-start.mjs || NODE_FAIL=1
 
 echo
