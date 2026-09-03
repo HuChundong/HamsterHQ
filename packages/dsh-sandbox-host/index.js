@@ -32,7 +32,6 @@ import { readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import process from 'node:process'
-import * as browser from './browser.js'
 import { createUploads } from './uploads.js'
 
 export const name = 'sandbox-host'
@@ -47,14 +46,6 @@ export const inject = ['connection', 'webServer']
 
 /** The file plane's channel, owned by this plugin end to end. */
 const CHANNEL = '/files'
-
-/**
- * The browser plane's channel: the sandbox's own headless browser, watched.
- * A second channel rather than more endpoints on `/files`, because a channel
- * is named for what it carries and a screenshot is not a file the tenant
- * has — it costs the same three lines of nginx and gateway either way.
- */
-const BROWSER_CHANNEL = '/browser'
 
 /** How often abandoned staging files are collected. */
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000
@@ -197,30 +188,6 @@ export function apply(ctx, config) {
       // else is a filesystem or a bug, and says so without inventing a cause.
       if (error instanceof RangeError) return badRequest(error.message)
       ctx.logger?.warn?.(`sandbox-host: ${endpoint} failed: ${error.message}`)
-      return internal(error.message)
-    }
-  })
-
-  // The browser plane. Same fence as `/files` and the same envelope; the
-  // wording of an unreachable browser is the panel's, so `status` answers
-  // rather than throws. See ./browser.js for why this pulls frames instead
-  // of forwarding Chromium's push.
-  ctx.connection.rpc.handle(BROWSER_CHANNEL, async (endpoint, payload) => {
-    try {
-      const body = payload ?? {}
-      switch (endpoint) {
-        case 'status':
-          return { ok: true, value: await browser.status() }
-        case 'shot': {
-          const frame = await browser.shot(body.id === undefined ? undefined : String(body.id))
-          if (frame === undefined) return badRequest('no such page')
-          return { ok: true, value: frame }
-        }
-        default:
-          return badRequest(`no such endpoint: ${endpoint}`)
-      }
-    } catch (error) {
-      ctx.logger?.warn?.(`sandbox-host: browser ${endpoint} failed: ${error.message}`)
       return internal(error.message)
     }
   })

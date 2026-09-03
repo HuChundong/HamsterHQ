@@ -51,7 +51,8 @@ Four decisions carry the design:
 Two seams keep those decisions portable: `cube` and `docker` differ only in how
 a machine is created and reclaimed, and DSH stays a pinned npm dependency whose
 additions — the tunnel, the remote host surface, the tenant account, the
-artifact panel, the brand — are cordis plugins resolved by name.
+computer handoff, the artifact panel, scheduled tasks, and the brand — are
+cordis plugins resolved by name.
 
 [docs/design.md](docs/design.md) has the reasoning behind each of these and the
 alternatives they replaced. [docs/sandbox-pitfalls.md](docs/sandbox-pitfalls.md)
@@ -79,9 +80,13 @@ packages/               the npm packages this repository owns
   dsh-sandbox-host/       cordis plugin: what a browser needs when the backend
                           is on another machine — uploads, and the settings
                           document read rather than opened
+  dsh-computer/           cordis plugin: the shared browser/desktop, live
+                          preview, and human-action handoff card
   dsh-tenant-account/     cordis plugin: who is signed in, and how to stop
   dsh-artifact-panel/     cordis plugin: the workspace beside the conversation
                           — files, viewers, a terminal and a canvas
+  dsh-scheduled-tasks/    cordis plugin: the tenant's durable schedule and the
+                          timers/tools that fire it inside a sandbox
   dsh-brand/              cordis plugin: this deployment's marks inside the
                           shell
   dsh-icons/              one icon set for the surfaces that cannot ask the

@@ -51,7 +51,7 @@ DSH 本身是依赖，从 npm 安装。除 `web/patch-loopback.mjs` 这一处受
 - **运行时接缝。** `cube` 与 `docker` 的区别仅在于机器如何被创建和回收。接缝之上的一切在两者
   之间没有任何变化——恰恰是因为沙箱主动向外拨号，上层任何组件都不需要一条打进去的路由。
 - **组合接缝。** DSH 是 npm 依赖，版本钉住，除 `web/patch-loopback.mjs` 外不改。本项目加给
-  它的东西——隧道、远端宿主面、租户账户、右侧 artifact 面板、品牌——都是从 profile 按包名
+  它的东西——隧道、远端宿主面、租户账户、电脑交接、右侧 artifact 面板、定时任务、品牌——都是从 profile 按包名
   解析的 cordis 插件。升级 harness 就是改一个版本号，再跑一遍验收。
 
 每一条背后的推理、以及它们取代了什么方案，见 [docs/design.zh.md](docs/design.zh.md)。
@@ -75,8 +75,12 @@ packages/               本仓库拥有的 npm 包
   dsh-gateway-tunnel/     cordis 插件：把沙箱的 /api 流量送出去
   dsh-sandbox-host/       cordis 插件：后端在另一台机器上时浏览器需要的东西——
                           上传，以及配置文件被读出来而不是被打开
+  dsh-computer/           cordis 插件：agent 与人共用的浏览器/桌面、实时预览与
+                          需要人操作时的交接卡片
   dsh-tenant-account/     cordis 插件：谁登录着，以及怎么退出
   dsh-artifact-panel/     cordis 插件：对话旁边的工作区——文件、预览、终端、画布
+  dsh-scheduled-tasks/    cordis 插件：租户的持久日程，以及在沙箱里触发它的
+                          定时器和工具
   dsh-brand/              cordis 插件：外壳内部这套部署自己的标识
   dsh-icons/              给那些没法向外壳要图标的界面用的一套图标
   dsh-ground/             网关页面与落地页共同站着的那张网格

@@ -594,6 +594,7 @@ RUN npm install --omit=dev --omit=peer --no-audit --no-fund --install-links \
       --prefix "$IMAGE_DSH_HOME/profiles/web" \
       /src/packages/dsh-gateway-tunnel \
       /src/packages/dsh-sandbox-host \
+      /src/packages/dsh-computer \
       /src/packages/dsh-tenant-account \
       /src/packages/dsh-artifact-panel \
       /src/packages/dsh-scheduled-tasks \

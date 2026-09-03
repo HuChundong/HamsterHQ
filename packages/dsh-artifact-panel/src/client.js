@@ -64,7 +64,8 @@
  * - `file-view.js`     a file on show: its body, its path, the panes beside it
  * - `terminal-pane.js` a shell in the panel
  * - `canvas.js`        the page the agent is building
- * - `browser-pane.js`  the sandbox's browser, watched
+ * - `browser-pane.js`  the sandbox's browser, watched through dsh-computer
+ * - dsh-computer       the interactive desktop rendered into this panel's seat
  * - `tools.js`         the four things a tenant opens for themselves
  *
  * This file is what is left: the panel itself, the toggle in the app's header,
@@ -73,10 +74,10 @@
 import terminalCss from '@xterm/xterm/css/xterm.css'
 import { basename, insideWorkspace } from './api.js'
 import { BrowserPane, setBrowserPlane } from './browser-pane.js'
-import { ComputerPane } from './computer-pane.js'
 import { Canvas } from './canvas.js'
 import {
-  ANCHOR, DEFAULT_WIDTH, DRAGGING, HEADER_HEIGHT_VAR, MAX_FRACTION, MIN_WIDTH, NS, WIDTH_VAR,
+  ANCHOR, COMPUTER_OPEN_EVENT, COMPUTER_PANEL_ANCHOR, DEFAULT_WIDTH, DRAGGING, HEADER_HEIGHT_VAR,
+  MAX_FRACTION, MIN_WIDTH, NS, WIDTH_VAR,
 } from './constants.js'
 import { FileTree } from './file-tree.js'
 import { Aside, Crumbs, FileBody, FoldButton } from './file-view.js'
@@ -335,6 +336,18 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Layout-owned seat for dsh-computer's independent React root.
+     * @param {{maximised: boolean}} props - panel mode forwarded as a DOM fact.
+     * @returns {object} the empty seat.
+     */
+    function ComputerSeat({ maximised }) {
+      return h('div', {
+        [COMPUTER_PANEL_ANCHOR]: '',
+        'data-maximised': String(maximised),
+      })
+    }
+
+    /**
      * Catches a render failure and says what it was.
      *
      * Without this a thrown render unmounts the whole root, and the panel
@@ -553,7 +566,7 @@ window.__ModuleLoader__.load({
                 : active.id === 'terminal'
                   ? h(TerminalPane, null)
                   : active.id === 'computer'
-                    ? h(ComputerPane, { maximised })
+                    ? h(ComputerSeat, { maximised })
                     : active.id === 'browser'
                     ? h(BrowserPane, null)
                     : h(Placeholder, { tab: active })),
@@ -581,6 +594,21 @@ window.__ModuleLoader__.load({
           () => ctx.locale.register(LOCALE_NS, DICTIONARY),
           'artifact-panel: dictionaries',
         )
+
+        // dsh-computer owns the handoff card, while this plugin owns panel
+        // navigation. A cancelable DOM event is the narrow contract between
+        // those browser halves: preventDefault tells the sender the panel was
+        // available, so a standalone computer plugin may fall back to a new
+        // noVNC window.
+        ctx.effect(() => {
+          const openComputer = (event) => {
+            store.openTab({ id: 'computer', icon: 'computer' })
+            store.write({ open: true })
+            event.preventDefault()
+          }
+          window.addEventListener(COMPUTER_OPEN_EVENT, openComputer)
+          return () => { window.removeEventListener(COMPUTER_OPEN_EVENT, openComputer) }
+        }, 'artifact-panel: computer handoff')
 
         // The styles go in once, beside the panel rather than inside it, so
         // the rule that pushes `#root` survives the panel being closed.

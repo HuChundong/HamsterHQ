@@ -44,17 +44,20 @@ prevent — and the first one is only here because upstream is closed to it.
 ## Everything added to DSH is a cordis plugin
 
 Which plugin a change belongs in is decided by one question: **take the
-gateway away — is this still needed?** Six plugins sit on that question
+gateway away — is this still needed?** Seven plugins sit on that question
 today:
 
 - `dsh-gateway-tunnel` carries a sandbox's `/api` traffic out to the gateway.
   It follows the transport.
 - `dsh-sandbox-host` supplies what a browser needs when the backend is on a
  machine the person cannot reach: the `/files` upload channel, the settings
- document read back instead of handed to a desktop that is not there, and the
- `/browser` channel that watches the sandbox's own headless browser. Every
+ document read back instead of handed to a desktop that is not there. Every
  line of it survives the gateway's removal, which is why it is not more surface
  on another plugin — and why it would be usable by anyone running dsh remotely.
+- `dsh-computer` is the shared browser and desktop: its read-only frame channel,
+  the interactive noVNC surface, and the tool/card handoff when an agent needs
+  a person to finish login, MFA, CAPTCHA, or consent. It survives the gateway;
+  only the artifact panel seat it renders into is deployment layout.
 - `dsh-tenant-account` is who is signed in, how to sign out, and the onboarding
   steps a deployment with its own sign-in page has already said. None of it
   means anything without the gateway.
@@ -69,7 +72,7 @@ The other three packages in `packages/` are not plugins: `dsh-icons` and
 `dsh-ground` serve surfaces that have no module table, and `tunnel-protocol`
 is the frame both ends of the tunnel speak.
 
-A change that fits none of the six is a sign the question above has a new
+A change that fits none of the seven is a sign the question above has a new
 answer, not that one of them should grow a second subject —
 `dsh-gateway-logout` was renamed when it had three.
 
