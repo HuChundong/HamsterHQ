@@ -21,7 +21,7 @@
 # plugin mounts its host half and contributes no client half, because the
 # client-module registry resolves a plugin's package.json from the config tree's
 # baseUrl and scans only what it can resolve by name. This one contributes no
-# client half either way, but naming it keeps one rule for all three of ours.
+# client half either way, but naming it keeps one rule for every plugin here.
 #
 # `insert` rather than a bare entry: a patch layer targets existing ids, so a
 # new plugin has to be inserted explicitly.
@@ -41,6 +41,15 @@
 - insert:
     - id: sandbox-host
       name: dsh-sandbox-host
+
+# The shared browser and interactive desktop. Its host half exposes read-only
+# browser frames and, in the desktop image, the tool that waits for a person to
+# finish a login/MFA/CAPTCHA step. Its browser half renders both the noVNC seat
+# and that waiting card. The wait rides DSH's userQuestions service; this entry
+# adds no protocol of its own.
+- insert:
+    - id: computer
+      name: dsh-computer
 
 # The tenant's account: who is signed in, how to sign out, the way in to the
 # console for whoever administers this deployment, and the onboarding steps a

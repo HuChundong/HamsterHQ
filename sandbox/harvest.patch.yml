@@ -17,6 +17,13 @@
     - id: sandbox-host
       name: dsh-sandbox-host
 
+# Browser preview, interactive desktop and the agent-to-human handoff card.
+# The harvest has no desktop, so the host half does not register its tool; the
+# client half is still what every desktop sandbox call must render.
+- insert:
+    - id: computer
+      name: dsh-computer
+
 # The tenant's account: who is signed in, how to sign out, and the way in to the
 # console. dsh has no notion of the gateway's sessions, so nothing in its own
 # composition offers a way to end one.

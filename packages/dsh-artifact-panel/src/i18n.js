@@ -80,7 +80,6 @@ export const DICTIONARY = {
     'tool.browser.note': '看 agent 正在浏览的网页',
     'tool.computer': '电脑',
     'tool.computer.note': '通过桌面直接操作沙箱',
-    'computer.open': '新窗口打开',
     'computer.launch': '打开电脑',
 
     'tab.close': '关闭 {name}',
@@ -185,7 +184,6 @@ export const DICTIONARY = {
     'tool.browser.note': 'Watch the page the agent is browsing',
     'tool.computer': 'Computer',
     'tool.computer.note': 'Operate the sandbox desktop directly',
-    'computer.open': 'Open in new window',
     'computer.launch': 'Open computer',
 
     'tab.close': 'Close {name}',

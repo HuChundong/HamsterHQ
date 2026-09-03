@@ -10,9 +10,8 @@
  * Polling, not a stream, and the pane is the reason it is cheap: frames are
  * asked for only while this component is mounted and the document visible.
  * A closed tab costs nothing; a hidden window costs nothing. The channel it
- * asks on is `/browser`, registered by `dsh-sandbox-host` — the plugin that
- * supplies what a remote machine cannot show — and reached the same way its
- * `/files` plane is.
+ * asks on is `/browser`, registered by `dsh-computer`, which owns the shared
+ * browser/desktop and the user-action handoff card.
  *
  * The view is read-only on purpose. The CDP port could carry clicks and
  * keystrokes, but a person and an agent sharing one browser's hands is a
@@ -27,7 +26,7 @@ import { useT } from './i18n.js'
 import { icon, turn } from './icons.js'
 import { h, React } from './runtime.js'
 
-/** The channel the host half registers; see dsh-sandbox-host/browser.js. */
+/** The channel the computer host half registers. */
 const CHANNEL = '/browser'
 
 /** How often the list of pages is refreshed. */

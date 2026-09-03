@@ -14,8 +14,6 @@
  */
 
 import {
-  COMPUTER_FRAME_HEIGHT,
-  COMPUTER_FRAME_WIDTH,
   DRAGGING,
   HEADER_HEIGHT_VAR,
   MERGED_HEADER,
@@ -575,80 +573,6 @@ export const CSS = `
     height: auto;
     border-radius: 6px;
     border: 1px solid var(--dsw-alias-border-l1);
-  }
-
-  /* Interactive desktop (noVNC).
-
-     Compact, the reading order is deliberate: desktop card first, scheduled
-     tasks second. The card follows the native 1280 by 720 frame and therefore
-     shrinks with the panel instead of asking noVNC to letterbox a tall column.
-     Maximised, the same iframe takes the remaining height as it did before. */
-  .${NS}-computer {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0;
-    background: var(--dsw-alias-bg-layer-1);
-  }
-  .${NS}-computer[data-maximised='false'] {
-    gap: 0;
-    overflow-y: auto;
-    padding: 12px;
-    box-sizing: border-box;
-    /* The panel itself carries the themed ground. The desktop is the only
-       card, so the schedule beneath it remains part of the same sidebar. */
-    background: transparent;
-  }
-  .${NS}-computer-bar {
-    flex: none;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--dsw-alias-border-l1);
-    font-family: var(--dsw-font-family);
-    font-size: 12px;
-    color: var(--dsw-alias-label-secondary);
-  }
-  .${NS}-computer[data-maximised='false'] .${NS}-computer-bar {
-    padding: 0 2px 8px;
-    border-bottom: 0;
-  }
-  .${NS}-computer-open {
-    color: var(--dsw-alias-label-secondary);
-    text-decoration: none;
-  }
-  .${NS}-computer-open:hover {
-    color: var(--dsw-alias-label-primary);
-  }
-  .${NS}-computer-card {
-    flex: 1 1 auto;
-    min-height: 0;
-    width: 100%;
-    overflow: hidden;
-    box-sizing: border-box;
-    background: var(--dsw-alias-bg-layer-1);
-  }
-  .${NS}-computer[data-maximised='false'] .${NS}-computer-card {
-    flex: none;
-    aspect-ratio: ${COMPUTER_FRAME_WIDTH} / ${COMPUTER_FRAME_HEIGHT};
-    border: 1px solid var(--dsw-alias-border-l1);
-    border-radius: 12px;
-    box-shadow: var(--dsw-shadow-lv1);
-  }
-  .${NS}-computer-frame {
-    display: block;
-    width: 100%;
-    height: 100%;
-    border: 0;
-    /* Matches the shell; the iframe letterbox is painted to the same token. */
-    background: var(--dsw-alias-bg-layer-1);
-  }
-  .${NS}-computer-schedule {
-    flex: none;
-    min-height: 0;
-    margin-top: 16px;
   }
 
   /* The row menu and the questions it leads to. Both are drawn at the

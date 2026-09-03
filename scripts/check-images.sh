@@ -53,14 +53,14 @@ check 'the harness neither announces nor opens its local URL' private "$handoff"
 resolved=$(docker run --rm --entrypoint node "$SANDBOX" -e "
   const { createRequire } = require('module')
   const req = createRequire('$PROFILE/package.json')
-  const names = ['dsh-gateway-tunnel', 'dsh-sandbox-host', 'dsh-tenant-account', 'dsh-tunnel-protocol']
+  const names = ['dsh-gateway-tunnel', 'dsh-sandbox-host', 'dsh-computer', 'dsh-tenant-account', 'dsh-tunnel-protocol']
   let ok = 0
   for (const name of names) {
     try { req.resolve(name); ok += 1 } catch { console.error('unresolved: ' + name) }
   }
   console.log(ok)
 " 2>/dev/null || echo 0)
-check 'every package resolves from the profile' 4 "$resolved"
+check 'every package resolves from the profile' 5 "$resolved"
 
 # Under the profile itself, not a symlink into the source tree: a link resolves
 # here and takes the plugin's own dependencies with it to the wrong place.
@@ -92,6 +92,13 @@ adapter=$(docker run --rm --entrypoint node "$SANDBOX" -e "
 " 2>/dev/null || echo error)
 check 'the sandbox-host plugin loads' loaded "$adapter"
 
+computer=$(docker run --rm --entrypoint node "$SANDBOX" -e "
+  import('$PROFILE/node_modules/dsh-computer/index.js')
+    .then((m) => console.log(['apply', 'inject', 'name'].every((k) => k in m) ? 'loaded' : 'incomplete'))
+    .catch((error) => console.log('failed: ' + error.message))
+" 2>/dev/null || echo error)
+check 'the computer plugin loads' loaded "$computer"
+
 # The schedule plugin, which imports `@deepseek-ai/dsh-tools` for `defineTool`.
 # That is a peer of the harness rather than a dependency it declares, so it
 # resolves only if the profile is where the registry mounted it from — which is
@@ -110,7 +117,7 @@ check 'the scheduled-tasks plugin loads' loaded "$scheduled"
 # check that opened `client.js` would have read the package's other half, or
 # nothing, and passed either way — while the registry served a 404 and the
 # panel simply never appeared.
-for half in dsh-sandbox-host dsh-tenant-account dsh-artifact-panel dsh-scheduled-tasks; do
+for half in dsh-sandbox-host dsh-computer dsh-tenant-account dsh-artifact-panel dsh-scheduled-tasks; do
   parsed=$(docker run --rm --entrypoint node "$SANDBOX" -e "
     const { readFileSync } = require('fs')
     const path = require('path')
@@ -265,10 +272,15 @@ echo
 shared=$(docker run --rm --entrypoint node "$SANDBOX" -e "
   const { createRequire } = require('node:module')
   const host = createRequire('/app/package.json')
-  const plugin = createRequire('$PROFILE/node_modules/dsh-scheduled-tasks/package.json')
-  console.log(host.resolve('@deepseek-ai/dsh-tools') === plugin.resolve('@deepseek-ai/dsh-tools') ? 'shared' : 'duplicated')
+  const scheduled = createRequire('$PROFILE/node_modules/dsh-scheduled-tasks/package.json')
+  const computer = createRequire('$PROFILE/node_modules/dsh-computer/package.json')
+  const expected = host.resolve('@deepseek-ai/dsh-tools')
+  console.log(
+    expected === scheduled.resolve('@deepseek-ai/dsh-tools')
+      && expected === computer.resolve('@deepseek-ai/dsh-tools') ? 'shared' : 'duplicated'
+  )
 " 2>/dev/null || echo error)
-check 'scheduled tools share the host dependency instance' shared "$shared"
+check 'plugin tools share the host dependency instance' shared "$shared"
 
 echo "=== the web image ==="
 
@@ -341,7 +353,7 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
       && grep -Fq '\''${VNC_GEOMETRY:-1280x720}'\'' /app/sandbox/start-desktop.sh \
       && grep -Fq '\''${VNC_FRAME_RATE:-45}'\'' /app/sandbox/start-desktop.sh \
       && grep -Fq '\''quality=5&compression=1'\'' \
-           /root/.dsh/profiles/web/node_modules/dsh-artifact-panel/lib/client.js \
+           /root/.dsh/profiles/web/node_modules/dsh-computer/client.js \
       && echo ok || echo drifted' \
     2>/dev/null || echo error)
   check 'desktop ships the 720p fluid-streaming profile' ok "$streaming"

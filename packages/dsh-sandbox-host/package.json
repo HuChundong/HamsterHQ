@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Adapts dsh to a host the person using it cannot reach: the file plane, and the surfaces that assume the browser and the backend share a machine.",
+  "description": "Adapts dsh to a host the person using it cannot reach: uploads and settings-document access for a remote backend.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

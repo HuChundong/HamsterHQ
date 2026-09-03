@@ -461,7 +461,7 @@ Liberation 字体：把字体挂进 `/usr/share/fonts` 和 `~/.fonts` 都没有�
 另外它的任务预算会直接拒绝重页面：维基百科主页打不开，报
 "autonomous browser task exceeded its task budget"。Chromium 用镜像自己的
 fontconfig 字体栈绘制——当初为 matplotlib 装的 wqy-microhei 现在也服务于浏览
-器——面板的浏览器 tab 展示的就是它的截图，经 `dsh-sandbox-host` 注册的
+器——面板的浏览器 tab 展示的就是它的截图，经 `dsh-computer` 注册的
 `/browser` 通道约一秒轮询一张。当初选 Obscura 的内存论证
 是真实的，如今是明码付账：空转约 100 MB 对 30 MB，重页面打开时 300–500 MB，出
 自一个 2–4 GB 的沙箱。

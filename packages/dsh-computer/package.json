@@ -1,0 +1,21 @@
+{
+  "name": "dsh-computer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The shared sandbox computer: browser preview, interactive desktop, and user-action handoff for an agent that needs a human.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": ["slots", "connection", "locale"],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "0.1.2-rc.1"
+  }
+}

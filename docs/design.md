@@ -666,7 +666,7 @@ with "autonomous browser task exceeded its task budget". Chromium draws with
 the image's own fontconfig stack — the wqy-microhei installed for matplotlib
 now serves the browser too — and its screenshots are what the panel's browser
 tab shows, polled about once a second over the `/browser` channel
-`dsh-sandbox-host` registers. The memory argument that chose Obscura was real and its
+`dsh-computer` registers. The memory argument that chose Obscura was real and its
 price is now paid knowingly: roughly 100 MB idle against 30, and 300–500 MB
 with a heavy page open, out of a sandbox's 2–4 GB.
 
