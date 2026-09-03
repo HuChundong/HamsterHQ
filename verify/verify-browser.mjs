@@ -19,6 +19,7 @@
  */
 
 import { createRequire } from 'node:module'
+import { randomUUID } from 'node:crypto'
 import process from 'node:process'
 
 // Resolved from THIS directory, which is where `npm install playwright` puts it
@@ -158,7 +159,7 @@ check('no dialog blocks the app', !await page.evaluate(
 // there is no desktop in a container for a native one to appear on. A sandbox
 // that already has one goes straight to the composer, so this runs only when
 // it is actually needed.
-const composer = page.locator('textarea:not([readonly]), [contenteditable="true"]').first()
+const composer = page.locator('[data-composer-input][contenteditable="true"]').first()
 const needsWorkspace = await composer.waitFor({ state: 'visible', timeout: 5_000 })
   .then(() => false)
   .catch(() => true)
@@ -179,17 +180,18 @@ if (needsWorkspace) {
 
 await composer.waitFor({ state: 'visible', timeout: 60_000 })
 await composer.click()
-// The expected answer must not appear in the question. Waiting for text the
-// prompt itself contains passes the moment the user's own message renders,
-// which proves the composer works and nothing about the model.
-await composer.fill('What is 17 multiplied by 3? Reply with only the number.')
-await page.keyboard.press('Enter')
+// The answer is embedded in a longer question, so exact matching cannot pass
+// on the user's own message. It has to appear as the assistant's complete
+// reply.
+const answer = `READY_${randomUUID().slice(0, 8)}`
+await composer.fill(`Reply with exactly ${answer} and nothing else.`)
+await composer.press('Enter')
 
-const answered = await page.getByText('51', { exact: false }).first()
+const answered = await page.getByText(answer, { exact: true }).first()
   .waitFor({ state: 'visible', timeout: 180_000 })
   .then(() => true)
   .catch(() => false)
-check('the assistant answers in the page', answered, answered ? '51 rendered' : 'no reply within 180s')
+check('the assistant answers in the page', answered, answered ? `${answer} rendered` : 'no reply within 180s')
 
 if (SCREENSHOT !== undefined) {
   await page.screenshot({ path: SCREENSHOT, fullPage: true })

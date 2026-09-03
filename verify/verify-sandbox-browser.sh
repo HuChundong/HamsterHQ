@@ -14,16 +14,6 @@
 # fragment that asks its own shell reports the image's tools missing while a
 # tenant is using them.
 
-# The engine, asked over the protocol its client will use rather than by
-# looking for a process: a browser that is running and not listening is the
-# same to an agent as no browser at all.
-echo "cdp=$(curl -s --max-time 5 http://127.0.0.1:9222/json/version | grep -c '"Browser"')"
-
-# Loopback only. The CDP port drives the browser as the tenant — anything that
-# can reach it can read what the tenant reads and post as them — so it must not
-# be addressable from outside this machine. `ss` prints the address it bound.
-echo "bound=$(ss -ltn 2>/dev/null | awk '$4 ~ /:9222$/ { print $4 }' | head -1)"
-
 # What is NOT checked here, and why the absence is written down: the browser
 # no longer refuses private addresses. That fence was Obscura's, inside the
 # engine, and it left with the engine — Chromium has no such switch. Under
@@ -49,4 +39,15 @@ cd "$WORKSPACE" || exit 0
 NO_UPDATE_NOTIFIER=1 playwright-cli open "${BROWSER_URL:-https://www.baidu.com}" > /tmp/browser-open.txt 2>&1
 echo "opened=$(grep -c 'Page Title:' /tmp/browser-open.txt)"
 echo "title=$(sed -n 's/^- Page Title: //p' /tmp/browser-open.txt | head -1)"
+
+# Desktop Chrome is deliberately lazy because its profile belongs to the
+# tenant volume. Ask through the CLI first, then inspect the process it started
+# over the protocol the client uses. Probing before open reports the intended
+# idle state as a missing browser.
+echo "cdp=$(curl -s --max-time 5 http://127.0.0.1:9222/json/version | grep -c '"Browser"')"
+
+# Loopback only. The CDP port drives the browser as the tenant — anything that
+# can reach it can read what the tenant reads and post as them — so it must not
+# be addressable from outside this machine. `ss` prints the address it bound.
+echo "bound=$(ss -ltn 2>/dev/null | awk '$4 ~ /:9222$/ { print $4 }' | head -1)"
 NO_UPDATE_NOTIFIER=1 playwright-cli close > /dev/null 2>&1

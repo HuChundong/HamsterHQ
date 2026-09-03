@@ -8,13 +8,17 @@
  * model turn.
  */
 import { createRequire } from 'node:module'
+import { randomUUID } from 'node:crypto'
 import process from 'node:process'
 
 const require = createRequire(new URL(process.env.PLAYWRIGHT_FROM ?? './package.json', import.meta.url))
 const { chromium } = require('playwright')
 const GATEWAY = process.env.GATEWAY ?? 'http://localhost:8080'
 const CARD_TIMEOUT_MS = Number(process.env.ATTACHMENT_TIMEOUT_MS ?? 180_000)
-const NAME = `attachment-card-${String(process.pid)}.txt`
+// The workspace persists across acceptance runs. A container is PID 1 every
+// time, so a PID name collides on the second run and the upload store gives the
+// published file a different basename than the test keeps waiting for.
+const NAME = `attachment-card-${randomUUID()}.txt`
 const cookie = process.env.TURN_COOKIE
 if (!cookie) throw new Error('TURN_COOKIE must name an acceptance tenant session')
 
