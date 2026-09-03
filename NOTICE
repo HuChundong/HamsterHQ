@@ -54,7 +54,7 @@ packages/dsh-sandbox-host/client.js.
 License text: licenses/lucide-static-LICENSE.txt (ISC text and the
 Feather MIT text in a single file, as distributed by lucide-static).
 
-@deepseek-ai/dsh-client-ui-primitives 0.1.2-alpha.5 (path data)
+@deepseek-ai/dsh-client-ui-primitives 0.1.2-rc.1 (path data)
 ------------------------------------------------------------
 Copyright holder: Copyright (c) 2026 DeepSeek.
 License: MIT.
@@ -164,8 +164,8 @@ source tree.
 
 License text: licenses/xterm-MIT.txt.
 
-@deepseek-ai/dsh 0.1.2-alpha.5
-@deepseek-ai/dsh-web-frontend 0.1.2-alpha.5
+@deepseek-ai/dsh 0.1.2-rc.1
+@deepseek-ai/dsh-web-frontend 0.1.2-rc.1
 ----------------------------------------
 Copyright holder: Copyright (c) 2026 DeepSeek.
 License: MIT.
