@@ -39,6 +39,19 @@ export const HEADER_HEIGHT_VAR = '--dsh-artifact-panel-header-height'
 /** Set on `body` while a drag is in flight, to suspend the transitions. */
 export const DRAGGING = 'data-dsh-artifact-panel-dragging'
 
+/** The desktop image's native frame, used as the compact card's aspect. */
+export const COMPUTER_FRAME_WIDTH = 1280
+export const COMPUTER_FRAME_HEIGHT = 720
+
+/**
+ * Where the scheduled-tasks plugin mounts its compact manager.
+ *
+ * This is a DOM contract between two browser plugins that cannot import each
+ * other. `scripts/check-computer-layout.mjs` keeps the duplicated name in the
+ * unbundled scheduled-tasks client equal to this one.
+ */
+export const SCHEDULE_PANEL_ANCHOR = 'data-dsh-scheduled-tasks-panel'
+
 /**
  * The session header, addressed by the slot it is rendered into.
  *

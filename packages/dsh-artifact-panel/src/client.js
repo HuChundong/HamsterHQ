@@ -553,7 +553,7 @@ window.__ModuleLoader__.load({
                 : active.id === 'terminal'
                   ? h(TerminalPane, null)
                   : active.id === 'computer'
-                    ? h(ComputerPane, null)
+                    ? h(ComputerPane, { maximised })
                     : active.id === 'browser'
                     ? h(BrowserPane, null)
                     : h(Placeholder, { tab: active })),
