@@ -55,7 +55,6 @@ window.__ModuleLoader__.load({
         'card.takeover': '接管',
         'card.done': '已完成',
         'card.skip': '跳过',
-        'card.waiting': '请在上方操作卡片中完成或跳过这一步。',
         'card.answering': '正在把结果交给 agent…',
         'card.answer_failed': '没能提交结果，请再试一次。',
         'screen.loading': '正在读取电脑画面…',
@@ -78,7 +77,6 @@ window.__ModuleLoader__.load({
         'card.takeover': 'Take over',
         'card.done': 'Done',
         'card.skip': 'Skip',
-        'card.waiting': 'Complete or skip this step in the action card above.',
         'card.answering': 'Returning the result to the agent…',
         'card.answer_failed': 'The result could not be submitted. Try again.',
         'screen.loading': 'Reading the computer screen…',
@@ -254,18 +252,6 @@ window.__ModuleLoader__.load({
         line-height: 18px;
       }
       .${P}-feedback[data-error='true'] { color: var(--dsw-alias-state-error-primary); }
-      .${P}-composer {
-        box-sizing: border-box;
-        width: 100%;
-        padding: 10px 14px;
-        border: 1px solid var(--dsw-alias-border-l1);
-        border-radius: 12px;
-        background: var(--dsw-alias-button-ghost-active-fill);
-        color: var(--dsw-alias-label-secondary);
-        font-size: 13px;
-        line-height: 20px;
-        text-align: center;
-      }
 
       .${P}-takeover {
         position: fixed;
@@ -629,9 +615,17 @@ window.__ModuleLoader__.load({
         }) : null)
     }
 
+    /**
+     * The composer, held empty while the card waits.
+     *
+     * It draws nothing, and the seat is still the point: leaving it vacant
+     * gives the question back to the shipped generic composer, which offers
+     * the same completed/skipped buttons a second time under the card that
+     * already has them. A line of prose here was the first attempt and read
+     * as instructions for a card that explains itself.
+     */
     function WaitingComposer() {
-      const t = useT()
-      return h('div', { className: `${P}-composer`, role: 'status', 'aria-live': 'polite' }, t('card.waiting'))
+      return null
     }
 
     const readPanelBg = () => {
