@@ -1,8 +1,9 @@
 /**
  * The shared sandbox computer, host half.
  *
- * This owns the read-only browser plane and the one model-facing operation
- * that crosses from agent control to human control. The wait uses DSH's public
+ * This owns the read-only watching plane — the agent's browser pages and one
+ * frame of the whole screen — and the one model-facing operation that crosses
+ * from agent control to human control. The wait uses DSH's public
  * userQuestions service: it already scopes the request to the live root agent,
  * survives a pause without model tokens, and resumes the same tool call when a
  * browser client answers. No new wire protocol or harness patch is involved.
@@ -24,11 +25,21 @@ import {
   deferredActionMessage,
 } from './actions.js'
 import * as browser from './browser.js'
+import * as screen from './screen.js'
 
 export const name = 'computer'
 export const inject = ['connection', 'webServer', 'tools', 'userQuestions']
 
-const BROWSER_CHANNEL = '/browser'
+/**
+ * The one path the gateway routes to this plugin.
+ *
+ * Named for the browser because that is what it first carried and what the
+ * gateway's route list says. It now answers three questions about the same
+ * computer — which pages are open, one page's frame, and one frame of the
+ * whole screen — and a second path would be a gateway route, a tunnel
+ * authority and a check for no new capability.
+ */
+const CHANNEL = '/browser'
 
 const badRequest = (message) => ({ ok: false, error: { code: 'bad-request', message, details: { issues: [] } } })
 const internal = (message) => ({ ok: false, error: { code: 'internal', message, details: {} } })
@@ -40,7 +51,7 @@ const bounded = (value, limit) => String(value ?? '').trim().slice(0, limit)
  * @param {import('@deepseek-ai/cordis').Context} ctx - plugin context.
  */
 export function apply(ctx) {
-  ctx.connection.rpc.handle(BROWSER_CHANNEL, async (endpoint, payload) => {
+  ctx.connection.rpc.handle(CHANNEL, async (endpoint, payload) => {
     try {
       const body = payload ?? {}
       switch (endpoint) {
@@ -51,6 +62,8 @@ export function apply(ctx) {
           if (frame === undefined) return badRequest('no such page')
           return { ok: true, value: frame }
         }
+        case 'screen':
+          return { ok: true, value: await screen.shot() }
         default:
           return badRequest(`no such endpoint: ${endpoint}`)
       }

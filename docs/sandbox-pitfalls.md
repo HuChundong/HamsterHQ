@@ -684,6 +684,32 @@ the production backend attempted to open a browser on startup. The patch uses
 `openBrowser: false`, and `check-images.sh` resolves it through the published
 web-app schema to check the effective values rather than grepping the YAML.
 
+## The card showed the browser when the person needed the screen
+
+The user-action handoff raised its card with a live CDP screenshot of the
+agent's Chromium. Every card a tenant actually saw said "the browser has not
+started" over an empty rectangle.
+
+The wrong conclusion was that the `/browser` channel or the tunnel had broken,
+because the same endpoints feed the panel's Browser pane and that pane works.
+Both were fine. The desktop image starts Chrome lazily, on the agent's first
+browser command — so CDP is not listening until then, and the moment a handoff
+is raised is very often before then. Worse, a handoff is raised for whatever
+stopped the automation: a KDE dialog, a terminal prompt, a consent sheet in a
+window Chrome never opened. Even with CDP answering, a page screenshot is the
+wrong picture of a computer somebody is about to operate.
+
+The card now asks for one JPEG of the whole X display. `maim` takes it in 59ms
+at 51KB on the 1920x1080 desktop, for 1.4MB installed. `scrot` is the same idea
+and costs 59MB, because imlib2 depends on ghostscript and the URW font set for
+loaders nothing here will open; PNG through Node's zlib was 226ms and 282KB for
+the same frame.
+
+Take over used to dispatch a DOM event asking the artifact panel to open its
+Computer tab, which put a login form in a 680px column beside the conversation.
+It now mounts the same noVNC frame over the whole window with one bar across
+the top, and the answer the agent is waiting for is a button in that bar.
+
 ## What generalizes
 
 - **A snapshot cannot hold what is only knowable later.** Everything
@@ -720,3 +746,6 @@ web-app schema to check the effective values rather than grepping the YAML.
 - **A failure that looks like a normal event is the kind that lasts.** "The
   sandbox restarts when the gateway does" needed no explanation, so it never
   got one.
+- **A picture of the wrong thing is worse than no picture.** The handoff card
+  screenshotted the agent's browser page; what the person needed was the screen
+  they were about to operate, and the two are rarely the same window.

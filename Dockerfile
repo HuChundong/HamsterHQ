@@ -779,6 +779,10 @@ RUN printf '%s\n' \
 # Desktop stack only — no OpenCode, sshd or playwright-mcp. noVNC's browser
 # assets arrive from novnc-assets; runtime transport is Python websockify, so
 # apt must not replace the image's official Node 24 with Debian Node 18.
+#
+# `maim` is what the handoff card's picture of this screen comes from, and it
+# is the smallest thing that can take one: 1.4MB installed against scrot's 59MB
+# of imlib2 loaders. The measurements are in `packages/dsh-computer/screen.js`.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        dbus dbus-x11 \
@@ -791,6 +795,7 @@ RUN apt-get update \
        qt5-style-kvantum qttranslations5-l10n \
        fonts-noto-cjk fonts-noto-color-emoji \
        x11-xserver-utils \
+       maim \
        locales \
   && if [ ! -x /opt/chrome/chrome ]; then \
        apt-get install -y --no-install-recommends chromium \
