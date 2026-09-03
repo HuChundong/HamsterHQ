@@ -33,7 +33,7 @@
 # DSH_VERSION` to bring this default into its own scope — which is the only way
 # to read it after a FROM, and which is what was missing when the footer went
 # blank.
-ARG DSH_VERSION=0.1.2-alpha.5
+ARG DSH_VERSION=0.1.2-rc.1
 
 # ------------------------------------------------------------------- deps ----
 FROM node:24.19.0-bookworm-slim AS deps
