@@ -14,10 +14,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import {
-  COMPUTER_OPEN_EVENT,
-  COMPUTER_PANEL_ANCHOR,
-} from '../packages/dsh-artifact-panel/src/constants.js'
+import { COMPUTER_PANEL_ANCHOR } from '../packages/dsh-artifact-panel/src/constants.js'
 
 const root = resolve(import.meta.dirname, '..')
 const panel = readFileSync(resolve(root, 'packages/dsh-artifact-panel/src/client.js'), 'utf8')
@@ -31,10 +28,11 @@ assert.match(computer, /aspect-ratio: 1280 \/ 720/)
 assert.match(computer, /'data-maximised': String\(maximised\)/)
 assert.match(computer, /maximised \? null : h\('div'/)
 
-const duplicatedOpenEvent = /const OPEN_EVENT = '([^']+)'/.exec(computer)?.[1]
-assert.equal(duplicatedOpenEvent, COMPUTER_OPEN_EVENT)
-assert.match(panel, /window\.addEventListener\(COMPUTER_OPEN_EVENT, openComputer\)/)
-assert.match(panel, /event\.preventDefault\(\)/)
+// The takeover is this plugin's own full-window surface, not a request the
+// panel grants. Nothing may re-introduce a DOM event between the two halves:
+// the seat below is the whole contract they share.
+assert.doesNotMatch(computer, /dsh-computer:open/)
+assert.doesNotMatch(panel, /dsh-computer:open/)
 
 const duplicatedAnchor = /const PANEL_ANCHOR = '([^']+)'/.exec(scheduled)?.[1]
 assert.equal(

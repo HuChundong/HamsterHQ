@@ -54,10 +54,12 @@ today:
  document read back instead of handed to a desktop that is not there. Every
  line of it survives the gateway's removal, which is why it is not more surface
  on another plugin — and why it would be usable by anyone running dsh remotely.
-- `dsh-computer` is the shared browser and desktop: its read-only frame channel,
-  the interactive noVNC surface, and the tool/card handoff when an agent needs
-  a person to finish login, MFA, CAPTCHA, or consent. It survives the gateway;
-  only the artifact panel seat it renders into is deployment layout.
+- `dsh-computer` is the shared browser and desktop: its read-only frame
+  channel — the agent's pages, and one JPEG of the whole screen — the
+  interactive noVNC surface, and the tool/card handoff when an agent needs a
+  person to finish login, MFA, CAPTCHA, or consent. Taking over is this
+  plugin's own full-window surface; only the artifact panel seat it renders
+  into is deployment layout. It survives the gateway.
 - `dsh-tenant-account` is who is signed in, how to sign out, and the onboarding
   steps a deployment with its own sign-in page has already said. None of it
   means anything without the gateway.

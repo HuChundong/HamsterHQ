@@ -2,15 +2,17 @@
  * The shared sandbox computer, browser half.
  *
  * It owns three surfaces that are one interaction: the desktop rendered into
- * the artifact panel's seat, the live browser frame on a waiting tool call,
- * and the three-action handoff card. The wait itself is still DSH's public
- * user-questions flow; this plugin only gives one marked question a richer
- * presentation and leaves every other question to the shipped composer.
+ * the artifact panel's seat, the handoff card with a live frame of the screen
+ * the person is being asked to take over, and the full-window takeover that
+ * card opens. The wait itself is still DSH's public user-questions flow; this
+ * plugin only gives one marked question a richer presentation and leaves
+ * every other question to the shipped composer.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-computer',
   factory: (require) => {
     const React = require('react')
+    const ReactDom = require('react-dom')
     const ReactDomClient = require('react-dom/client')
     const h = React.createElement
 
@@ -22,11 +24,20 @@ window.__ModuleLoader__.load({
     const QUESTION_PREFIX = 'dsh-computer:user-action:'
     const ACTION_COMPLETED = 'completed'
     const ACTION_SKIPPED = 'skipped'
-    const OPEN_EVENT = 'dsh-computer:open'
     const PANEL_ANCHOR = 'data-dsh-computer-panel'
     const SCHEDULE_PANEL_ANCHOR = 'data-dsh-scheduled-tasks-panel'
-    const BROWSER_CHANNEL = '/browser'
-    const FRAME_EVERY_MS = 1200
+    const CHANNEL = '/browser'
+
+    /**
+     * The card's frame rate.
+     *
+     * Slower than the panel's browser pane on purpose: this is a whole
+     * 1280x720 desktop rather than one page, and the card exists to show that
+     * something is waiting, not to be watched. While the takeover is open the
+     * poll stops entirely — the noVNC frame beside it is the live picture.
+     */
+    const FRAME_EVERY_MS = 2000
+
     const VNC_REV = '4'
 
     const DICTIONARY = {
@@ -42,15 +53,16 @@ window.__ModuleLoader__.load({
         'card.title': '请在电脑上完成操作',
         'card.instructions': '完成后告诉 agent，它会从当前状态继续。',
         'card.takeover': '接管',
-        'card.done': '我完成了',
+        'card.done': '已完成',
         'card.skip': '跳过',
         'card.waiting': '请在上方操作卡片中完成或跳过这一步。',
         'card.answering': '正在把结果交给 agent…',
         'card.answer_failed': '没能提交结果，请再试一次。',
-        'preview.loading': '正在读取浏览器画面…',
-        'preview.off': '浏览器尚未启动',
-        'preview.none': '浏览器里还没有打开的页面',
-        'preview.alt': 'agent 当前浏览器画面',
+        'screen.loading': '正在读取电脑画面…',
+        'screen.off': '暂时读不到电脑画面',
+        'screen.alt': '电脑当前画面',
+        'takeover.close': '收起',
+        'takeover.hint': '你现在直接操作这台电脑，完成后点“已完成”。',
       },
       en: {
         'panel.title': 'Computer',
@@ -64,15 +76,16 @@ window.__ModuleLoader__.load({
         'card.title': 'Complete an action on the computer',
         'card.instructions': 'Tell the agent when you are done and it will continue from the current state.',
         'card.takeover': 'Take over',
-        'card.done': 'I am done',
+        'card.done': 'Done',
         'card.skip': 'Skip',
         'card.waiting': 'Complete or skip this step in the action card above.',
         'card.answering': 'Returning the result to the agent…',
         'card.answer_failed': 'The result could not be submitted. Try again.',
-        'preview.loading': 'Reading the browser view…',
-        'preview.off': 'The browser has not started',
-        'preview.none': 'No page is open in the browser',
-        'preview.alt': 'The agent browser right now',
+        'screen.loading': 'Reading the computer screen…',
+        'screen.off': 'The computer screen cannot be read right now',
+        'screen.alt': 'The computer right now',
+        'takeover.close': 'Close',
+        'takeover.hint': 'You are operating this computer directly. Choose Done when the action is finished.',
       },
     }
 
@@ -164,6 +177,16 @@ window.__ModuleLoader__.load({
         border: 1px solid var(--dsw-alias-border-l1);
         border-radius: 12px;
         background: var(--dsw-alias-button-ghost-active-fill);
+        box-sizing: border-box;
+        padding: 0;
+        width: calc(100% - 36px);
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      .${P}-preview:focus-visible {
+        outline: 2px solid var(--dsw-alias-state-business-primary);
+        outline-offset: 2px;
       }
       .${P}-preview img {
         display: block;
@@ -242,6 +265,55 @@ window.__ModuleLoader__.load({
         font-size: 13px;
         line-height: 20px;
         text-align: center;
+      }
+
+      .${P}-takeover {
+        position: fixed;
+        inset: 0;
+        z-index: 1100;
+        display: flex;
+        flex-direction: column;
+        background: var(--dsw-alias-bg-layer-1);
+        color: var(--dsw-alias-label-primary);
+        font-family: var(--dsw-font-family);
+      }
+      .${P}-takeover-bar {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--dsw-alias-border-l1);
+      }
+      .${P}-takeover-what {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .${P}-takeover-title {
+        margin: 0;
+        font-size: 14px;
+        line-height: 20px;
+        font-weight: 650;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .${P}-takeover-hint {
+        margin: 1px 0 0;
+        color: var(--dsw-alias-label-tertiary);
+        font-size: 12px;
+        line-height: 18px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .${P}-takeover-frame {
+        display: block;
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        border: 0;
+        background: var(--dsw-alias-bg-layer-1);
       }
 
       [${PANEL_ANCHOR}] {
@@ -333,12 +405,24 @@ window.__ModuleLoader__.load({
       && pending.questions[0].id.startsWith(QUESTION_PREFIX)
 
     const call = async (endpoint, payload) => {
-      const result = await connection.rpc.call(BROWSER_CHANNEL, endpoint, payload ?? {})
+      const result = await connection.rpc.call(CHANNEL, endpoint, payload ?? {})
       if (result.ok) return result.value
       throw new Error(result.error.message)
     }
 
-    function BrowserPreview({ active }) {
+    /**
+     * The screen the person is being asked to take over.
+     *
+     * The whole desktop, not the agent's browser page. A handoff is raised for
+     * whatever stopped the automation — a login form, a KDE dialog, a consent
+     * sheet in a window Chrome never opened — and the browser is started
+     * lazily, so asking CDP for a page put "the browser has not started" on
+     * every card raised before the agent had opened one.
+     *
+     * It is a button because clicking the picture of the thing you are about
+     * to operate is the obvious way in, and the same click Take over makes.
+     */
+    function ScreenView({ active, onTakeover }) {
       const t = useT()
       const [view, setView] = React.useState({ state: 'loading' })
 
@@ -353,15 +437,8 @@ window.__ModuleLoader__.load({
             return
           }
           try {
-            const status = await call('status')
-            if (!status.running) {
-              if (live) setView({ state: 'off' })
-            } else if (status.pages.length === 0) {
-              if (live) setView({ state: 'none' })
-            } else {
-              const frame = await call('shot', { id: status.pages[0].id })
-              if (live) setView({ state: 'frame', frame })
-            }
+            const frame = await call('screen')
+            if (live) setView(frame.running ? { state: 'frame', data: frame.data } : { state: 'off' })
           } catch {
             if (live) setView((current) => current.state === 'frame' ? current : { state: 'off' })
           }
@@ -371,22 +448,90 @@ window.__ModuleLoader__.load({
         return () => { live = false; clearTimeout(timer) }
       }, [active])
 
-      const emptyKey = view.state === 'off'
-        ? 'preview.off'
-        : view.state === 'none' ? 'preview.none' : 'preview.loading'
-      return h('div', { className: `${P}-preview` },
-        view.state === 'frame'
-          ? h('img', {
-            src: `data:image/jpeg;base64,${view.frame.data}`,
-            alt: view.frame.title || t('preview.alt'),
-          })
-          : h('div', { className: `${P}-preview-empty`, role: 'status' }, t(emptyKey)))
+      return h('button', {
+        type: 'button',
+        className: `${P}-preview`,
+        onClick: onTakeover,
+        'aria-label': t('card.takeover'),
+      },
+      view.state === 'frame'
+        ? h('img', { src: `data:image/jpeg;base64,${view.data}`, alt: t('screen.alt') })
+        : h('span', { className: `${P}-preview-empty`, role: 'status' },
+          t(view.state === 'off' ? 'screen.off' : 'screen.loading')))
     }
 
-    const openComputer = () => {
-      const event = new CustomEvent(OPEN_EVENT, { cancelable: true, detail: { source: 'user-action' } })
-      const handled = window.dispatchEvent(event) === false
-      if (!handled) window.open(computerSrc(), '_blank', 'noopener,noreferrer')
+
+    /**
+     * The takeover: this computer, full window, over the conversation.
+     *
+     * A person handed a login cannot do it in a 640px card, and the artifact
+     * panel is a column beside the conversation rather than a desk. So the
+     * same noVNC frame the panel seat renders is mounted over the whole
+     * window with one bar across the top, and the answer the agent is waiting
+     * for is a button in that bar: the person finishes in the desktop and
+     * says so without hunting back down the transcript for the card.
+     *
+     * The bar's Done and Skip are the card's own, passed in — one wait, one
+     * answer, whichever surface the person happens to be looking at. Closing
+     * settles nothing: leaving the desktop is not the same as being finished
+     * with it, and the card is still there waiting.
+     */
+    function Takeover({ title, onDone, onSkip, onClose, disabled }) {
+      const t = useT()
+      const titleId = React.useId()
+      const frame = React.useRef(null)
+
+      React.useEffect(() => {
+        const onKey = (event) => { if (event.key === 'Escape') onClose() }
+        window.addEventListener('keydown', onKey)
+        return () => { window.removeEventListener('keydown', onKey) }
+      }, [onClose])
+
+      React.useEffect(() => {
+        const iframe = frame.current
+        if (iframe === null) return undefined
+        const paint = () => {
+          try { paintNovncTheme(iframe.contentDocument) } catch { /* the frame is not ready */ }
+        }
+        iframe.addEventListener('load', paint)
+        paint()
+        return () => { iframe.removeEventListener('load', paint) }
+      }, [])
+
+      return ReactDom.createPortal(h('div', {
+        className: `${P}-takeover`,
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-labelledby': titleId,
+      },
+      h('div', { className: `${P}-takeover-bar` },
+        h('div', { className: `${P}-takeover-what` },
+          h('p', { id: titleId, className: `${P}-takeover-title` }, title),
+          h('p', { className: `${P}-takeover-hint` }, t('takeover.hint'))),
+        h('button', {
+          type: 'button',
+          className: `${P}-button ${P}-button-primary`,
+          disabled,
+          onClick: onDone,
+        }, t('card.done')),
+        h('button', {
+          type: 'button',
+          className: `${P}-button ${P}-button-secondary`,
+          disabled,
+          onClick: onSkip,
+        }, t('card.skip')),
+        h('button', {
+          type: 'button',
+          className: `${P}-button ${P}-button-quiet`,
+          onClick: onClose,
+        }, t('takeover.close'))),
+      h('iframe', {
+        ref: frame,
+        className: `${P}-takeover-frame`,
+        title: t('panel.title'),
+        src: computerSrc(),
+        allow: 'clipboard-read; clipboard-write',
+      })), document.body)
     }
 
     function ActionCard({ block, callId, sessionId, useSessionPendingInteraction }) {
@@ -398,6 +543,7 @@ window.__ModuleLoader__.load({
       const args = parseArgs(block)
       const [choice, setChoice] = React.useState(undefined)
       const [failure, setFailure] = React.useState(false)
+      const [takeover, setTakeover] = React.useState(false)
 
       const answer = async (status) => {
         if (owned === undefined || choice !== undefined) return
@@ -426,42 +572,61 @@ window.__ModuleLoader__.load({
       const badgeKey = `card.badge.${state}`
       const disabled = owned === undefined || choice !== undefined
 
-      return h('article', {
-        className: `${P}-tool`,
-        'data-state': state,
-        'aria-labelledby': titleId,
-      },
-      h('div', { className: `${P}-tool-head` },
-        h('span', { className: `${P}-eyebrow` }, t('card.header')),
-        h('span', { className: `${P}-badge`, role: 'status', 'aria-live': 'polite' }, t(badgeKey))),
-      h('div', { className: `${P}-copy` },
-        h('h3', { id: titleId, className: `${P}-title` }, args.title || t('card.title')),
-        h('p', { className: `${P}-instructions` }, args.instructions || t('card.instructions'))),
-      settled ? null : h(BrowserPreview, { active: true }),
-      settled ? null : h('div', { className: `${P}-actions` },
-        h('button', {
-          type: 'button',
-          className: `${P}-button ${P}-button-primary`,
-          onClick: openComputer,
-        }, t('card.takeover')),
-        h('button', {
-          type: 'button',
-          className: `${P}-button ${P}-button-secondary`,
+      // Nothing keeps a full-window desktop over a conversation whose wait is
+      // over, however it ended — answered here, answered from the composer, or
+      // the call abandoned with the turn.
+      const open = takeover && !settled && choice === undefined
+      React.useEffect(() => { if (!open && takeover) setTakeover(false) }, [open, takeover])
+
+      const title = args.title || t('card.title')
+
+      return h(React.Fragment, null,
+        h('article', {
+          className: `${P}-tool`,
+          'data-state': state,
+          'aria-labelledby': titleId,
+        },
+        h('div', { className: `${P}-tool-head` },
+          h('span', { className: `${P}-eyebrow` }, t('card.header')),
+          h('span', { className: `${P}-badge`, role: 'status', 'aria-live': 'polite' }, t(badgeKey))),
+        h('div', { className: `${P}-copy` },
+          h('h3', { id: titleId, className: `${P}-title` }, title),
+          h('p', { className: `${P}-instructions` }, args.instructions || t('card.instructions'))),
+        settled ? null : h(ScreenView, {
+          active: !open,
+          onTakeover: () => { setTakeover(true) },
+        }),
+        settled ? null : h('div', { className: `${P}-actions` },
+          h('button', {
+            type: 'button',
+            className: `${P}-button ${P}-button-primary`,
+            onClick: () => { setTakeover(true) },
+          }, t('card.takeover')),
+          h('button', {
+            type: 'button',
+            className: `${P}-button ${P}-button-secondary`,
+            disabled,
+            onClick: () => { void answer(ACTION_COMPLETED) },
+          }, t('card.done')),
+          h('button', {
+            type: 'button',
+            className: `${P}-button ${P}-button-quiet`,
+            disabled,
+            onClick: () => { void answer(ACTION_SKIPPED) },
+          }, t('card.skip'))),
+        settled || (choice === undefined && !failure) ? null : h('div', {
+          className: `${P}-feedback`,
+          'data-error': String(failure),
+          role: 'status',
+          'aria-live': 'polite',
+        }, failure ? t('card.answer_failed') : t('card.answering'))),
+        open ? h(Takeover, {
+          title,
           disabled,
-          onClick: () => { void answer(ACTION_COMPLETED) },
-        }, t('card.done')),
-        h('button', {
-          type: 'button',
-          className: `${P}-button ${P}-button-quiet`,
-          disabled,
-          onClick: () => { void answer(ACTION_SKIPPED) },
-        }, t('card.skip'))),
-      settled || (choice === undefined && !failure) ? null : h('div', {
-        className: `${P}-feedback`,
-        'data-error': String(failure),
-        role: 'status',
-        'aria-live': 'polite',
-      }, failure ? t('card.answer_failed') : t('card.answering')))
+          onDone: () => { void answer(ACTION_COMPLETED) },
+          onSkip: () => { void answer(ACTION_SKIPPED) },
+          onClose: () => { setTakeover(false) },
+        }) : null)
     }
 
     function WaitingComposer() {

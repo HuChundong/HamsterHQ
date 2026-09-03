@@ -399,6 +399,7 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
       && test "$CHROME_PROFILE_DIR" = /mnt/browser-profile \
       && test "$CHROME_CACHE_DIR" = /tmp/desktop-chrome-cache \
       && test -x /usr/local/bin/set-desktop-theme \
+      && command -v maim >/dev/null \
       && test "$(basename "$(readlink /usr/local/bin/google-chrome)")" = chrome-launch \
       && echo ok || echo missing' \
     2>/dev/null || echo error)

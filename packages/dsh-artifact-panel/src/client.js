@@ -76,7 +76,7 @@ import { basename, insideWorkspace } from './api.js'
 import { BrowserPane, setBrowserPlane } from './browser-pane.js'
 import { Canvas } from './canvas.js'
 import {
-  ANCHOR, COMPUTER_OPEN_EVENT, COMPUTER_PANEL_ANCHOR, DEFAULT_WIDTH, DRAGGING, HEADER_HEIGHT_VAR,
+  ANCHOR, COMPUTER_PANEL_ANCHOR, DEFAULT_WIDTH, DRAGGING, HEADER_HEIGHT_VAR,
   MAX_FRACTION, MIN_WIDTH, NS, WIDTH_VAR,
 } from './constants.js'
 import { FileTree } from './file-tree.js'
@@ -594,21 +594,6 @@ window.__ModuleLoader__.load({
           () => ctx.locale.register(LOCALE_NS, DICTIONARY),
           'artifact-panel: dictionaries',
         )
-
-        // dsh-computer owns the handoff card, while this plugin owns panel
-        // navigation. A cancelable DOM event is the narrow contract between
-        // those browser halves: preventDefault tells the sender the panel was
-        // available, so a standalone computer plugin may fall back to a new
-        // noVNC window.
-        ctx.effect(() => {
-          const openComputer = (event) => {
-            store.openTab({ id: 'computer', icon: 'computer' })
-            store.write({ open: true })
-            event.preventDefault()
-          }
-          window.addEventListener(COMPUTER_OPEN_EVENT, openComputer)
-          return () => { window.removeEventListener(COMPUTER_OPEN_EVENT, openComputer) }
-        }, 'artifact-panel: computer handoff')
 
         // The styles go in once, beside the panel rather than inside it, so
         // the rule that pushes `#root` survives the panel being closed.

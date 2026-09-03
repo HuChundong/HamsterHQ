@@ -48,9 +48,6 @@ export const DRAGGING = 'data-dsh-artifact-panel-dragging'
  */
 export const COMPUTER_PANEL_ANCHOR = 'data-dsh-computer-panel'
 
-/** DOM event the computer plugin dispatches when a handoff card is taken over. */
-export const COMPUTER_OPEN_EVENT = 'dsh-computer:open'
-
 /**
  * The session header, addressed by the slot it is rendered into.
  *
