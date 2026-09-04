@@ -44,7 +44,7 @@ prevent — and the first one is only here because upstream is closed to it.
 ## Everything added to DSH is a cordis plugin
 
 Which plugin a change belongs in is decided by one question: **take the
-gateway away — is this still needed?** Seven plugins sit on that question
+gateway away — is this still needed?** Eight plugins sit on that question
 today:
 
 - `dsh-gateway-tunnel` carries a sandbox's `/api` traffic out to the gateway.
@@ -60,6 +60,11 @@ today:
   person to finish login, MFA, CAPTCHA, or consent. Taking over is this
   plugin's own full-window surface; only the artifact panel seat it renders
   into is deployment layout. It survives the gateway.
+- `dsh-deployment-prompt` corrects the system prompt where the harness assumes
+  the person is sitting at this machine: the two shipped sections that hand the
+  agent a loopback URL as the address the user is looking at, and call `/app` a
+  checkout to extend. It survives the gateway — anyone running dsh on a machine
+  their user cannot reach owes the agent the same two corrections.
 - `dsh-tenant-account` is who is signed in, how to sign out, and the onboarding
   steps a deployment with its own sign-in page has already said. None of it
   means anything without the gateway.
@@ -74,7 +79,7 @@ The other three packages in `packages/` are not plugins: `dsh-icons` and
 `dsh-ground` serve surfaces that have no module table, and `tunnel-protocol`
 is the frame both ends of the tunnel speak.
 
-A change that fits none of the seven is a sign the question above has a new
+A change that fits none of the eight is a sign the question above has a new
 answer, not that one of them should grow a second subject —
 `dsh-gateway-logout` was renamed when it had three.
 

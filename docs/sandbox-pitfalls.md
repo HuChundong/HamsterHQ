@@ -710,6 +710,46 @@ Computer tab, which put a login form in a 680px column beside the conversation.
 It now mounts the same noVNC frame over the whole window with one bar across
 the top, and the answer the agent is waiting for is a button in that bar.
 
+## A configured persona is a value nothing reads
+
+DSH tells the agent it is talking to a person at http://127.0.0.1:3080, and that
+`/app` is a checkout to inspect and extend. Both are false here, and the agent
+acted on both: a tenant was handed a link only their own sandbox can resolve,
+and a request to change the interface became a hunt for `apps/web` in a
+filesystem that has never carried it.
+
+The first fix was `persona:` on the `system-prompt` row in `cordis.patch.yml` —
+the row's own documented config, schema-checked, and it appears in
+`dsh web --dump-config` exactly as written. The assembled prompt did not
+change. The `standard` agent preset mounts `@deepseek-ai/dsh-persona` with a
+persona of its own, and a section registered in an agent's scope shadows the
+same name registered globally; that package's own header says so. Every session
+runs under a preset, so the deployment persona is a value nothing reads.
+
+Adding a section instead works — `systemPrompt.section()` is additive — but
+additive is the entire limit. A duplicate name inside one layer throws, and a
+new section cannot delete a sentence in somebody else's; the two wrong ones
+would still be there with a correction sitting beside them.
+
+The one seam that can rewrite text somebody else registered is
+`system-prompt/assemble`: a waterfall dispatched once per model step over
+`{ sections, contexts, tools, variables }`, whose returned value is what the
+prompt is assembled from. A plugin mounted from `cordis.patch.yml` carries no
+scope tag, and `scopeTarget` passes an untagged listener for every scope
+including a preset's — which is what lets one listener reach the sessions a
+tenant actually runs. `dsh-deployment-prompt` composes with `await next()` and
+replaces the two sections by name.
+
+Two things that cost nothing to know and would cost a day to rediscover. A
+persona row declaring `complete: true` makes the registry restore that persona
+as the sole section AFTER the waterfall, discarding every edit — the shipped
+`minimal` preset does exactly that, which is harmless only because it discards
+the wrong text along with the correction. And the section names, `app:web-surface`
+and `harness:source`, are string constants in `dsh-web-app` and `dsh-app-boot`
+rather than an API: `scripts/check-images.sh` greps the installed bundles for
+both, so a `DSH_VERSION` bump that renames one fails a build instead of quietly
+restoring the sentence about 127.0.0.1.
+
 ## What generalizes
 
 - **A snapshot cannot hold what is only knowable later.** Everything
@@ -749,3 +789,6 @@ the top, and the answer the agent is waiting for is a button in that bar.
 - **A picture of the wrong thing is worse than no picture.** The handoff card
   screenshotted the agent's browser page; what the person needed was the screen
   they were about to operate, and the two are rarely the same window.
+- **Additive is not corrective.** A registry that only lets you add cannot fix
+  what is already there. Find the seam that returns the assembled value, or
+  accept the sentence.

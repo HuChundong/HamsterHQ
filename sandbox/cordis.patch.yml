@@ -72,6 +72,21 @@
     - id: artifact-panel
       name: dsh-artifact-panel
 
+# The corrections this deployment owes the system prompt. DSH is written for a
+# person sitting at the machine that runs it, and says so in two shipped
+# sections: one hands the agent a loopback URL as the address the user is
+# looking at, the other calls /app a checkout to extend. Here the browser is
+# behind the gateway on another machine, and /app is published build output
+# baked into an image.
+#
+# It rewrites them through the `system-prompt/assemble` waterfall, which is the
+# only seam that can change text somebody else registered — `section()` is
+# additive, and a persona set on the harness's own `system-prompt` row is
+# shadowed by the agent preset's persona row, which mounts in a nearer scope.
+- insert:
+    - id: deployment-prompt
+      name: dsh-deployment-prompt
+
 # The tenant's scheduled tasks. Its host half holds the timers, because the
 # firing has to happen where the agent is; the durable list is the gateway's,
 # because a sandbox is reclaimed minutes after its tenant closes the tab.
