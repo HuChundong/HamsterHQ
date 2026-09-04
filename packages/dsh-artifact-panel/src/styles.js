@@ -1080,6 +1080,50 @@ export const CSS = `
   [data-slot='conversation.session.header.utilities'] button,
   .${NS}-opener,
   .${NS}-toggle,
+  /* The sidebar foot's way in, drawn with or without a session. Matches the
+     scheduled-tasks control beneath it: same height, same collapsed square. */
+  .${NS}-computer-open {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0 0 4px;
+    padding: 8px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--dsw-alias-label-primary);
+    font-family: var(--dsw-font-family);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .${NS}-computer-open:hover { background: var(--dsw-alias-interactive-bg-hover); }
+  .${NS}-computer-open[data-wide='false'] {
+    width: 36px;
+    height: 36px;
+    margin: 0 0 4px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+  .${NS}-computer-open-icon {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--dsw-alias-label-tertiary);
+  }
+  .${NS}-computer-open-label {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    color: var(--dsw-alias-label-secondary);
+  }
+
   .${NS}-computer-launch {
     flex: none;
     display: inline-flex;
