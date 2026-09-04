@@ -44,4 +44,26 @@ assert.match(computer, /\[SCHEDULE_PANEL_ANCHOR\]: ''/)
 assert.match(scheduled, /ReactDomClient\.createRoot\(next\)/)
 assert.match(scheduled, /React\.createElement\(ScheduleManager, \{ inline: true \}\)/)
 
+// The Computer has to be reachable with no session open. The session header
+// is not drawn until a session exists, so the header seat alone left a new
+// conversation with no way to the desktop at all — the sidebar's foot is the
+// one place the shell draws either way.
+assert.match(panel, /id: 'artifact-panel-computer', order: 40 \}/)
+assert.match(panel, /name: 'sidebar\.footer\.action'/)
+assert.match(panel, /function SidebarComputer\(/)
+
+// Two copies of one DOM walk, in plugins that cannot import each other: the
+// slot anchor is display:contents, so each footer seat has to find the flex
+// row itself. Relying on the other plugin's copy is not enough — scheduled
+// tasks hides its seat when the gateway serves none, and then nothing runs.
+const stacker = (text) => {
+  const start = text.indexOf('stackFooterColumn = (mark) => {')
+  return text.slice(start, text.indexOf('\n    }', start)).replace(/\s+/g, ' ')
+}
+assert.equal(
+  stacker(panel),
+  stacker(scheduled),
+  'both footer seats must column the sidebar row the same way',
+)
+
 console.log('check-computer-layout: panel, computer and scheduled-task seats agree')

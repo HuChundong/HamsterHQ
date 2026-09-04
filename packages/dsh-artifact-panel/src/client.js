@@ -336,6 +336,88 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Turn the sidebar's footer row into a column, so a seat takes a line.
+     *
+     * The slot anchor is `display: contents`, so the element this returns is
+     * not the box the shell lays out — only a walk up the live tree reaches
+     * the flex row that still arranges seats horizontally. `dsh-scheduled-tasks`
+     * carries the same walk for the same reason and the two cannot import each
+     * other; `check-computer-layout.mjs` holds them equal. Doing it here rather
+     * than relying on that plugin matters: it hides its own seat when the
+     * gateway serves no schedules, and then nothing else would have columned
+     * the row.
+     *
+     * @param {Element|null} mark - an element inside the seat, after mount.
+     * @returns {() => void} restores what it changed.
+     */
+    const stackFooterColumn = (mark) => {
+      if (mark === null) return () => {}
+      let el = mark.parentElement
+      while (el !== null) {
+        const shown = window.getComputedStyle(el)
+        if (shown.display === 'contents') {
+          el = el.parentElement
+          continue
+        }
+        if (shown.display === 'flex' || shown.display === 'inline-flex') {
+          const previous = {
+            flexDirection: el.style.flexDirection,
+            alignItems: el.style.alignItems,
+            width: el.style.width,
+          }
+          el.style.flexDirection = 'column'
+          el.style.alignItems = 'stretch'
+          el.style.width = '100%'
+          return () => {
+            el.style.flexDirection = previous.flexDirection
+            el.style.alignItems = previous.alignItems
+            el.style.width = previous.width
+          }
+        }
+        el = el.parentElement
+      }
+      return () => {}
+    }
+
+    /**
+     * Open the computer from the sidebar, with or without a session.
+     *
+     * `ComputerLaunch` sits in the session header, and the shell draws no
+     * session header until there is a session — so on a new conversation the
+     * only way to the desktop disappeared exactly when a tenant was most
+     * likely to want a look at it. The sidebar's foot is drawn whatever the
+     * conversation is doing, which is what "reachable at any time" needs.
+     *
+     * Not gated on the sandbox being up. Opening the tab is what starts one,
+     * and a control that hides until the machine is warm is a control that is
+     * missing the moment it is wanted.
+     *
+     * @param {{wide?: boolean}} props - false while the sidebar is collapsed.
+     * @returns {object} the element.
+     */
+    function SidebarComputer({ wide }) {
+      const t = useT()
+      const stackRef = React.useRef(null)
+
+      React.useLayoutEffect(() => stackFooterColumn(stackRef.current), [])
+
+      return h('div', { 'data-dsh-footer-stack': '', ref: stackRef },
+        h('button', {
+          type: 'button',
+          className: `${NS}-computer-open`,
+          'data-wide': String(wide !== false),
+          title: t('computer.launch'),
+          'aria-label': t('computer.launch'),
+          onClick: () => {
+            store.openTab({ id: 'computer', icon: 'computer' })
+            store.write({ open: true })
+          },
+        },
+        h('span', { className: `${NS}-computer-open-icon` }, icon('computer', wide === false ? 18 : 16)),
+        wide === false ? null : h('span', { className: `${NS}-computer-open-label` }, t('computer.launch'))))
+    }
+
+    /**
      * Layout-owned seat for dsh-computer's independent React root.
      * @param {{maximised: boolean}} props - panel mode forwarded as a DOM fact.
      * @returns {object} the empty seat.
@@ -670,6 +752,18 @@ window.__ModuleLoader__.load({
             ComputerLaunch,
           )),
           'artifact-panel: Computer in the session header',
+        )
+
+        // The same destination from the sidebar's foot, which is drawn whether
+        // or not a session exists. `sidebar.footer.action` is a list slot:
+        // dsh-sandbox-host holds 100 with the sandbox row and dsh-scheduled-tasks
+        // 50, and a lower number is earlier — the Computer sits above both.
+        ctx.effect(
+          () => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register(
+            { name: 'sidebar.footer.action', id: 'artifact-panel-computer', order: 40 },
+            SidebarComputer,
+          )),
+          'artifact-panel: Computer in the sidebar foot',
         )
         ctx.effect(
           () => ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register(
