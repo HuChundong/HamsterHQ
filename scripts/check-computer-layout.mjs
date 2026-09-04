@@ -66,4 +66,26 @@ assert.equal(
   'both footer seats must column the sidebar row the same way',
 )
 
+// The two Computer controls have opposite shapes and one stylesheet. The
+// header rail's rule is a four-selector list ending in `-computer-launch`, and
+// a block dropped between those selectors and their brace does not fail to
+// parse — it silently hands the sidebar row's `width: 100%` to every button in
+// the session header. That is how it broke: the shape rule and the sidebar
+// rule have to be separate rules, and the rail's list has to stay whole.
+const styles = readFileSync(resolve(root, 'packages/dsh-artifact-panel/src/styles.js'), 'utf8')
+const rail = /\[data-slot='conversation\.session\.header\.utilities'\] button,\s*\.\$\{NS\}-opener,\s*\.\$\{NS\}-toggle,\s*\.\$\{NS\}-computer-launch \{([^}]*)\}/
+const shape = rail.exec(styles)
+assert.notEqual(shape, null, 'the header rail shape rule must keep all four selectors on one block')
+assert.match(shape[1], /width: 28px/)
+assert.doesNotMatch(shape[1], /width: 100%/)
+
+for (const [, selector] of styles.matchAll(/([^{}]*)\{[^{}]*\}/g)) {
+  if (!selector.includes('-computer-open')) continue
+  assert.doesNotMatch(
+    selector,
+    /header\.utilities|-opener|-toggle|-computer-launch/,
+    `the sidebar seat must not share a rule with a header control: ${selector.trim()}`,
+  )
+}
+
 console.log('check-computer-layout: panel, computer and scheduled-task seats agree')

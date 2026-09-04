@@ -1080,6 +1080,29 @@ export const CSS = `
   [data-slot='conversation.session.header.utilities'] button,
   .${NS}-opener,
   .${NS}-toggle,
+  .${NS}-computer-launch {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    min-width: 0;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--dsw-alias-label-secondary);
+    cursor: pointer;
+  }
+  [data-slot='conversation.session.header.utilities'] button:hover,
+  .${NS}-opener:hover,
+  .${NS}-toggle:hover,
+  .${NS}-computer-launch:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+
   /* The sidebar foot's way in, drawn with or without a session. Matches the
      scheduled-tasks control beneath it: same height, same collapsed square. */
   .${NS}-computer-open {
@@ -1124,28 +1147,6 @@ export const CSS = `
     color: var(--dsw-alias-label-secondary);
   }
 
-  .${NS}-computer-launch {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    min-width: 0;
-    height: 28px;
-    padding: 0;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--dsw-alias-label-secondary);
-    cursor: pointer;
-  }
-  [data-slot='conversation.session.header.utilities'] button:hover,
-  .${NS}-opener:hover,
-  .${NS}-toggle:hover,
-  .${NS}-computer-launch:hover {
-    background: var(--dsw-alias-interactive-bg-hover);
-    color: var(--dsw-alias-label-primary);
-  }
   /* Session log's own label. Hidden rather than removed: it is upstream's
      element and upstream's copy, and it is still what a screen reader
      reads out, which display:none or visibility:hidden would take away. */
