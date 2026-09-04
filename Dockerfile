@@ -598,6 +598,7 @@ RUN npm install --omit=dev --omit=peer --no-audit --no-fund --install-links \
       /src/packages/dsh-tenant-account \
       /src/packages/dsh-artifact-panel \
       /src/packages/dsh-scheduled-tasks \
+      /src/packages/dsh-deployment-prompt \
       /src/packages/dsh-brand \
   && mkdir -p "$IMAGE_DSH_HOME/profiles/web/node_modules/@deepseek-ai" \
   && ln -s /app/node_modules/@deepseek-ai/dsh-tools \

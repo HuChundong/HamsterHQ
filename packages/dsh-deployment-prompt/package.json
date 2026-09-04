@@ -1,0 +1,11 @@
+{
+  "name": "dsh-deployment-prompt",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Corrects the harness's system prompt where it assumes the person is sitting at this machine.",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  }
+}

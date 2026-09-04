@@ -53,14 +53,14 @@ check 'the harness neither announces nor opens its local URL' private "$handoff"
 resolved=$(docker run --rm --entrypoint node "$SANDBOX" -e "
   const { createRequire } = require('module')
   const req = createRequire('$PROFILE/package.json')
-  const names = ['dsh-gateway-tunnel', 'dsh-sandbox-host', 'dsh-computer', 'dsh-tenant-account', 'dsh-tunnel-protocol']
+  const names = ['dsh-gateway-tunnel', 'dsh-sandbox-host', 'dsh-computer', 'dsh-tenant-account', 'dsh-tunnel-protocol', 'dsh-deployment-prompt']
   let ok = 0
   for (const name of names) {
     try { req.resolve(name); ok += 1 } catch { console.error('unresolved: ' + name) }
   }
   console.log(ok)
 " 2>/dev/null || echo 0)
-check 'every package resolves from the profile' 5 "$resolved"
+check 'every package resolves from the profile' 6 "$resolved"
 
 # Under the profile itself, not a symlink into the source tree: a link resolves
 # here and takes the plugin's own dependencies with it to the wrong place.
@@ -110,6 +110,31 @@ scheduled=$(docker run --rm --entrypoint node "$SANDBOX" -e "
     .catch((error) => console.log('failed: ' + error.message))
 " 2>/dev/null || echo error)
 check 'the scheduled-tasks plugin loads' loaded "$scheduled"
+
+# The prompt corrections. No client half and no dependencies — this is the
+# import a build never performs, and the plugin whose absence is a deployment
+# telling every tenant's agent to open http://127.0.0.1:3080.
+prompt=$(docker run --rm --entrypoint node "$SANDBOX" -e "
+  import('$PROFILE/node_modules/dsh-deployment-prompt/index.js')
+    .then((m) => console.log(['apply', 'inject', 'name'].every((k) => k in m) ? 'loaded' : 'incomplete'))
+    .catch((error) => console.log('failed: ' + error.message))
+" 2>/dev/null || echo error)
+check 'the deployment-prompt plugin loads' loaded "$prompt"
+
+# The two section names it rewrites, in the harness that is actually installed.
+# They are string constants in dsh-web-app and dsh-app-boot, not a versioned
+# API: a DSH_VERSION bump that renames one leaves the listener matching nothing
+# and the original text — a loopback URL, and /app called a checkout — shipping
+# to every tenant with only a log line to say so. This is where that has to
+# fail instead.
+sections=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
+  found=0
+  for name in app:web-surface harness:source; do
+    grep -rqF "$name" /app/node_modules/@deepseek-ai/ && found=$((found + 1))
+  done
+  echo "$found"
+' 2>/dev/null || echo 0)
+check 'the harness still names both sections the prompt plugin rewrites' 2 "$sections"
 
 # Resolved through `dsh.client.main` rather than assumed to be `client.js`,
 # because one of these is BUILT: the panel bundles xterm and ships

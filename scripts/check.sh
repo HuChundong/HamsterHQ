@@ -48,6 +48,7 @@ for check in \
   scripts/check-totp.mjs \
   scripts/check-service-env.mjs \
   scripts/check-paging.mjs \
+  scripts/check-deployment-prompt.mjs \
   scripts/check-computer-action.mjs \
   scripts/check-computer-layout.mjs \
   scripts/check-panel-paths.mjs \
