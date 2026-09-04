@@ -400,6 +400,7 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
       && test "$CHROME_CACHE_DIR" = /tmp/desktop-chrome-cache \
       && test -x /usr/local/bin/set-desktop-theme \
       && command -v maim >/dev/null \
+      && grep -q "computer_request_user_action" "$DSH_BUNDLED_SKILL_DIR/computer/SKILL.md" \
       && test "$(basename "$(readlink /usr/local/bin/google-chrome)")" = chrome-launch \
       && echo ok || echo missing' \
     2>/dev/null || echo error)

@@ -30,6 +30,12 @@ const UNPAIRED = new Set([
   // filename. A `.zh.md` beside it would be a file nothing ever reads, so this
   // one says both languages in the same comment.
   '.github/pull_request_template.md',
+  // Not a page. It is copied into the image's skill directory and read by an
+  // agent, and dsh's provider reads whatever markdown it finds there — so a
+  // `.zh.md` beside it would be a second skill under the same name, not a
+  // translation. The two skills already in that directory are English for the
+  // same reason: they are written by the CLIs they teach.
+  'sandbox/desktop/skills/computer/SKILL.md',
 ])
 
 /**

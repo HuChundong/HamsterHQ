@@ -77,4 +77,15 @@ const card = client.slice(client.indexOf('function ActionCard('))
 assert.match(card, /onDone: \(\) => \{ void answer\(ACTION_COMPLETED\) \}/)
 assert.match(card, /onClose: \(\) => \{ setTakeover\(false\) \}/)
 
+// A skill that names a tool by a name the tool no longer has is worse than no
+// skill: it reads as current, and the agent it misleads has no way to tell.
+const skill = readFileSync(resolve(root, 'sandbox/desktop/skills/computer/SKILL.md'), 'utf8')
+assert.match(skill, /^name: computer$/m)
+assert.match(skill, /^description: .{80,}$/m, 'the description line is the whole trigger; say when to reach for it')
+assert.match(skill, /computer_request_user_action/)
+assert.match(host, /name: 'computer_request_user_action'/)
+for (const status of [ACTION_COMPLETED, ACTION_SKIPPED]) {
+  assert.match(skill, new RegExp(`\`${status}\``), `the skill must say what ${status} means for what happens next`)
+}
+
 console.log('check-computer-action: the handoff shows the screen, waits, and settles through public seams')

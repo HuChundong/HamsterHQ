@@ -852,7 +852,16 @@ ENV KWIN_COMPOSE=N
 ENV CHROME_PROFILE_DIR=/mnt/browser-profile
 ENV CHROME_CACHE_DIR=/tmp/desktop-chrome-cache
 
-# noVNC chrome hide, KDE configuration and default browser.
+# noVNC chrome hide, KDE configuration and default browser, and the one skill
+# this repository writes itself.
+#
+# OfficeCLI's and Playwright's are written by their own binaries, because a copy
+# kept here would age against the version pinned above. That reason does not
+# apply to `computer`: the desktop, the shared browser and
+# `computer_request_user_action` are this project's, so there is no upstream for
+# a copy to drift from. It is installed here rather than beside them because
+# the tool it teaches is registered only when SANDBOX_VARIANT is desktop, and a
+# skill naming a tool that does not exist is worse than no skill.
 COPY sandbox/desktop/ /tmp/desktop-assets/
 RUN mkdir -p /usr/share/applications \
       "$DESKTOP_HOME/.local/share/applications" \
@@ -878,6 +887,8 @@ RUN mkdir -p /usr/share/applications \
   && rm /usr/local/bin/playwright-cli \
   && install -m 0755 /tmp/desktop-assets/playwright-cli-lazy.sh /usr/local/bin/playwright-cli \
   && install -m 0755 /tmp/desktop-assets/set-desktop-theme.sh /usr/local/bin/set-desktop-theme \
+  && cp -r /tmp/desktop-assets/skills/computer "$DSH_BUNDLED_SKILL_DIR/computer" \
+  && grep -q '^name: computer$' "$DSH_BUNDLED_SKILL_DIR/computer/SKILL.md" \
   && ln -sfn /usr/local/bin/chrome-launch /usr/local/bin/chrome \
   && ln -sfn /usr/local/bin/chrome-launch /usr/local/bin/google-chrome \
   && cp /tmp/desktop-assets/novnc-hide-chrome.css \
