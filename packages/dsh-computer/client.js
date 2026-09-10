@@ -38,7 +38,7 @@ window.__ModuleLoader__.load({
      */
     const FRAME_EVERY_MS = 2000
 
-    const VNC_REV = '4'
+    const VNC_REV = '5'
 
     const DICTIONARY = {
       zh: {
@@ -58,6 +58,7 @@ window.__ModuleLoader__.load({
         'card.answering': '正在把结果交给 agent…',
         'card.answer_failed': '没能提交结果，请再试一次。',
         'screen.loading': '正在读取电脑画面…',
+        'screen.connecting': '正在连接电脑…',
         'screen.off': '暂时读不到电脑画面',
         'screen.alt': '电脑当前画面',
         'takeover.close': '收起',
@@ -80,6 +81,7 @@ window.__ModuleLoader__.load({
         'card.answering': 'Returning the result to the agent…',
         'card.answer_failed': 'The result could not be submitted. Try again.',
         'screen.loading': 'Reading the computer screen…',
+        'screen.connecting': 'Connecting to the computer…',
         'screen.off': 'The computer screen cannot be read right now',
         'screen.alt': 'The computer right now',
         'takeover.close': 'Close',
@@ -294,12 +296,9 @@ window.__ModuleLoader__.load({
         text-overflow: ellipsis;
       }
       .${P}-takeover-frame {
-        display: block;
         flex: 1 1 auto;
         min-height: 0;
         width: 100%;
-        border: 0;
-        background: var(--dsw-alias-bg-layer-1);
       }
 
       [${PANEL_ANCHOR}] {
@@ -354,11 +353,44 @@ window.__ModuleLoader__.load({
         box-shadow: var(--dsw-shadow-lv1);
       }
       .${P}-desktop-frame {
+        width: 100%;
+        height: 100%;
+      }
+      .${P}-frame-host {
+        position: relative;
+        overflow: hidden;
+        background: var(--dsw-alias-bg-layer-1);
+      }
+      .${P}-frame {
         display: block;
         width: 100%;
         height: 100%;
         border: 0;
         background: var(--dsw-alias-bg-layer-1);
+      }
+      .${P}-frame-cover {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        background: var(--dsw-alias-bg-layer-1);
+        color: var(--dsw-alias-label-tertiary);
+        font-size: 12px;
+        line-height: 18px;
+        pointer-events: none;
+      }
+      .${P}-frame-cover::before {
+        content: '';
+        width: 20px;
+        height: 20px;
+        box-sizing: border-box;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: ${P}-spin 800ms linear infinite;
       }
       .${P}-schedule { flex: none; min-height: 0; margin-top: 16px; }
 
@@ -366,6 +398,7 @@ window.__ModuleLoader__.load({
       @media (prefers-reduced-motion: reduce) {
         .${P}-button { transition: none; }
         .${P}-tool[data-state='finishing'] .${P}-badge::before { animation: none; }
+        .${P}-frame-cover::before { animation: none; border-right-color: currentColor; border-style: dotted; }
       }
     `
 
@@ -465,24 +498,13 @@ window.__ModuleLoader__.load({
     function Takeover({ title, onDone, onSkip, onClose, disabled }) {
       const t = useT()
       const titleId = React.useId()
-      const frame = React.useRef(null)
+      const [frameSrc] = React.useState(computerSrc)
 
       React.useEffect(() => {
         const onKey = (event) => { if (event.key === 'Escape') onClose() }
         window.addEventListener('keydown', onKey)
         return () => { window.removeEventListener('keydown', onKey) }
       }, [onClose])
-
-      React.useEffect(() => {
-        const iframe = frame.current
-        if (iframe === null) return undefined
-        const paint = () => {
-          try { paintNovncTheme(iframe.contentDocument) } catch { /* the frame is not ready */ }
-        }
-        iframe.addEventListener('load', paint)
-        paint()
-        return () => { iframe.removeEventListener('load', paint) }
-      }, [])
 
       return ReactDom.createPortal(h('div', {
         className: `${P}-takeover`,
@@ -511,13 +533,7 @@ window.__ModuleLoader__.load({
           className: `${P}-button ${P}-button-quiet`,
           onClick: onClose,
         }, t('takeover.close'))),
-      h('iframe', {
-        ref: frame,
-        className: `${P}-takeover-frame`,
-        title: t('panel.title'),
-        src: computerSrc(),
-        allow: 'clipboard-read; clipboard-write',
-      })), document.body)
+      h(DesktopFrame, { className: `${P}-takeover-frame`, src: frameSrc })), document.body)
     }
 
     function ActionCard({ block, callId, sessionId, useSessionPendingInteraction }) {
@@ -633,16 +649,30 @@ window.__ModuleLoader__.load({
       return value || '#1b1b1c'
     }
 
+    /**
+     * The page's address, with what it cannot find out for itself.
+     *
+     * `bg` and `theme` are the shell's ground and ink, read here because the
+     * page is noVNC's and knows nothing of the shell's tokens. `title` and
+     * `connecting` supply the tab name and loading message in the person's
+     * language. The bootstrap paints the theme and title before the body
+     * parses, and labels the cover before deferred modules run — see
+     * `sandbox/desktop/novnc-hamsterhq.js`. Inside a frame the shell's colours
+     * are painted in over the top as they change.
+     */
     const computerSrc = () => {
       const bg = encodeURIComponent(readPanelBg())
       const theme = document.body.hasAttribute('data-ds-dark-theme') ? 'dark' : 'light'
-      return `/computer/vnc.html?autoconnect=true&resize=scale&reconnect=true&quality=5&compression=1&path=computer/websockify&v=${VNC_REV}&theme=${theme}&bg=${bg}`
+      const title = encodeURIComponent(plugin.locale.bind(NS)('panel.title'))
+      const connecting = encodeURIComponent(plugin.locale.bind(NS)('screen.connecting'))
+      return `/computer/vnc.html?autoconnect=true&resize=scale&reconnect=true&quality=5&compression=1&path=computer/websockify&v=${VNC_REV}&theme=${theme}&bg=${bg}&title=${title}&connecting=${connecting}`
     }
 
     const paintNovncTheme = (doc) => {
       if (doc === null || doc === undefined || doc.head === null) return
       const bg = readPanelBg()
       doc.documentElement.style.setProperty('--hamsterhq-novnc-bg', bg)
+      doc.documentElement.setAttribute('data-hhq-theme', document.body.hasAttribute('data-ds-dark-theme') ? 'dark' : 'light')
       let style = doc.getElementById('hhq-novnc-theme')
       if (style === null) {
         style = doc.createElement('style')
@@ -658,41 +688,121 @@ window.__ModuleLoader__.load({
       `
     }
 
-    function ComputerPanel({ maximised }) {
+    /** The shell's theme, as the attributes that change when it does. */
+    const observeTheme = (onChange) => {
+      const observer = new MutationObserver(onChange)
+      observer.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'class', 'style'] })
+      return () => { observer.disconnect() }
+    }
+
+    /**
+     * Whether the page in a frame has reached the desktop.
+     *
+     * The page is same-origin, so its document is readable. noVNC keeps one
+     * state class on its root — noVNC_connected is the one that matters here —
+     * and opens its status element as an error when a connect fails. Recovery
+     * dialogs and fatal startup errors also release the cover, so the person
+     * can retry or read the failure; so does a document with no noVNC, which
+     * is the gateway refusing the request with a page of its own. Until the
+     * frame has loaded — and the initial about:blank counts as not loaded —
+     * there is nothing to read and the answer is no.
+     */
+    const desktopSettled = (doc) => {
+      if (doc === null || doc === undefined || doc.documentElement === null) return false
+      if (doc.URL === 'about:blank' || doc.readyState === 'loading') return false
+      if (doc.getElementById('noVNC_container') === null) return true
+      if (doc.documentElement.classList.contains('noVNC_connected')) return true
+      return doc.querySelector('#noVNC_status.noVNC_status_error.noVNC_open, #noVNC_connect_dlg.noVNC_open, #noVNC_credentials_dlg.noVNC_open, #noVNC_fallback_error.noVNC_open') !== null
+    }
+
+    /**
+     * A frame on the desktop, and the wait for it.
+     *
+     * The panel's seat and the takeover both mount noVNC's page in an iframe,
+     * and both waited the same way: a layer-coloured blank while the page, its
+     * modules, the websocket and the RFB handshake came through the tunnel,
+     * which a person read as broken. So one component holds the frame and a
+     * cover over it. `desktopSettled` decides when the page can be shown; a
+     * persistent observer follows its state through retries and reconnects.
+     * The initial read also handles a cached frame loaded before the effect.
+     *
+     * The page carries a cover of its own for a window opened on it directly;
+     * inside a frame it sits under this one and is never seen. The shell's
+     * colours are painted in over the page on load and again as the theme
+     * turns, so the letterbox stays the panel's surface in both.
+     */
+    function DesktopFrame({ className, src }) {
       const t = useT()
       const frame = React.useRef(null)
-      const [frameSrc] = React.useState(computerSrc)
-      const [href, setHref] = React.useState(computerSrc)
+      const [settled, setSettled] = React.useState(false)
 
       React.useEffect(() => {
         const iframe = frame.current
         if (iframe === null) return undefined
+        setSettled(false)
+        let observer
         const paint = () => {
-          setHref(computerSrc())
           try { paintNovncTheme(iframe.contentDocument) } catch { /* the frame is not ready */ }
         }
-        iframe.addEventListener('load', paint)
-        paint()
-        const observer = new MutationObserver(paint)
-        observer.observe(document.body, { attributes: true, attributeFilter: ['data-ds-dark-theme', 'class', 'style'] })
-        return () => {
-          iframe.removeEventListener('load', paint)
-          observer.disconnect()
+        const check = () => {
+          let doc
+          try { doc = iframe.contentDocument } catch { doc = null }
+          setSettled(doc === null || desktopSettled(doc))
         }
-      }, [])
+        const loaded = () => {
+          paint()
+          observer?.disconnect()
+          observer = undefined
+          let doc
+          try { doc = iframe.contentDocument } catch { doc = null }
+          if (doc === null) {
+            setSettled(true)
+            return
+          }
+          if (doc.URL === 'about:blank') return
+          observer = new MutationObserver(check)
+          observer.observe(doc.documentElement, { attributes: true, attributeFilter: ['class'], subtree: true })
+          check()
+        }
+        iframe.addEventListener('load', loaded)
+        const unobserveTheme = observeTheme(paint)
+        loaded()
+        return () => {
+          iframe.removeEventListener('load', loaded)
+          observer?.disconnect()
+          unobserveTheme()
+        }
+      }, [src])
+
+      return h('div', { className: `${P}-frame-host ${className}` },
+        h('iframe', {
+          ref: frame,
+          className: `${P}-frame`,
+          title: t('panel.title'),
+          src,
+          allow: 'clipboard-read; clipboard-write',
+        }),
+        settled ? null : h('div', { className: `${P}-frame-cover`, role: 'status', 'aria-live': 'polite' },
+          t('screen.connecting')))
+    }
+
+    function ComputerPanel({ maximised }) {
+      const t = useT()
+      const [frameSrc] = React.useState(computerSrc)
+      const [, bump] = React.useState(0)
+
+      // The new-window address follows the theme, which changes without a
+      // render of this component; the frame's own address is fixed at mount so
+      // that a theme change does not reload the desktop.
+      React.useEffect(() => observeTheme(() => { bump((n) => n + 1) }), [])
+      const href = computerSrc()
 
       return h('div', { className: `${P}-panel`, 'data-maximised': String(maximised) },
         h('div', { className: `${P}-panel-bar` },
           h('span', null, t('panel.title')),
           h('a', { className: `${P}-panel-open`, href, target: '_blank', rel: 'noopener noreferrer' }, t('panel.open'))),
         h('div', { className: `${P}-desktop` },
-          h('iframe', {
-            ref: frame,
-            className: `${P}-desktop-frame`,
-            title: t('panel.title'),
-            src: frameSrc,
-            allow: 'clipboard-read; clipboard-write',
-          })),
+          h(DesktopFrame, { className: `${P}-desktop-frame`, src: frameSrc })),
         maximised ? null : h('div', { className: `${P}-schedule`, [SCHEDULE_PANEL_ANCHOR]: '' }))
     }
 

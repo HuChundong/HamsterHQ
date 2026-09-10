@@ -67,6 +67,8 @@
 
 面板放大时不渲染任务座位，桌面重新占满剩余高度。放大是为了操作机器；恢复侧边栏后，紧凑卡片和任务列表回来。两种结构使用同一个 noVNC URL，所以布局切换没有定义第二套桌面协议。
 
+桌面的每一个 frame——座位里的、接管时的——都是同一个 `DesktopFrame`，在 noVNC 页面说自己已连接之前一直被遮住。页面、它的模块、websocket 和 RFB 握手都要经过隧道，过去这一秒里只有一块图层色的空白，看起来像坏了。遮罩读取同源 frame 文档上 noVNC 自己的 `noVNC_connected` 根类；持续跟随重试和重连状态；遇到 noVNC 的错误、凭据及连接对话框，或网关拒绝后返回的页面时，它同样让开，关闭错误提示后重试按钮仍然可见。观察器也会立即读取已加载的 frame，避免缓存页面错过就绪检查。**新窗口打开**落在同一个页面上，外面没有 frame，所以页面自带装扮：`sandbox/desktop/patch-novnc.sh` 把 noVNC 的 `vnc.html` 换上这个部署的 favicon 而不是 noVNC 的，加上它自己的遮罩，以及一段从 `dsh-computer` 写进 URL 的底色、墨色、标签名和本地化加载提示启动的脚本。`scripts/check-computer-loading.mjs` 执行就绪状态和启动脚本检查；`scripts/check-images.sh` 检查安装后的页面和资源。在桌面部署上，`VERIFY_DESKTOP=1` 会把 `verify/verify-computer-loading.mjs` 加入验收，要求真实连接帧缓冲，并在浏览器中验证加载和重试控件。
+
 ## 被动这一半几乎不用我们渲染
 
 dsh 的 `ui-deliverables` **已经**在每轮末尾渲染了产出文件的 chip 行。我们不自己算产出、不渲染任何列表——只把点击接管过来。

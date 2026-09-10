@@ -12,7 +12,7 @@
 # resolve from where the registry will look for it, and does the plugin whose
 # absence would be silent actually load?
 #
-# Usage: scripts/check-images.sh [sandbox-image] [gateway-image] [web-image] [admin-image]
+# Usage: scripts/check-images.sh [sandbox-image] [gateway-image] [web-image] [admin-image] [desktop-image]
 set -euo pipefail
 
 SANDBOX="${1:-hamsterhq-sandbox:latest}"
@@ -398,10 +398,26 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
       && echo ok || echo duplicate' \
     2>/dev/null || echo error)
   check 'desktop retains only the official Node 24 runtime' ok "$node_runtime"
+  # The favicon noVNC's page carries is copied from gateway/assets at build; a
+  # copy that stopped matching would be the one mark in the product drawn twice.
+  tab_icon=$(docker run --rm --entrypoint cat "$DESKTOP" /usr/share/novnc/app/images/hamsterhq-favicon.svg 2>/dev/null \
+    | cmp -s - "$(git rev-parse --show-toplevel)/gateway/assets/favicon.svg" && echo ok || echo drift)
+  check 'the desktop tab icon is the tree'"'"'s favicon.svg' ok "$tab_icon"
+  for asset in 'novnc-hamsterhq.css:app/styles/hamsterhq.css' 'novnc-hamsterhq.js:app/hamsterhq.js'; do
+    installed=$(docker run --rm --entrypoint cat "$DESKTOP" "/usr/share/novnc/${asset#*:}" 2>/dev/null \
+      | cmp -s - "$(git rev-parse --show-toplevel)/sandbox/desktop/${asset%%:*}" && echo ok || echo drift)
+    check "the desktop serves the current ${asset%%:*}" ok "$installed"
+  done
   chrome=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
-    'grep -q hamsterhq-hide-chrome /usr/share/novnc/vnc.html \
-      && grep -q "display:none!important" /usr/share/novnc/vnc.html \
-      && test -f /usr/share/novnc/app/styles/hamsterhq-hide-chrome.css \
+    'grep -q "app/styles/hamsterhq.css" /usr/share/novnc/vnc.html \
+      && grep -q "app/hamsterhq.js" /usr/share/novnc/vnc.html \
+      && grep -q "id=\"hhq-loading\"" /usr/share/novnc/vnc.html \
+      && grep -q "hamsterhq-favicon.svg" /usr/share/novnc/vnc.html \
+      && ! grep -q "images/icons/novnc-" /usr/share/novnc/vnc.html \
+      && ! grep -q "<title>noVNC</title>" /usr/share/novnc/vnc.html \
+      && test -f /usr/share/novnc/app/styles/hamsterhq.css \
+      && test -f /usr/share/novnc/app/hamsterhq.js \
+      && test -s /usr/share/novnc/app/images/hamsterhq-favicon.svg \
       && test -d /usr/share/plasma/look-and-feel/com.github.vinceliuice.Fluent-round-dark-solid \
       && test -d /usr/share/icons/Fluent-dark \
       && test -d /usr/share/icons/Fluent-dark-cursors \

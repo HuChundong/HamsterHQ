@@ -51,6 +51,7 @@ for check in \
   scripts/check-deployment-prompt.mjs \
   scripts/check-computer-action.mjs \
   scripts/check-computer-layout.mjs \
+  scripts/check-computer-loading.mjs \
   scripts/check-panel-paths.mjs \
   scripts/check-panel-open.mjs \
   scripts/check-uploads.mjs

@@ -20,8 +20,10 @@
         "packages/*/client.js",
         "packages/*/src/*.js",
         "packages/dsh-ground/ground.js",
+        "sandbox/desktop/novnc-hamsterhq.js",
         "web/landing/main.js",
         "verify/verify-browser.mjs",
+        "verify/verify-computer-loading.mjs",
         "verify/verify-dialog.mjs"
       ],
       "env": {
