@@ -42,6 +42,7 @@ for check in \
   scripts/check-forwarded.mjs \
   scripts/check-tunnel-path.mjs \
   scripts/check-env-defaults.mjs \
+  scripts/check-sandbox-version.mjs \
   scripts/check-entitlements.mjs \
   scripts/check-scheduler-boundary.mjs \
   scripts/check-rules.mjs \

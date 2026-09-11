@@ -2,10 +2,9 @@
  * Short sandbox version strings derived from Cube template aliases.
  *
  * A deployment stamps sandboxes with a date-shaped version (YYYY-MM-DD or
- * YYYY-MM-DD.N). The Cube alias and CUBE_TEMPLATE_ID are
- * `hamsterhq-desktop-<version>` (default) or `hamsterhq-sandbox-<version>`
- * (light rollback); the UI and the SANDBOX_VERSION env show only the trailing
- * part. See docs/cubesandbox.md.
+ * YYYY-MM-DD.N). Cube aliases encode the same-day suffix with a hyphen;
+ * the UI and SANDBOX_VERSION retain the dotted image stamp. See
+ * docs/cubesandbox.md. scripts/check-sandbox-version.mjs holds this mapping.
  *
  * @module sandbox-version
  */
@@ -37,7 +36,7 @@ export function shortVersionFromTemplate(alias) {
   if (trimmed === '') return null
   for (const prefix of TEMPLATE_ALIAS_PREFIXES) {
     if (trimmed.startsWith(prefix) && trimmed.length > prefix.length) {
-      return trimmed.slice(prefix.length)
+      return trimmed.slice(prefix.length).replace(/^(\d{4}-\d{2}-\d{2})-(\d+)$/, '$1.$2')
     }
   }
   return trimmed

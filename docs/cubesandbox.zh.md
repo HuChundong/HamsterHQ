@@ -18,11 +18,11 @@
 每个生产沙箱构建带一个**日期形**版本，绝不用 git hash：
 
 - 形式：`YYYY-MM-DD`，同日多次发布用 `YYYY-MM-DD.N`（例如 `2026-08-28.2`）。
-- **默认（desktop）**路径上四处必须一致：
-  1. Docker build arg `SANDBOX_VERSION`（写入 `/app/sandbox/VERSION`）
-  2. 镜像 tag `hamsterhq-desktop:<version>`
-  3. Cube 模板别名 `hamsterhq-desktop-<version>`
-  4. 网关环境 `CUBE_TEMPLATE_ID=hamsterhq-desktop-<version>`
+- Docker build arg `SANDBOX_VERSION`（写入 `/app/sandbox/VERSION`）、
+  `hamsterhq-desktop:<version>` 等镜像 tag 和设置页面均保留 `.N` 后缀。
+- Cube 别名不能含点号。将版本中的 `.` 替换为 `-` 得到 `TEMPLATE_SUFFIX`：
+  `2026-08-28.2` 对应 `2026-08-28-2`。模板别名与 `CUBE_TEMPLATE_ID` 均使用
+  `hamsterhq-desktop-$TEMPLATE_SUFFIX`；网关在显示和版本比较时将后缀还原为 `.N`。
 
 租户在设置 → 沙箱看到短形式。机器版本与当前 `CUBE_TEMPLATE_ID` 不一致时，页面会说明，重启会按当前模板再建一台。
 
@@ -54,6 +54,7 @@ Cube 0.7 的 `create-from-image` 接受 `--cmd` 和 `--probe`。desktop 镜像�
 #
 # 用今天的日期（或 .N）。不要用 git short hash 当 TAG。
 SANDBOX_VERSION=2026-08-29   # 同日重建用 2026-08-29.2
+TEMPLATE_SUFFIX=$(printf '%s' "$SANDBOX_VERSION" | tr . -)
 CHROME_DIST=${CHROME_DIST:?设为工作区 chrome-dist/ 路径}
 test -x "$CHROME_DIST/chrome"
 mkdir -p sandbox/browser-engine
@@ -70,7 +71,7 @@ docker push 127.0.0.1:5000/hamsterhq-sandbox:$SANDBOX_VERSION
 # Desktop 模板：先热起栈再快照。
 cubemastercli template create-from-image \
   --image 127.0.0.1:5000/hamsterhq-desktop:$SANDBOX_VERSION \
-  --alias hamsterhq-desktop-$SANDBOX_VERSION \
+  --alias hamsterhq-desktop-$TEMPLATE_SUFFIX \
   --writable-layer-size 8Gi --cpu 4000 --memory 8000 \
   --cmd /app/sandbox/template-warm.sh \
   --expose-port 6099 --probe 6099 --probe-path /health
@@ -78,12 +79,12 @@ cubemastercli template create-from-image \
 # 轻量模板（仅回滚；不冻结）。
 cubemastercli template create-from-image \
   --image 127.0.0.1:5000/hamsterhq-sandbox:$SANDBOX_VERSION \
-  --alias hamsterhq-sandbox-$SANDBOX_VERSION \
+  --alias hamsterhq-sandbox-$TEMPLATE_SUFFIX \
   --writable-layer-size 8Gi --cpu 2000 --memory 4000
 
 # 然后在 .env：
-#   CUBE_TEMPLATE_ID=hamsterhq-desktop-$SANDBOX_VERSION
-#   CUBE_TEMPLATE_ID_LIGHT=hamsterhq-sandbox-$SANDBOX_VERSION   # 运维备忘
+#   CUBE_TEMPLATE_ID=hamsterhq-desktop-$TEMPLATE_SUFFIX
+#   CUBE_TEMPLATE_ID_LIGHT=hamsterhq-sandbox-$TEMPLATE_SUFFIX   # 运维备忘
 docker compose -f compose.yml -f compose.cube.yml up -d
 ```
 

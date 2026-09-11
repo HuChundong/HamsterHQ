@@ -77,6 +77,11 @@ the flags Cube actually grew.
 a new image. Pointing an existing template at one leaves every sandbox restoring
 the snapshot it already had. A new image means a new template, every time.
 
+A release on 2026-09-11 assumed its image version `2026-09-11.2` could also
+serve as a Cube alias suffix. The CLI rejected the dot before creating the
+template. The [CubeSandbox runbook](cubesandbox.md#sandbox-version) now derives
+a separate alias suffix while preserving the image and UI version.
+
 ## envd hands its processes a clean environment
 
 Once the backend moved from `CMD` to envd, every `ENV` in the Dockerfile
