@@ -27,12 +27,14 @@ hash:
 
 - Form: `YYYY-MM-DD`, or `YYYY-MM-DD.N` when the same day ships more than once
   (for example `2026-08-28.2`).
-- That one string is shared by the places that must agree for the **default**
-  (desktop) path:
-  1. Docker build arg `SANDBOX_VERSION` (baked into `/app/sandbox/VERSION`)
-  2. Image tag `hamsterhq-desktop:<version>`
-  3. Cube template alias `hamsterhq-desktop-<version>`
-  4. Gateway env `CUBE_TEMPLATE_ID=hamsterhq-desktop-<version>`
+- Docker build arg `SANDBOX_VERSION` (baked into `/app/sandbox/VERSION`),
+  image tags such as `hamsterhq-desktop:<version>`, and the settings UI retain
+  the `.N` suffix.
+- Cube aliases cannot contain dots. Derive `TEMPLATE_SUFFIX` by replacing `.`
+  with `-`: `2026-08-28.2` becomes `2026-08-28-2`. Use
+  `hamsterhq-desktop-$TEMPLATE_SUFFIX` for both the template alias and
+  `CUBE_TEMPLATE_ID`; the gateway converts that suffix back to `.N` for display
+  and version comparison.
 
 Tenants see the short form under Settings → Sandbox. When their machine's
 version differs from the deployment's current `CUBE_TEMPLATE_ID`, the page says
@@ -86,6 +88,7 @@ Never freeze: dsh, the gateway tunnel, the reporter, workspace / migrate.
 #
 # Pick today's date (or .N). Do not use a git short hash as TAG.
 SANDBOX_VERSION=2026-08-29   # or 2026-08-29.2 on a same-day rebuild
+TEMPLATE_SUFFIX=$(printf '%s' "$SANDBOX_VERSION" | tr . -)
 CHROME_DIST=${CHROME_DIST:?set to your workspace chrome-dist/}
 test -x "$CHROME_DIST/chrome"
 mkdir -p sandbox/browser-engine
@@ -102,7 +105,7 @@ docker push 127.0.0.1:5000/hamsterhq-sandbox:$SANDBOX_VERSION
 # Desktop template: freeze the warm stack, then snapshot.
 cubemastercli template create-from-image \
   --image 127.0.0.1:5000/hamsterhq-desktop:$SANDBOX_VERSION \
-  --alias hamsterhq-desktop-$SANDBOX_VERSION \
+  --alias hamsterhq-desktop-$TEMPLATE_SUFFIX \
   --writable-layer-size 8Gi --cpu 4000 --memory 8000 \
   --cmd /app/sandbox/template-warm.sh \
   --expose-port 6099 --probe 6099 --probe-path /health
@@ -110,12 +113,12 @@ cubemastercli template create-from-image \
 # Light template (rollback only; no warm freeze).
 cubemastercli template create-from-image \
   --image 127.0.0.1:5000/hamsterhq-sandbox:$SANDBOX_VERSION \
-  --alias hamsterhq-sandbox-$SANDBOX_VERSION \
+  --alias hamsterhq-sandbox-$TEMPLATE_SUFFIX \
   --writable-layer-size 8Gi --cpu 2000 --memory 4000
 
 # Then in .env:
-#   CUBE_TEMPLATE_ID=hamsterhq-desktop-$SANDBOX_VERSION
-#   CUBE_TEMPLATE_ID_LIGHT=hamsterhq-sandbox-$SANDBOX_VERSION   # operator note
+#   CUBE_TEMPLATE_ID=hamsterhq-desktop-$TEMPLATE_SUFFIX
+#   CUBE_TEMPLATE_ID_LIGHT=hamsterhq-sandbox-$TEMPLATE_SUFFIX   # operator note
 docker compose -f compose.yml -f compose.cube.yml up -d
 ```
 
