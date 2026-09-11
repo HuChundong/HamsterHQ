@@ -1,0 +1,94 @@
+/* HamsterHQ's dress on noVNC's vnc.html, installed by patch-novnc.sh.
+ *
+ * Three things, in the order a person meets them. The letterbox follows the
+ * shell: --hamsterhq-novnc-bg is set by dsh-computer on the frame it renders,
+ * or by novnc-hamsterhq.js from the ?bg= query on a new-window open, and the
+ * ink for anything drawn over it comes from ?theme= the same way. A loading
+ * overlay covers the canvas until noVNC says it is connected — the modules,
+ * the websocket and the RFB handshake all travel the tunnel, and a person who
+ * opened the desktop and saw a blank layer for a second read it as broken.
+ * And noVNC's own chrome is hidden (carried from the weixin-bot cut), except
+ * the error status, which is the one thing it draws that has to be seen.
+ */
+:root {
+  --hamsterhq-novnc-ink: #F4F4F2;
+}
+:root[data-hhq-theme='light'] {
+  --hamsterhq-novnc-bg: #f7f7f7;
+  --hamsterhq-novnc-ink: #101113;
+}
+
+#noVNC_control_bar_anchor,
+#noVNC_control_bar,
+#noVNC_control_bar_hint,
+#noVNC_status,
+#noVNC_transition {
+  display: none !important;
+}
+
+#noVNC_status.noVNC_status_error.noVNC_open {
+  display: flex !important;
+}
+
+/* What a failed connect leaves on screen is noVNC's connect dialog: its
+ * wordmark over a Connect button. The button is the way back in and stays;
+ * the wordmark is the one thing on the page that would still say noVNC. */
+#noVNC_connect_dlg .noVNC_logo {
+  display: none !important;
+}
+
+html, body, #noVNC_container {
+  background-color: var(--hamsterhq-novnc-bg, #1b1b1c) !important;
+  background-image: none !important;
+}
+
+#noVNC_container {
+  border-radius: 0 !important;
+}
+
+/* The overlay. noVNC puts one of four state classes on the root and none
+ * while disconnected, so "not connected" is the whole wait: loading the
+ * modules, connecting, and a reconnect after a dropped session. A failed
+ * connect opens the error status instead. Recovery dialogs and fatal errors
+ * also take the cover away, including after a person dismisses the status. */
+#hhq-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 18px;
+  background-color: var(--hamsterhq-novnc-bg, #1b1b1c);
+  color: var(--hamsterhq-novnc-ink);
+  pointer-events: none;
+}
+:root.noVNC_connected #hhq-loading,
+:root:has(#noVNC_status.noVNC_status_error.noVNC_open, #noVNC_connect_dlg.noVNC_open, #noVNC_credentials_dlg.noVNC_open, #noVNC_fallback_error.noVNC_open) #hhq-loading {
+  display: none;
+}
+
+#hhq-loading .hhq-spinner {
+  display: block;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.6;
+  animation: hhq-spin 800ms linear infinite;
+}
+
+@keyframes hhq-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  #hhq-loading .hhq-spinner {
+    animation: none;
+    border-right-color: currentColor;
+    border-style: dotted;
+  }
+}

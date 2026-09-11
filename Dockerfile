@@ -864,6 +864,12 @@ ENV CHROME_CACHE_DIR=/tmp/desktop-chrome-cache
 # the tool it teaches is registered only when SANDBOX_VARIANT is desktop, and a
 # skill naming a tool that does not exist is worse than no skill.
 COPY sandbox/desktop/ /tmp/desktop-assets/
+# The tab icon noVNC's page will carry in a window of its own — the same file
+# the gateway's pages and the shell's brand plugin link, copied from its one
+# source at build so the desktop image stays whole without nginx in front of
+# it. `sandbox/desktop/patch-novnc.sh` puts it, and the rest of the dress, on
+# vnc.html.
+COPY gateway/assets/favicon.svg /tmp/desktop-assets/hamsterhq-favicon.svg
 RUN mkdir -p /usr/share/applications \
       "$DESKTOP_HOME/.local/share/applications" \
   && cp /tmp/desktop-assets/mimeapps.list "$DESKTOP_HOME/.config/mimeapps.list" \
@@ -892,14 +898,7 @@ RUN mkdir -p /usr/share/applications \
   && grep -q '^name: computer$' "$DSH_BUNDLED_SKILL_DIR/computer/SKILL.md" \
   && ln -sfn /usr/local/bin/chrome-launch /usr/local/bin/chrome \
   && ln -sfn /usr/local/bin/chrome-launch /usr/local/bin/google-chrome \
-  && cp /tmp/desktop-assets/novnc-hide-chrome.css \
-       /usr/share/novnc/app/styles/hamsterhq-hide-chrome.css \
-  && sed -i 's|href="app/styles/base.css">|href="app/styles/base.css">\n    <link rel="stylesheet" href="app/styles/hamsterhq-hide-chrome.css">\n    <!-- hide noVNC chrome (weixin-bot cut) -->\n    <style>#noVNC_control_bar_anchor,#noVNC_control_bar,#noVNC_control_bar_hint,#noVNC_status,#noVNC_transition{display:none!important}#noVNC_status.noVNC_status_error.noVNC_open{display:flex!important}html,body,#noVNC_container{background-color:var(--hamsterhq-novnc-bg,#1b1b1c)!important;background-image:none!important}#noVNC_container{border-radius:0!important}</style>\n    <script>(function(){try{var b=new URLSearchParams(location.search).get("bg");if(b)document.documentElement.style.setProperty("--hamsterhq-novnc-bg",decodeURIComponent(b))}catch(e){}})();</script>|' \
-       /usr/share/novnc/vnc.html \
-  && sed -i \
-       -e 's/id="noVNC_control_bar_anchor" class="noVNC_vcenter"/id="noVNC_control_bar_anchor" class="noVNC_vcenter" style="display: none;"/' \
-       -e 's/<div id="noVNC_control_bar">/<div id="noVNC_control_bar" style="display: none;">/' \
-       /usr/share/novnc/vnc.html \
+  && sh /tmp/desktop-assets/patch-novnc.sh /tmp/desktop-assets \
   && chown -R "$DESKTOP_USER:$DESKTOP_USER" "$DESKTOP_HOME/.config" "$DESKTOP_HOME/.local" \
   && rm -rf /tmp/desktop-assets
 

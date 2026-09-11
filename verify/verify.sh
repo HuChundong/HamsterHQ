@@ -549,7 +549,11 @@ done
 # and settings that survive a fresh browser context.
 TURN_COOKIE=$(awk -F '\t' 'NF == 7 { printf "%s=%s;", $6, $7 }' "$JAR_A" | sed 's/;$//')
 export TURN_COOKIE
-for browser_suite in verify-attachment-card.mjs verify-turn.mjs verify-settings.mjs; do
+browser_suites=(verify-attachment-card.mjs verify-turn.mjs verify-settings.mjs)
+# Desktop deployments can require a real RFB connection and exercise noVNC's
+# loading and recovery UI. A light sandbox has no desktop to connect to.
+if [ "${VERIFY_DESKTOP:-0}" = 1 ]; then browser_suites+=(verify-computer-loading.mjs); fi
+for browser_suite in "${browser_suites[@]}"; do
   if node -e "require('module').createRequire('$PWD/package.json').resolve('playwright')" 2>/dev/null; then
     GATEWAY="$GATEWAY" node "$browser_suite" || NODE_FAIL=1
   else
