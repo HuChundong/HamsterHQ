@@ -26,7 +26,7 @@ const check = (label, ok, detail = '') => {
   if (!ok) failures += 1
 }
 
-const browser = await chromium.launch()
+const browser = await chromium.launch({ channel: process.env.VERIFY_BROWSER_CHANNEL })
 try {
   const context = await browser.newContext({
     ignoreHTTPSErrors: true,
@@ -102,7 +102,7 @@ try {
   })
   try {
     await shell.goto(`${GATEWAY}/app`, { waitUntil: 'domcontentloaded', timeout: CONNECT_TIMEOUT_MS })
-    await shell.locator('.dsh-artifact-panel-computer-open').click({ timeout: CONNECT_TIMEOUT_MS })
+    await shell.getByRole('button', { name: /^(Cloud computer|云端电脑)$/ }).click({ timeout: CONNECT_TIMEOUT_MS })
     await shell.locator('.dsh-computer-frame-cover').waitFor({ state: 'visible', timeout: UI_TIMEOUT_MS })
     check('the shell panel covers an iframe before its document arrives', true)
   } finally {

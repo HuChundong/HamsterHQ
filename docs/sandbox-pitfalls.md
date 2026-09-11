@@ -422,6 +422,8 @@ needed no explanation, so it never got one.
 
 ## The composer has seats around it, not inside it
 
+The following records the retired attachment adapter. Since the DSH 0.1.5-rc.2 integration, official file uploads and attachment cards replace both portals and the separate inbox notice. The ownership failures below remain useful history; the current design is in [Getting a file into a sandbox](design.md#getting-a-file-into-a-sandbox).
+
 An attachment feature needs three things the composer does not offer, and each
 one sits next to something it does offer.
 
@@ -476,6 +478,8 @@ The third was reported with the others rather than placed the same way, at
 [discussion 2741](https://github.com/deepseek-ai/deepseek-harness/discussions/2741).
 
 ## Writing into the draft is not the same as telling the agent
+
+This inbox workaround is also retired; official attachment receipts now travel with the user message.
 
 The first cut of the upload wrote the committed path into the composer draft,
 reasoning that a path is exactly what a person on a local host would have typed.

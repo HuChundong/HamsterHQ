@@ -11,8 +11,8 @@ import { NS } from './constants.js'
 import { Aside, FoldButton } from './file-view.js'
 import { say, useT } from './i18n.js'
 import { icon } from './icons.js'
-import { h, React } from './runtime.js'
-import { store, useStore } from './store.js'
+import { h, React, ReactDomClient } from './runtime.js'
+
 /**
  * Every shell that is open, and the one on show.
  *
@@ -23,14 +23,26 @@ import { store, useStore } from './store.js'
  *
  * @returns {object} the element.
  */
-export function TerminalPane() {
+function TerminalContent() {
   const t = useT()
-  const { terminals, activeTerminal } = useStore()
+  const [terminals, setTerminals] = React.useState([])
+  const [activeTerminal, setActiveTerminal] = React.useState(undefined)
+  const next = React.useRef(1)
+  const addTerminal = () => {
+    const n = next.current++
+    const id = `t${String(n)}`
+    setTerminals((current) => [...current, { id, name: say()('terminal.n', { n: String(n) }) }])
+    setActiveTerminal(id)
+  }
+  const closeTerminal = (id) => {
+    setTerminals((current) => current.filter((entry) => entry.id !== id))
+    if (activeTerminal === id) setActiveTerminal(terminals.filter((entry) => entry.id !== id).at(-1)?.id)
+  }
 
   // One shell to begin with: opening the terminal tab is a request for a
   // terminal, not for a list of none.
   React.useEffect(() => {
-    if (terminals.length === 0) store.addTerminal()
+    if (terminals.length === 0) addTerminal()
   }, [terminals.length])
 
   // Built as named pieces rather than one nested call: the shells, the
@@ -48,11 +60,11 @@ export function TerminalPane() {
     role: 'option',
     tabIndex: 0,
     'aria-current': entry.id === activeTerminal ? 'true' : undefined,
-    onClick: () => store.selectTerminal(entry.id),
+    onClick: () => setActiveTerminal(entry.id),
     onKeyDown: (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return
       event.preventDefault()
-      store.selectTerminal(entry.id)
+      setActiveTerminal(entry.id)
     },
   },
   // No twisty, and none reserved: nothing in this list opens.
@@ -64,7 +76,7 @@ export function TerminalPane() {
       className: `${NS}-row-action`,
       title: t('terminal.end'),
       'aria-label': t('terminal.end.of', { name: entry.name }),
-      onClick: (event) => { event.stopPropagation(); store.closeTerminal(entry.id) },
+      onClick: (event) => { event.stopPropagation(); closeTerminal(entry.id) },
     }, icon('close', 12)))))
 
   const showing = terminals.find((entry) => entry.id === activeTerminal)
@@ -81,7 +93,7 @@ export function TerminalPane() {
         className: `${NS}-icon-button`,
         title: t('terminal.new'),
         'aria-label': t('terminal.new'),
-        onClick: () => { store.addTerminal() },
+        onClick: () => { addTerminal() },
       }, icon('new', 15)),
       h(FoldButton, { kind: 'terminal', title: t('terminal.list') })),
     h('div', { className: `${NS}-split` },
@@ -99,9 +111,9 @@ export function TerminalPane() {
  * keystrokes as they are typed, and the terminal's measured size whenever
  * it changes.
  *
- * The socket IS the session. Leaving the tab kills the shell rather than
- * leaving one running that nothing can see — a terminal that outlives its
- * window is a process nobody can stop.
+ * The socket IS the session. Ending an individual terminal ends its shell.
+ * Closing the outer tab only hides the terminal workspace; reopening it
+ * restores the same shells and scrollback until the plugin is disposed.
  *
  * @returns {object} the element.
  */
@@ -145,6 +157,7 @@ export function Console() {
      * anything, with no error anywhere to say why.
      */
     const refit = () => {
+      if (node.clientWidth === 0 || node.clientHeight === 0) return false
       try {
         fit.fit()
         return true
@@ -166,10 +179,12 @@ export function Console() {
       send({ type: 'in', data: btoa(binary) })
     })
 
+    let openingFrame
     socket.addEventListener('open', () => {
       // Fitted once the browser has laid the panel out, not during the
       // effect that created it.
-      requestAnimationFrame(() => {
+      openingFrame = requestAnimationFrame(() => {
+        openingFrame = undefined
         refit()
         send({ type: 'size', cols: term.cols, rows: term.rows })
       })
@@ -211,6 +226,7 @@ export function Console() {
     observer.observe(node)
 
     return () => {
+      if (openingFrame !== undefined) cancelAnimationFrame(openingFrame)
       if (pending !== undefined) cancelAnimationFrame(pending)
       observer.disconnect()
       typed.dispose()
@@ -226,4 +242,51 @@ export function Console() {
       : h('div', { className: `${NS}-console-note` },
         state.status === 'failed' ? state.message : t('terminal.over')),
   )
+}
+
+/**
+ * Shells belong to the workspace, not to an outer DSH tab. DSH can close that
+ * tab or unmount its body while navigating without ending a running command.
+ * Keep one content root, and move only our own host between rendered seats.
+ * The plugin's disposal effect releases it; individual shell buttons still
+ * unmount their Console and close that shell's socket immediately.
+ */
+let terminalBody
+
+export function disposeTerminalPane() {
+  const body = terminalBody
+  terminalBody = undefined
+  if (body === undefined) return
+  body.node.remove()
+  // Cordis disposal may run during a parent React commit. Defer unmounting the
+  // independent root until that commit ends, while dropping ownership now.
+  setTimeout(() => { body.root.unmount() }, 0)
+}
+
+export function TerminalPane({ useTabInfo }) {
+  const { tab } = useTabInfo()
+  const seat = React.useRef(null)
+  React.useLayoutEffect(() => {
+    if (tab.signal.aborted || seat.current === null) return undefined
+    if (terminalBody === undefined) {
+      const node = document.createElement('div')
+      node.className = `${NS}-terminal-lifetime`
+      const root = ReactDomClient.createRoot(node)
+      terminalBody = { node, root }
+      root.render(h(TerminalContent))
+    }
+    const body = terminalBody
+    const owner = seat.current
+    owner.appendChild(body.node)
+    const detach = () => {
+      // An old seat can clean up after a newer one acquired the workspace.
+      if (body.node.parentNode === owner) body.node.remove()
+    }
+    tab.signal.addEventListener('abort', detach, { once: true })
+    return () => {
+      tab.signal.removeEventListener('abort', detach)
+      detach()
+    }
+  }, [tab.signal])
+  return h('div', { ref: seat, className: `${NS}-terminal-lifetime` })
 }

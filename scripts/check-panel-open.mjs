@@ -1,50 +1,79 @@
 /**
- * Prove that browser file opens stop before the host-native opener.
- *
- * The generated session Remote exposes methods as getter descriptors. The old
- * implementation patched a removed Workspace Controller method, so every
- * tree-side check passed while a real click still reached xdg-open. This check
- * uses the generated namespace's descriptor shape and exercises both branches.
- *
- * Run: node scripts/check-panel-open.mjs
+ * File selection must call the official tab resource action, and every custom
+ * type must have a body registered under its type id. Exercising the served
+ * plugin catches a registration that loads but leaves an empty docking tab.
  */
-
 import assert from 'node:assert/strict'
-import { installPathOpen } from '../packages/dsh-artifact-panel/src/path-open.js'
+import { execFileSync } from 'node:child_process'
+import { pathToFileURL } from 'node:url'
 
-const transportCalls = []
-const nativeOpen = async (request) => {
-  transportCalls.push(request)
-  return { ok: false, error: { message: 'path open failed: spawn xdg-open ENOENT' } }
+/** Apply the actual bundled plugin to recording versions of the shell services. */
+export async function checkArtifactPanelOpen(plugin) {
+  const types = []
+  const bodies = []
+  const cleanups = []
+  let released = 0
+  const dictionaries = new Map()
+  const noop = () => {}
+  const ctx = {
+    connection: {},
+    locale: {
+      register: (namespace, dictionary) => { dictionaries.set(namespace, dictionary); return noop },
+      subscribe: () => noop, getSnapshot: () => ({}),
+      bind: namespace => key => {
+        assert(key in dictionaries.get(namespace).en, `missing English dictionary key ${key}`)
+        assert(key in dictionaries.get(namespace).zh, `missing Chinese dictionary key ${key}`)
+        return dictionaries.get(namespace).en[key]
+      },
+    },
+    sidebarRight: { split: pane => { assert.equal(pane, 'files-pane'); return 'preview-pane' } },
+    sidebarRightTabs: { register: type => { types.push(type); return () => { released++ } } },
+    slots: {
+      inject: (_name, setup) => setup(),
+      register: (options, Body) => { bodies.push({ options, Body }); return () => { released++ } },
+    },
+    effect: setup => { const cleanup = setup(); cleanups.push(cleanup); return cleanup },
+  }
+  for (const service of ['sidebarRightTabs', 'sidebarRight', 'slots']) assert(plugin.inject.includes(service))
+  assert(!plugin.inject.includes('remote.session'), 'file opens must not replace session Remote methods')
+  plugin.apply(ctx)
+  assert.deepEqual(types.map(type => type.kind), ['files', 'terminal', 'canvas', 'browser', 'file'])
+  for (const type of types) {
+    assert.equal(type.priority, 'extension')
+    if (type.guide !== undefined) {
+      assert(Array.isArray(type.guide), 'the official registry maps guide as an array')
+      assert(type.guide.every(entry => typeof entry.title === 'function'))
+      for (const entry of type.guide) assert.equal(typeof entry.title(), 'string')
+    }
+    assert.equal(typeof type.title('dsh-resource://file/session/session-check/example.zip'), 'string')
+    const body = bodies.find(entry => entry.options.key === type.id && entry.options.name === 'sidebar.right.pane.tab')
+    assert(body, `type ${type.id} has no matching body`)
+    assert.equal(body.options.name, 'sidebar.right.pane.tab')
+  }
+  const opened = []
+  const files = bodies.find(entry => entry.options.key?.endsWith('/files'))
+  const rendered = files.Body({ sessionId: 'session-check', useSessions: selector => selector({ byId: { 'session-check': { cwd: '/mnt/workspace' } } }), useTabInfo: () => ({ panel: { id: 'files-pane' }, tab: { actions: { openResource: address => opened.push(address) } } }) })
+  // The error boundary contains the content frame, which holds the actual
+  // Files component. Invoke it, then exercise the tree's public onOpen prop.
+  const component = rendered.children[0].children[0]
+  const tree = component.type(component.props)
+  const findTree = node => typeof node?.props?.onOpen === 'function' ? node : node?.children?.flat().map(findTree).find(Boolean)
+  const fileTree = findTree(tree)
+  assert(fileTree, 'files body must connect its tree to an open action')
+  fileTree.props.onOpen({ path: '/mnt/workspace/report.md' })
+  assert.equal(opened.length, 1)
+  assert.equal(typeof opened[0], 'string')
+  assert.equal(opened[0], 'dsh-resource://file/session/session-check/report.md')
+  const file = types.find(type => type.kind === 'file')
+  assert(file.patterns.includes('dsh-resource://file/**'))
+  assert(file.canOpen('dsh-resource://file/session/session-check/report.md'), 'main-panel resources must use the owned file surface')
+  for (const cleanup of cleanups.reverse()) cleanup?.()
+  assert.equal(released, types.length + bodies.length, 'disposing the plugin must release all type and body registrations')
 }
 
-const sessionRemote = {}
-const generatedGetter = () => nativeOpen
-Object.defineProperty(sessionRemote, 'openWorkspacePath', {
-  configurable: true,
-  enumerable: true,
-  get: generatedGetter,
-})
-
-const opened = []
-const dispose = installPathOpen(sessionRemote, path => { opened.push(path) })
-
-const intercepted = await sessionRemote.openWorkspacePath({ path: '/mnt/workspace/report.md' })
-assert.deepEqual(intercepted, { ok: true, value: { opened: true } })
-assert.deepEqual(opened, ['/mnt/workspace/report.md'])
-assert.deepEqual(transportCalls, [])
-
-const delegated = await sessionRemote.openWorkspacePath({ path: 'report.md' })
-assert.equal(delegated.ok, false)
-assert.deepEqual(transportCalls, [{ path: 'report.md' }])
-
-dispose()
-const restored = Object.getOwnPropertyDescriptor(sessionRemote, 'openWorkspacePath')
-assert.equal(restored?.get, generatedGetter)
-await sessionRemote.openWorkspacePath({ path: '/mnt/workspace/after-dispose.md' })
-assert.deepEqual(transportCalls, [
-  { path: 'report.md' },
-  { path: '/mnt/workspace/after-dispose.md' },
-])
-
-console.log('check-panel-open: absolute paths open in the panel without reaching the native opener')
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    execFileSync(process.execPath, [new URL('./check-plugin-load.mjs', import.meta.url).pathname], { stdio: 'inherit' })
+  } catch (error) { process.exit(error.status ?? 1) }
+  console.log('check-panel-open: custom docking types have bodies and file selection uses the official resource action')
+}

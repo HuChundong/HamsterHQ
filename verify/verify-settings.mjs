@@ -16,7 +16,7 @@ if (origin.hostname === 'localhost' || origin.hostname.startsWith('127.') || ori
   origin.hostname = 'dsh-settings.invalid'
   args.push(`--host-resolver-rules=MAP dsh-settings.invalid ${address.address}`)
 }
-const browser = await chromium.launch({ args })
+const browser = await chromium.launch({ args, channel: process.env.VERIFY_BROWSER_CHANNEL })
 const rpc = await harnessRpc(GATEWAY, cookie)
 const described = await rpc.call('settings/describe')
 if (!described.ok) throw new Error('settings describe failed')

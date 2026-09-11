@@ -216,17 +216,20 @@ sandbox_remove_all() {
 #
 # The image ships one browser build and refuses any other Playwright, so the
 # version is one fact: the tag and the package the container installs are both
-# derived from it, and raising it means editing this line alone.
-BROWSER_VERSION=1.56.0
+# derived from the exact devDependency in package.json.
+BROWSER_VERSION=$(sed -n 's/.*"playwright": "\([0-9.]*\)".*/\1/p' package.json)
+if ! [[ "$BROWSER_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo 'verify: package.json must pin an exact Playwright version' >&2
+  exit 1
+fi
 BROWSER_IMAGE="${PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v$BROWSER_VERSION-noble}"
 BROWSER_RUN=(docker run --rm --network host)
 [ -n "${BROWSER_ADD_HOST:-}" ] && BROWSER_RUN+=(--add-host "$BROWSER_ADD_HOST")
 BROWSER_RUN+=(-v "$PWD:/verify" -w /verify -e "GATEWAY=$GATEWAY" -e PLAYWRIGHT_FROM=/verify/package.json)
 
-# Playwright is a devDependency of the web workspace, so a deployment host
-# generally does not have it; the container installs it when the mounted
-# directory has none.
-BROWSER_INSTALL="[ -d node_modules/playwright ] || npm install playwright@$BROWSER_VERSION --no-save --silent > /dev/null 2>&1"
+# A stale mounted node_modules is as incompatible as an absent one: the
+# container browser and installed client must be the same release.
+BROWSER_INSTALL="node -e 'if (require(\"playwright/package.json\").version !== \"$BROWSER_VERSION\") process.exit(1)' 2>/dev/null || npm ci --include=dev --silent > /dev/null 2>&1"
 
 JAR_A=$(mktemp); JAR_B=$(mktemp); JAR_NONE=$(mktemp)
 trap 'rm -f "$JAR_A" "$JAR_B" "$JAR_NONE"' EXIT
@@ -469,61 +472,18 @@ if docker compose exec -T gateway node -e 'import("/app/gateway/src/egress.js").
 fi
 
 echo
-echo '=== 6c. The file plane: a browser puts a file into its own sandbox ==='
-# A second plane, and nothing above touches it. `dsh-sandbox-host` registers
-# `/files` with dsh's own RPC channel registry rather than adding endpoints to
-# `/api`, because `/api` accepts exactly one interceptor and dsh holds it — so
-# the nginx location, the gateway's forwarding rule, and the sandbox's own route
-# are all new, and all three are silent when they are wrong.
+echo '=== 6c. The remote settings document ==='
+# Settings-document access remains on the remote-host plugin's /files channel.
+# Attachments use the harness's official upload service and browser acceptance.
 rpc() {  # rpc <cookiejar> <endpoint> <payload> -> the response body
   curl -s -m 120 -b "$1" -X POST "$GATEWAY/files/$2" -H 'Content-Type: application/json' \
     -d "{\"type\":\"client-request\",\"rpcId\":\"verify-$2\",\"method\":\"$2\",\"payload\":$3}"
 }
 
-check 'the file plane refuses an anonymous caller' 401 \
-  "$(curl -s -o /dev/null -w '%{http_code}' -m 30 -b "$JAR_NONE" -X POST "$GATEWAY/files/upload.begin" \
+check 'the settings document refuses an anonymous caller' 401 \
+  "$(curl -s -o /dev/null -w '%{http_code}' -m 30 -b "$JAR_NONE" -X POST "$GATEWAY/files/document.read" \
       -H 'Content-Type: application/json' \
-      -d '{"type":"client-request","rpcId":"v","method":"upload.begin","payload":{}}')"
-
-# The name carries a traversal because a filename is a value from the person's
-# own machine, and this is the one place it crosses into a path.
-MARKER="hamsterhq-upload-$$"
-PROBE="verify-probe-$$.txt"
-BEGUN=$(rpc "$JAR_A" upload.begin "{\"name\":\"../../etc/$PROBE\",\"size\":${#MARKER}}")
-UPLOAD_ID=$(printf '%s' "$BEGUN" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
-check 'an upload can be begun' 1 "$([ -n "$UPLOAD_ID" ] && echo 1 || echo 0)"
-
-rpc "$JAR_A" upload.chunk \
-  "{\"id\":\"$UPLOAD_ID\",\"data\":\"$(printf '%s' "$MARKER" | base64 | tr -d '\n')\"}" > /dev/null
-COMMITTED=$(rpc "$JAR_A" upload.commit "{\"id\":\"$UPLOAD_ID\"}")
-UPLOAD_PATH=$(printf '%s' "$COMMITTED" | sed -n 's/.*"path":"\([^"]*\)".*/\1/p')
-
-check 'it lands under the tenant workspace' 1 \
-  "$(case "$UPLOAD_PATH" in (*/mnt/workspace/uploads/*) echo 1 ;; (*) echo 0 ;; esac)"
-check 'the name became one path segment' "$PROBE" "$(basename "$UPLOAD_PATH")"
-ALICE_BOX=$(sandbox_handles_of "$ALICE" | head -1)
-check 'the bytes are in the sandbox, whole' "$MARKER" \
-  "$(sandbox_sh "$ALICE_BOX" "cat '$UPLOAD_PATH' 2>/dev/null" | tr -d '\r')"
-# Nothing is published before commit, so a staging file left behind is a file an
-# agent could read as if it were finished.
-check 'nothing is left staged' 0 \
-  "$(sandbox_sh "$ALICE_BOX" 'ls /mnt/workspace/uploads/.staging 2>/dev/null | wc -l' | tr -d ' \r')"
-check 'an unknown upload id is refused' 1 \
-  "$(rpc "$JAR_A" upload.commit '{"id":"no-such-upload"}' | grep -c '"ok":false')"
-
-# The plane carries no tenant identity of its own — the gateway decides whose
-# sandbox a request enters, exactly as it does for /api. If it did not, this
-# file would be in Alice's.
-BOB_PROBE="verify-bob-$$.txt"
-BOB_BEGUN=$(rpc "$JAR_B" upload.begin "{\"name\":\"$BOB_PROBE\",\"size\":${#MARKER}}")
-BOB_ID=$(printf '%s' "$BOB_BEGUN" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
-rpc "$JAR_B" upload.chunk \
-  "{\"id\":\"$BOB_ID\",\"data\":\"$(printf '%s' "$MARKER" | base64 | tr -d '\n')\"}" > /dev/null
-rpc "$JAR_B" upload.commit "{\"id\":\"$BOB_ID\"}" > /dev/null
-check "bob's upload is not in alice's sandbox" 0 \
-  "$(sandbox_sh "$ALICE_BOX" "ls /mnt/workspace/uploads/*/$BOB_PROBE 2>/dev/null | wc -l" | tr -d ' \r')"
-check "and is in bob's" 1 \
-  "$(sandbox_sh "$(sandbox_handles_of "$BOB" | head -1)" "ls /mnt/workspace/uploads/*/$BOB_PROBE 2>/dev/null | wc -l" | tr -d ' \r')"
+      -d '{"type":"client-request","rpcId":"v","method":"document.read","payload":{}}')"
 
 # The configuration document, which is what the Settings page shows in place of
 # the control that would have handed it to a desktop.
@@ -548,20 +508,21 @@ done
 # Browser-only product paths: a generic file card, one streamed model turn,
 # and settings that survive a fresh browser context.
 TURN_COOKIE=$(awk -F '\t' 'NF == 7 { printf "%s=%s;", $6, $7 }' "$JAR_A" | sed 's/;$//')
-export TURN_COOKIE
-browser_suites=(verify-attachment-card.mjs verify-turn.mjs verify-settings.mjs)
+ATTACHMENT_BOB_COOKIE=$(awk -F '\t' 'NF == 7 { printf "%s=%s;", $6, $7 }' "$JAR_B" | sed 's/;$//')
+export TURN_COOKIE ATTACHMENT_BOB_COOKIE
+browser_suites=(verify-sidebar.mjs verify-attachment-card.mjs verify-turn.mjs verify-restored-files.mjs verify-main-file-link.mjs verify-settings.mjs)
 # Desktop deployments can require a real RFB connection and exercise noVNC's
 # loading and recovery UI. A light sandbox has no desktop to connect to.
-if [ "${VERIFY_DESKTOP:-0}" = 1 ]; then browser_suites+=(verify-computer-loading.mjs); fi
+if [ "${VERIFY_DESKTOP:-0}" = 1 ]; then browser_suites+=(verify-restored-computer-terminal.mjs verify-computer-loading.mjs); fi
 for browser_suite in "${browser_suites[@]}"; do
-  if node -e "require('module').createRequire('$PWD/package.json').resolve('playwright')" 2>/dev/null; then
+  if node -e "const load = require('module').createRequire('$PWD/package.json'); if (load('playwright/package.json').version !== load('./package.json').devDependencies.playwright) process.exit(1)" 2>/dev/null; then
     GATEWAY="$GATEWAY" node "$browser_suite" || NODE_FAIL=1
   else
-    "${BROWSER_RUN[@]}" -e TURN_COOKIE "$BROWSER_IMAGE" \
+    "${BROWSER_RUN[@]}" -e TURN_COOKIE -e ATTACHMENT_BOB_COOKIE "$BROWSER_IMAGE" \
       sh -c "$BROWSER_INSTALL && node $browser_suite" || NODE_FAIL=1
   fi
 done
-unset TURN_COOKIE
+unset TURN_COOKIE ATTACHMENT_BOB_COOKIE
 
 # A scheduled task, from a tenant with no sandbox.
 #
@@ -623,13 +584,21 @@ else
   echo '=== 15. The console asks before it deletes ==='
   # A tenant the console can offer to delete. Alice is registered by now and is
   # not an operator, so her row carries the button this drives.
-  "${BROWSER_RUN[@]}" -e "ADMIN=$ADMIN_URL" -e "PROBE_COOKIES=$ADMIN_COOKIES" "$BROWSER_IMAGE" \
-    sh -c "$BROWSER_INSTALL && node verify-dialog.mjs" || NODE_FAIL=1
+  if node -e "require('module').createRequire('$PWD/package.json').resolve('playwright')" 2>/dev/null; then
+    ADMIN="$ADMIN_URL" PROBE_COOKIES="$ADMIN_COOKIES" node verify-dialog.mjs || NODE_FAIL=1
+  else
+    "${BROWSER_RUN[@]}" -e "ADMIN=$ADMIN_URL" -e "PROBE_COOKIES=$ADMIN_COOKIES" "$BROWSER_IMAGE" \
+      sh -c "$BROWSER_INSTALL && node verify-dialog.mjs" || NODE_FAIL=1
+  fi
 
   echo
   echo '=== 16. An action leaves the address bar alone ==='
-  "${BROWSER_RUN[@]}" -e "ADMIN=$ADMIN_URL" -e "PROBE_COOKIES=$ADMIN_COOKIES" "$BROWSER_IMAGE" \
-    sh -c "$BROWSER_INSTALL && node verify-console-url.mjs" || NODE_FAIL=1
+  if node -e "require('module').createRequire('$PWD/package.json').resolve('playwright')" 2>/dev/null; then
+    ADMIN="$ADMIN_URL" PROBE_COOKIES="$ADMIN_COOKIES" node verify-console-url.mjs || NODE_FAIL=1
+  else
+    "${BROWSER_RUN[@]}" -e "ADMIN=$ADMIN_URL" -e "PROBE_COOKIES=$ADMIN_COOKIES" "$BROWSER_IMAGE" \
+      sh -c "$BROWSER_INSTALL && node verify-console-url.mjs" || NODE_FAIL=1
+  fi
 fi
 
 # The browser suite runs where Chromium is, which is not where the database is, so its
@@ -640,7 +609,7 @@ curl -s -o /dev/null -X POST "$GATEWAY/login" --data-urlencode "email=$ALICE" --
 BROWSER_CODE=$(code_for "$ALICE")
 export BROWSER_CODE BROWSER_EMAIL="$ALICE"
 
-if node -e "require('module').createRequire('$PWD/package.json').resolve('playwright')" 2> /dev/null; then
+if node -e "const load = require('module').createRequire('$PWD/package.json'); if (load('playwright/package.json').version !== load('./package.json').devDependencies.playwright) process.exit(1)" 2> /dev/null; then
   echo '     (browser suite runs on the host, where Playwright and Chromium live)'
   node verify-browser.mjs || NODE_FAIL=1
 else

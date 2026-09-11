@@ -71,7 +71,7 @@ for (const [name, glyph] of Object.entries(icons)) {
 
 // -- the inline copies still equal the original -----------------------------
 //
-// Both of these files are read by the shell's module loader as source, with
+// These files are read by the shell's module loader as source, with
 // `require` bound to the shell's own table rather than Node's — so neither can
 // resolve `dsh-icons`, and neither has a build step that could. The copy is the
 // only way, and this is what keeps it honest.
@@ -113,6 +113,20 @@ for (const { file, constant, glyphs } of COPIES) {
     }
   }
 }
+
+// Computer is a source-only client too. Compare the complete ordered path
+// list and drawing attributes, so an extra path is also a regression.
+const computerSource = read('packages/dsh-computer/client.js')
+const computerIcon = /function ComputerIcon\([^]*?\n    \}/.exec(computerSource)?.[0] ?? ''
+const computerPaths = [...computerIcon.matchAll(/h\('path', \{ d: '([^']+)' \}\)/g)].map((match) => match[1])
+check(JSON.stringify(computerPaths) === JSON.stringify(extracted.computer.paths),
+  'dsh-computer ComputerIcon paths must equal dsh-icons computer exactly')
+for (const attribute of [
+  `viewBox: '${extracted.computer.viewBox}'`, "fill: 'none'", "stroke: 'currentColor'",
+  `strokeWidth: ${extracted.computer.stroke.width}`,
+  `strokeLinecap: '${extracted.computer.stroke.linecap}'`,
+  `strokeLinejoin: '${extracted.computer.stroke.linejoin}'`,
+]) check(computerIcon.includes(attribute), `dsh-computer ComputerIcon must preserve ${attribute}`)
 
 // -- each half is painted the way it was drawn --------------------------------
 

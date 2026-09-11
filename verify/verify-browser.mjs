@@ -52,7 +52,7 @@ function check(label, ok, detail) {
   else failed += 1
 }
 
-const browser = await chromium.launch()
+const browser = await chromium.launch({ channel: process.env.VERIFY_BROWSER_CHANNEL })
 const page = await browser.newPage()
 
 /** Console messages at error level, which a blank page produces and a working one does not. */

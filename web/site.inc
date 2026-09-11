@@ -52,15 +52,13 @@ location /api/ {
   proxy_buffering off;
 }
 
-# The file plane. A second location rather than a widened `/api/`, because it is
+# The configuration document. A second location rather than a widened `/api/`, because it is
 # a second channel: `dsh-sandbox-host` registers `/files` with dsh's own RPC
 # channel registry, which `/api` could not host — that channel accepts exactly
 # one interceptor and dsh's `typert-gateway` already holds it.
 #
 # No upgrade headers: nothing here is a WebSocket. The timeouts match `/api/`
-# anyway, since a chunk crosses the same tunnel and a tenant on a slow link
-# should not have an upload cut at sixty seconds. `client_max_body_size` above
-# already covers a chunk many times over.
+# because configuration reads cross the same sandbox tunnel.
 location /files/ {
   proxy_pass http://$gateway_upstream;
   proxy_http_version 1.1;

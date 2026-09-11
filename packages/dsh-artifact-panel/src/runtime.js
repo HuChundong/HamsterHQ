@@ -17,7 +17,7 @@
 /** The shell's React. Undefined until `boot()`. @type {object} */
 export let React
 
-/** The shell's `react-dom/client`, for the panel's own root. @type {object} */
+/** The shell's `react-dom/client`, for terminal content lifetimes. @type {object} */
 export let ReactDomClient
 
 /**
@@ -56,6 +56,6 @@ export function boot(require) {
     // package answers with undefined rather than throwing.
     primitives = require('@deepseek-ai/dsh-client-ui-primitives') ?? {}
   } catch (error) {
-    console.warn('[dsh-artifact-panel] ui-primitives did not load; files render as plain text', error)
+    console.warn('[dsh-artifact-panel] ui-primitives did not load; optional glyphs are unavailable', error)
   }
 }

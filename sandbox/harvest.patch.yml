@@ -10,7 +10,7 @@
 # file is a plugin whose browser half no tenant ever loads — while its host half
 # runs in every sandbox, answering calls the interface never makes.
 
-# The file plane and the configuration page: what a browser needs when the
+# Sandbox status and the configuration page: what a browser needs when the
 # backend it talks to is on another machine. Its host half is inert here — it
 # registers a route nobody calls — and its client half is the point.
 - insert:
@@ -37,7 +37,7 @@
     - id: tenant-account
       name: dsh-tenant-account
 
-# The right-hand panel. It has no host half worth the name — its data plane is
+# Content tools in DSH’s right sidebar. Its file and terminal data plane is
 # envd, which the gateway addresses from outside the sandbox — but the entry has
 # to be here anyway: the client-module registry only scans packages the Loader
 # mounted, so an unmounted name is a browser half no tenant ever loads.
@@ -45,7 +45,7 @@
     - id: artifact-panel
       name: dsh-artifact-panel
 
-# The scheduled-tasks control in the sidebar's foot, and the dialog behind it.
+# Scheduled tasks in the global navigation, with its own management page.
 # Its host half is inert here for the same reason `sandbox-host`'s is — there
 # is no gateway to reach — and its client half is the point.
 - insert:
@@ -92,3 +92,16 @@
 - id: settings-controller
   config:
     nativeOpen: false
+
+# Custom RPC channels register HTTP routes through Connection's owning context.
+# The web composition supplies its webServer dependency explicitly.
+- id: connection
+  inject: [webRuntime, webServer]
+
+# Native application launching belongs to a person sitting at the host.
+# Remote users open files and terminals through the workspace or Computer.
+- id: open-in-app
+  disabled: true
+
+- id: ui-open-in-app
+  disabled: true

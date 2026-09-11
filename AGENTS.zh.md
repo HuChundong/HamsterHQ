@@ -36,21 +36,21 @@ harness 上才成立的改动，不是这个项目能交付的改动。
 落在这个问题上：
 
 - `dsh-gateway-tunnel` 把沙箱的 `/api` 流量送到网关。它跟着传输走。
-- `dsh-sandbox-host` 提供「后端在一台人碰不到的机器上」时浏览器需要的东西：`/files` 上传通道，
+- `dsh-sandbox-host` 提供「后端在一台人碰不到的机器上」时浏览器需要的东西：沙箱状态，
   以及配置文件被读回来、而不是被交给一个并不存在的桌面。它的每一行都能在网关消失后继续成立——
   这既是它不该长在另一个插件上面的原因，也意味着任何把 dsh 跑在远端的人都能直接用它。
 - `dsh-computer` 是 agent 和人共用的浏览器与桌面：只读画面通道（agent 的页面，
   以及整块屏幕的一张 JPEG）、可交互的 noVNC 界面，以及 agent 在登录、MFA、验证码或
-  同意操作需要人时用的工具/卡片交接。接管是这个插件自己的全窗口界面；只有它渲染进去的
-  artifact panel 座位属于这套部署布局。它在拿掉网关后仍然成立。
+  同意操作需要人时用的工具/卡片交接。接管是这个插件自己的全窗口界面；桌面预览注册到
+  harness 的右侧边栏。它在拿掉网关后仍然成立。
 - `dsh-deployment-prompt` 纠正系统提示里「人就坐在这台机器前」的那部分：harness 自带的
   两段——一段把 loopback 地址当成用户正在看的地址，一段把 `/app` 说成一份可以改的 checkout。
   它在拿掉网关后仍然成立：任何把 dsh 跑在用户碰不到的机器上的人，都欠 agent 同样这两处更正。
 - `dsh-tenant-account` 是谁登录着、怎么退出，以及一个自带登录页的部署已经说过一遍的引导步骤。
   没有网关，这些一个字都不成立。
 - `dsh-artifact-panel` 是对话旁边的工作区——文件、预览、终端、画布。
-- `dsh-scheduled-tasks` 是一个租户的日程：写入它的工具、触发它的定时器，以及侧栏底部那个
-  入口。那份持久的列表是网关的，所以它没有一行能在网关消失后成立。
+- `dsh-scheduled-tasks` 是一个租户的日程：写入它的工具、触发它的定时器，以及全局管理
+  页面。那份持久的列表是网关的，所以它没有一行能在网关消失后成立。
 - `dsh-brand` 是外壳内部这套部署自己的标识。
 
 `packages/` 里另外三个包不是插件：`dsh-icons` 和 `dsh-ground` 服务那些没有模块表的界面，
@@ -150,7 +150,8 @@ lucide-static 是 ISC。
 两者都没有模块表、没有 React 运行时，所以都从 `dsh-icons` 取标记。一次没有重新走
 生成器的 `DSH_VERSION` 升级会让 `check-icons.mjs` 失败。
 
-有两个 client 半边——`dsh-tenant-account` 和 `dsh-sandbox-host`——各内联 1 个自绘
+有四个 client 半边——`dsh-tenant-account`、`dsh-sandbox-host`、
+`dsh-scheduled-tasks` 和 `dsh-computer`——各内联 1 个生成的
 字形。这不是偏好：shell 的模块加载器把这些文件当源码读，`require` 绑的是它自己的
 表，所以没有任何构建步骤可以用来解析兄弟包。`check-icons.mjs` 会把那些字节钉在
 原件上。

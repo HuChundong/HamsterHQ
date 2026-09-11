@@ -74,7 +74,7 @@ packages/               本仓库拥有的 npm 包
   tunnel-protocol/        隧道两端共用的帧协议
   dsh-gateway-tunnel/     cordis 插件：把沙箱的 /api 流量送出去
   dsh-sandbox-host/       cordis 插件：后端在另一台机器上时浏览器需要的东西——
-                          上传，以及配置文件被读出来而不是被打开
+                          沙箱状态，以及配置文件被读出来而不是被打开
   dsh-computer/           cordis 插件：agent 与人共用的浏览器/桌面、实时预览与
                           需要人操作时的交接卡片
   dsh-tenant-account/     cordis 插件：谁登录着，以及怎么退出

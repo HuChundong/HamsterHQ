@@ -191,7 +191,7 @@ itself when it fails.
 - **Is the harness still a dependency?** Nothing patches, vendors or forks it,
   with the one documented exception.
 - **Which plugin does this belong in?** Take the gateway away — is this still
-  needed? A change that fits none of the five plugins means the question has a
+  needed? A change that fits none of the existing plugins means the question has a
   new answer, not that one of them should grow a second subject.
 - **Does the rule this change relies on have exactly one home?** A fact
   restated in two files is a fact that will disagree with itself. Rationale

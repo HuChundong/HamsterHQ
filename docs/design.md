@@ -519,55 +519,26 @@ priority is the cell's shadowing rank, and the lowest renders.
 
 ## Getting a file into a sandbox
 
-On a local host nobody uploads anything: the person names a path and the agent
-reads it. Here the path they can name is on the wrong machine, so the deployment
-has to produce one.
+Conversation attachments use DSH's own file-upload and attachment plugins.
+The official input controls own file picking, paste, drop, progress, retry,
+removal and session-local drafts. Ordinary files upload through the authenticated
+`/api/session/uploadFileBinary` route, which already crosses the gateway tunnel;
+images use the official image content pipeline. No deployment upload carrier is needed.
 
-The path never appears in the composer. Writing it there was the first cut, and
-it was wrong twice over: the person reads a path they did not type, in a box
-that is already showing them a card for the same file. dsh has a better seat for
-it — the agent inbox takes injected context, the same channel approval notices
-and attached snapshots ride. A commit appends a `plugin`-sourced message to
-`next-step`, which is invisible until the next turn claims it and then renders
-as a context row rather than as words the person appears to have said. Taking
-the card off the message retracts that notice, so the agent is never told about
-a file somebody changed their mind about.
+The host returns a staged receipt for an ordinary file. Sending a message admits
+that receipt into the selected session; removing its draft card excludes it from
+the next message, rather than injecting and then retracting a separate inbox notice.
+The official attachment service owns storage and retention. Existing files from
+the retired deployment uploader remain untouched.
 
-Nothing new reaches the model beyond that text: no content block, no provider
-contract, no agreement with the harness about what an attachment is. (dsh's own
-attachment plane is images only, and says so — generic files are deferred
-upstream pending a lifecycle and provider contract.)
+`dsh-sandbox-host` therefore contributes neither upload menus nor attachment cards,
+and owns no upload protocol or staging store. Its retained `/files` channel only
+reads the configuration document. The workspace file manager's directory upload
+is a separate operation: it writes into the directory the user selected, rather
+than attaching a file to a conversation.
 
-The card itself is rendered where dsh renders its own image thumbnails: inside
-the composer card, above the editor. Dsh now exposes that position as the
-single `conversation.input.attachments` slot, but the shipped image UI occupies
-it; replacing that entry would make generic files visible by removing image
-attachments. The plugin therefore keeps its additive `conversation.input.dock`
-entry and portals a container beside the image rail, locating the shipped input
-scrollport by its `data-input-scroll` marker rather than a hashed class name.
-The `+` menu group likewise portals into the real panel by ARIA roles. Both
-remaining composition gaps are reported upstream; see
-[sandbox-pitfalls](sandbox-pitfalls.md).
-
-The endpoints live on `/files`, a channel of dsh's own RPC registry, and not on
-`/api`. `/api` accepts exactly one interceptor and dsh's `typert-gateway` holds
-it; a second registration throws at mount. A channel of its own costs one nginx
-location and one line in the gateway's routing, both of which treat it exactly
-as they treat `/api` — authenticate the caller, hand it to their sandbox, know
-nothing about what is on it.
-
-Uploads are chunked at 4 MiB, and the body limit is not why. dsh accepts 300 MiB
-and nginx is set to 320. The tunnel is a single WebSocket carrying every request
-as base64 frames, so a file sent whole holds it for the duration and every other
-call queues behind it.
-
-Bytes land in a staging file and become visible only on commit — a half-written
-file an agent could pick up reads as a complete one — and they are published by
-hard link, which fails on collision rather than overwriting. Two files of one
-name uploaded on one day are two files. The destination is
-`<workspace>/uploads/<date>/`, and the workspace is `/mnt/workspace`, a real
-directory on the tenant's volume whenever they have one, so an upload outlives
-the sandbox that received it.
+The browser acceptance in `verify/verify-attachment-card.mjs` exercises the official
+UI and upload request, including file bytes, draft removal and session isolation.
 
 ## What a tenant's agent is given
 
@@ -792,22 +763,10 @@ Two things live there, and which package owns which follows the same question
 as everything else: take the gateway away, is this still needed?
 
 The **sandbox row** — a status dot and three rings for CPU, memory and disk —
-belongs to `dsh-sandbox-host`, because a sandbox is what it describes. The
-figures come from `/proc` and `statfs` inside the sandbox, over the same
-`/files` channel the uploads use, polled every five seconds while somebody is
-looking. A push would have cost a frame kind in the tunnel protocol and
-per-tenant state in the gateway; a poll costs one small round trip and nothing
-when no tab is open.
-
-Collapsed to the 56px rail the row renders nothing at all. A lone status dot
-was the first cut and it read as a stray mark: with no label beside it nothing
-says the colour is about a sandbox, and the three rings it stood in for do not
-fit at that width either.
-
-Whether the sandbox is RUNNING is deliberately not part of that answer. A
-sandbox that is not running answers nothing at all, and the gateway already
-says so with a 503 — so the state is read from whether the call arrives, which
-is the only version of the question that is not a guess.
+belongs to `dsh-sandbox-host`, because a sandbox is what it describes. The browser
+subscribes to `/sandbox/stats`; the gateway combines sandbox reports with tunnel
+liveness. It does not poll the configuration-document channel. On the collapsed
+rail, a compact dot retains its sandbox label through its title and accessible name.
 
 The **account row** belongs to `dsh-tenant-account`, and it takes the seat the
 Settings control used to have. That is not a decoration: the shell's Settings

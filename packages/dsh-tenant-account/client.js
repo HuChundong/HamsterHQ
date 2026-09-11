@@ -325,8 +325,8 @@ window.__ModuleLoader__.load({
         'row.user': '当前用户',
         'sign-out': '退出登录',
         'sign-out.what': '退出后当前会话立即失效，你的沙箱会被释放。',
-        settings: '设置',
         account: '账户',
+        settings: '设置',
 
         // Keyed by the codes the gateway sends. A code with no entry falls
         // back to `error.unknown` rather than showing itself.
@@ -379,8 +379,8 @@ window.__ModuleLoader__.load({
         'row.user': 'Signed in as',
         'sign-out': 'Sign out',
         'sign-out.what': 'Signing out ends this session at once, and your sandbox is released.',
-        settings: 'Settings',
         account: 'Account',
+        settings: 'Settings',
 
         'error.unknown': 'That did not work. Try again shortly.',
         'error.offline': 'Could not reach the server.',
@@ -398,16 +398,6 @@ window.__ModuleLoader__.load({
     }
 
 
-    /**
-     * The sandbox row `dsh-sandbox-host` puts at the sidebar's foot.
-     *
-     * Named here because pressing that row opens the settings panel, and this
-     * plugin is what holds the seat that opens it — reaching the row means
-     * matching the class that plugin scopes its footer to. The dependency runs
-     * one way: `dsh-sandbox-host` survives the gateway's removal and knows
-     * nothing about this, and a build where that row is absent never fires.
-     */
-    const SANDBOX_ROW = 'dsh-sandbox-host-sandbox'
 
     /**
      * The first letter of a name, which is the whole of it that fits in a
@@ -1329,8 +1319,19 @@ window.__ModuleLoader__.load({
 
     /** Restated from the theme's own tokens, like the sign-out button above. */
     const MENU_CSS = `
+      /* The documented slot anchor owns our footer list's layout. No parent
+         walks, hashed classes or imperative style writes are needed. */
+      [data-slot='sidebar.footer.action'] {
+        display: flex !important;
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+      }
+
       .${U}-row {
         display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
+        border: 0; border-radius: 8px; padding: 0; font: inherit;
+        background: transparent; color: var(--dsw-alias-label-primary); cursor: pointer;
       }
       .${U}-row[data-wide='false'] { justify-content: center; gap: 0; }
       /* Two lines, as the trigger carries two facts: who is signed in, and what
@@ -1468,24 +1469,6 @@ window.__ModuleLoader__.load({
     `
 
     /**
-     * The tenant, at the sidebar's foot, with everything about them behind it.
-     *
-     * This takes the `settings.trigger` seat rather than adding a row beside
-     * it, because the shell's Settings control IS that seat: the owner wraps
-     * whatever fills it in the button that opens the panel. Filling it with the
-     * account row is what demotes Settings from a first-class control to one
-     * line in this menu — which is the whole point — and it leaves the panel
-     * itself, and every section in it, untouched.
-     *
-     * Opening the panel from the menu clicks that owner button directly. There
-     * is no programmatic way in: `open` is local state inside the settings
-     * shell, with no service and no event to reach it. The click is the seam
-     * the shell already has.
-     *
-     * @param {object} props - the sidebar's owner share (`wide`).
-     * @returns {object} the row, and the menu while it is open.
-     */
-    /**
      * A chevron, pointing at the menu this row opens.
      * @param {object} props - `size` in pixels.
      * @returns {object} the icon.
@@ -1495,22 +1478,10 @@ window.__ModuleLoader__.load({
       : React.createElement(primitives.IconChevronUpOutline14, { size, className: `${U}-chev` }))
 
     /**
-     * The tenant, at the sidebar's foot, with everything about them behind it.
-     *
-     * This takes the `settings.trigger` seat rather than adding a row beside
-     * it, because the shell's Settings control IS that seat: the owner wraps
-     * whatever fills it in the button that opens the panel. Filling it with the
-     * account row is what demotes Settings from a first-class control to one
-     * line in this menu — which is the whole point — and it leaves the panel
-     * itself, and every section in it, untouched.
-     *
-     * Opening the panel from the menu clicks that owner button directly. There
-     * is no programmatic way in: `open` is local state inside the settings
-     * shell, with no service and no event to reach it. The click is the seam
-     * the shell already has.
-     *
-     * @param {object} props - the sidebar's owner share (`wide`).
-     * @returns {object} the row, and the menu while it is open.
+     * Account menu in the shell Settings trigger; Settings is a menu action.
+     * This always-mounted seat also hosts the sandbox settings portals.
+     * @param {object} props - the sidebar owner share.
+     * @returns {object} account control and menu.
      */
     const AccountRow = ({ wide }) => {
       const t = useT()
@@ -1518,10 +1489,7 @@ window.__ModuleLoader__.load({
       const [menu, setMenu] = React.useState(null)
       const [editing, setEditing] = React.useState(false)
       const host = React.useRef(null)
-      // Raised only while this component clicks the owner's button on purpose,
-      // so the interceptor below lets that one click through to the shell.
       const passing = React.useRef(false)
-
       /**
        * Open the menu, or shut it.
        *
@@ -1549,64 +1517,51 @@ window.__ModuleLoader__.load({
           }))
       }, [wide])
 
-      /**
-       * Open the shell's settings panel through the button this sits inside.
-       *
-       * Declared before the effects that use it, and memoised, because one of
-       * them subscribes to the document and would otherwise re-subscribe on
-       * every render.
-       */
+      // SettingsRoot keeps open state private and exposes no open command.
+      // This adapter is scoped to this slot's owner button: user clicks open
+      // our menu, while its original click remains the route into Settings.
       const openSettings = React.useCallback(() => {
         setMenu(null)
-        const button = host.current?.closest('button')
-        // The interceptor below is on that button and would swallow this too.
         passing.current = true
-        button?.click()
-        passing.current = false
+        try { host.current?.closest('button')?.click() }
+        finally { passing.current = false }
       }, [])
-
-      // The owner's button opens Settings on click, and this seat is the whole
-      // account control now, so that gesture belongs to the menu instead.
-      //
-      // Bound to the BUTTON rather than to this row, which is the fix for a
-      // click landing on the button's own padding — a few pixels of it show
-      // around the row, and a press there missed the row's handler entirely and
-      // opened Settings, which is exactly what this seat exists to prevent.
+      // Deployment shortcuts share this trigger adapter; upstream keeps its
+      // modal state private. Select our stable section marker after it mounts.
+      React.useEffect(() => {
+        let stop = () => {}
+        const openSection = (event) => {
+          if (event.detail?.section !== 'sandbox') return
+          stop()
+          openSettings()
+          let timer
+          const selectSection = () => {
+            const row = document.querySelector('[role="dialog"] [data-dsh-section="sandbox"]')?.closest('button')
+            if (!row) return
+            stop()
+            if (row.getAttribute('aria-current') !== 'true') row.click()
+          }
+          const observer = new MutationObserver(selectSection)
+          stop = () => { observer.disconnect(); window.clearTimeout(timer) }
+          observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-current'] })
+          timer = window.setTimeout(stop, 2000)
+          selectSection()
+        }
+        document.addEventListener('dsh-settings-open', openSection)
+        return () => { stop(); document.removeEventListener('dsh-settings-open', openSection) }
+      }, [openSettings])
       React.useEffect(() => {
         const button = host.current?.closest('button')
-        if (button === null || button === undefined) return undefined
+        if (!button) return undefined
         const intercept = (event) => {
           if (passing.current) return
-          event.stopPropagation()
           event.preventDefault()
+          event.stopPropagation()
           toggle()
         }
         button.addEventListener('click', intercept, true)
-        return () => { button.removeEventListener('click', intercept, true) }
+        return () => button.removeEventListener('click', intercept, true)
       }, [toggle])
-
-      // The sandbox row above this one opens the settings panel.
-      //
-      // The panel, not this menu: the row is about the machine, and what a
-      // person wants after pressing it is the pages that describe and configure
-      // it — this menu is about the account, and answers a different question.
-      // It restores the gesture the shell's own Settings control had before
-      // this seat took it over.
-      //
-      // Reached through the document rather than through the element, because
-      // that row belongs to `dsh-sandbox-host` and mounts, unmounts and remounts
-      // on its own — it is absent on the narrow rail. The knowledge runs one
-      // way only: this plugin knows that row exists, and that one still works
-      // with no gateway and nothing listening behind it.
-      React.useEffect(() => {
-        const open = (event) => {
-          if (!event.target?.closest?.(`.${SANDBOX_ROW}`)) return
-          event.stopPropagation()
-          openSettings()
-        }
-        document.addEventListener('click', open, true)
-        return () => { document.removeEventListener('click', open, true) }
-      }, [openSettings])
 
       // Dismissed the way every menu is: a pointer somewhere else, or Escape.
       React.useEffect(() => {
@@ -1618,8 +1573,8 @@ window.__ModuleLoader__.load({
           // pointerdown would let the click that follows reopen what it was
           // meant to shut, and it could never be closed by pressing it again.
           //
-          // The sandbox row is not exempt: it opens the settings panel, so a
-          // press there should take this menu down like any other press away.
+          // The sandbox settings entry is outside this control, so a
+          // press there dismisses the menu like any other press away.
           if (host.current !== null && target?.closest?.('button') === host.current.closest('button')) return
           setMenu(null)
         }
@@ -1637,6 +1592,32 @@ window.__ModuleLoader__.load({
       // does one whose answer has not arrived yet.
       const named = who.displayName === '' ? who.username : who.displayName
       const label = named === '' ? '—' : named
+      // The owner supplies Settings ARIA attributes. Keep this one button's
+      // accessible identity consistent with the menu it now opens, including
+      // when the settings shell re-renders after its modal closes.
+      const accountLabel = t('account')
+      React.useLayoutEffect(() => {
+        const button = host.current?.closest('button')
+        if (!button) return undefined
+        const values = { 'aria-label': accountLabel, 'aria-haspopup': 'menu',
+          'aria-expanded': String(menu !== null) }
+        const original = Object.fromEntries(Object.keys(values).map((key) => [key, button.getAttribute(key)]))
+        const sync = () => {
+          for (const [key, value] of Object.entries(values)) {
+            if (button.getAttribute(key) !== value) button.setAttribute(key, value)
+          }
+        }
+        sync()
+        const observer = new MutationObserver(sync)
+        observer.observe(button, { attributes: true, attributeFilter: Object.keys(values) })
+        return () => {
+          observer.disconnect()
+          for (const [key, value] of Object.entries(original)) {
+            if (value === null) button.removeAttribute(key)
+            else button.setAttribute(key, value)
+          }
+        }
+      }, [accountLabel, menu !== null])
       // The name's first letter, which is the only part of it that fits on the
       // 56px rail, and what stands in until a picture is set. A question mark
       // while it loads would be a different claim — that nobody is signed in —
@@ -1653,6 +1634,8 @@ window.__ModuleLoader__.load({
         'div',
         {
           ref: host,
+          // Portals hosted here must never bubble into the Settings owner.
+          onClick: (event) => { event.stopPropagation() },
           className: `${U}-row`,
           'data-wide': String(wide === true),
           'data-open': String(menu !== null),
@@ -1794,15 +1777,13 @@ window.__ModuleLoader__.load({
 
 
 
-        // The account row takes the Settings control's seat; see AccountRow.
-        // `priority`, not `order`: order is nav position within a cell, while
-        // priority is the cell's shadowing rank — ascending, lowest renders.
+        // The account menu owns the existing Settings trigger seat.
         ctx.effect(
           () => ctx.slots.inject('settings.trigger', () => ctx.slots.register(
             { name: 'settings.trigger', priority: -1 },
             AccountRow,
           )),
-          'tenant-account: account row in the settings trigger seat',
+          'tenant-account: account menu in Settings trigger',
         )
 
         // Retire the onboarding steps.

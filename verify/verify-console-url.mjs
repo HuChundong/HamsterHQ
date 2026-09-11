@@ -42,7 +42,7 @@ function check(label, expected, actual) {
   }
 }
 
-const browser = await chromium.launch()
+const browser = await chromium.launch({ channel: process.env.VERIFY_BROWSER_CHANNEL })
 const context = await browser.newContext({ ignoreHTTPSErrors: true })
 
 const url = new URL(admin)

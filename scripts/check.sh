@@ -54,7 +54,7 @@ for check in \
   scripts/check-computer-loading.mjs \
   scripts/check-panel-paths.mjs \
   scripts/check-panel-open.mjs \
-  scripts/check-uploads.mjs
+  scripts/check-dev-proxy.mjs
 do
   node "$check" >/dev/null
 done
