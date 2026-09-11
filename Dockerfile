@@ -750,6 +750,15 @@ RUN if [ -n "$APT_MIRROR" ]; then \
  && apt-get update \
  && apt-get install -y --no-install-recommends novnc
 
+# Debian omits package.json, but noVNC fetches it to show its version. Keep a
+# shipped manifest when available; otherwise report the installed Debian
+# version, including its packaging revision, without changing upstream UI code.
+RUN if [ ! -s /usr/share/novnc/package.json ]; then \
+      novnc_version=$(dpkg-query -W -f='${Version}' novnc) \
+      && test -n "$novnc_version" \
+      && printf '{"version":"%s"}\n' "$novnc_version" > /usr/share/novnc/package.json; \
+    fi
+
 # ------------------------------------------------------- desktop-system ----
 # KDE Plasma X11 + TigerVNC + noVNC + headed Chrome on the stable runtime.
 #

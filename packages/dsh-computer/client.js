@@ -831,8 +831,9 @@ window.__ModuleLoader__.load({
               return h('button', { type: 'button', className: `${P}-nav`, 'data-wide': String(wide),
               title: t('panel.title'), 'aria-label': t('panel.title'),
               onClick: () => {
-                if (ctx.sidebarRight.isExpanded() && ctx.sidebarRight.active()?.kind === 'computer') ctx.sidebarRight.toggleExpanded()
-                else if (ctx.sidebarRight.active() !== undefined) ctx.sidebarRight.openTab('computer')
+                const active = ctx.sidebarRight.active()
+                if (ctx.sidebarRight.isExpanded() && active?.kind === 'computer') ctx.sidebarRight.close(active.id)
+                else if (active !== undefined) ctx.sidebarRight.openTab('computer')
                 else ctx.layout.selectPanel('dsh-computer')
               } },
             h(ComputerIcon, { size: 16 }), wide ? t('panel.title') : null)
