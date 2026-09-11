@@ -372,6 +372,13 @@ if docker image inspect "$DESKTOP" >/dev/null 2>&1; then
       && echo ok || echo missing' \
     2>/dev/null || echo error)
   check 'KDE Plasma X11 + TigerVNC + noVNC are installed' ok "$plasma"
+  novnc_version=$(docker run --rm --entrypoint node "$DESKTOP" -e '
+    const fs = require("node:fs")
+    const metadata = JSON.parse(fs.readFileSync("/usr/share/novnc/package.json", "utf8"))
+    if (typeof metadata.version !== "string" || metadata.version.trim() === "") process.exit(1)
+    console.log("ok")
+  ' 2>/dev/null || echo missing)
+  check 'noVNC serves valid version metadata' ok "$novnc_version"
   streaming=$(docker run --rm --entrypoint sh "$DESKTOP" -c \
     'test "$VNC_GEOMETRY" = 1280x720 \
       && test "$VNC_FRAME_RATE" = 45 \
