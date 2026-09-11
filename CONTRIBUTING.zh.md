@@ -159,7 +159,7 @@ cd verify && SANDBOX_RUNTIME=cube COMPOSE_FILE=../compose.yml:../compose.cube.ym
 
 - **harness 还是依赖吗？** 没有东西给它打补丁、vendor 它或者 fork 它，除了那一个被
   记录下来的例外。
-- **这该属于哪个插件？** 把 gateway 拿掉——这件事还需要吗？一个改动如果不属于五个
+- **这该属于哪个插件？** 把 gateway 拿掉——这件事还需要吗？一个改动如果不属于现有
   插件中的任何一个，说明这个问题有了新答案，而不是说其中某个该长出第二个主题。
 - **这个改动依赖的规则，是不是只有一个家？** 一个被复述在两个文件里的事实，是一个
   将来会和自己矛盾的事实。理由放 [docs/design.zh.md](docs/design.zh.md)，一次花掉了

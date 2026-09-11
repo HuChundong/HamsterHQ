@@ -50,16 +50,16 @@ today:
 - `dsh-gateway-tunnel` carries a sandbox's `/api` traffic out to the gateway.
   It follows the transport.
 - `dsh-sandbox-host` supplies what a browser needs when the backend is on a
- machine the person cannot reach: the `/files` upload channel, the settings
- document read back instead of handed to a desktop that is not there. Every
+ machine the person cannot reach: sandbox status and the settings document
+ read back instead of handed to a desktop that is not there. Every
  line of it survives the gateway's removal, which is why it is not more surface
  on another plugin — and why it would be usable by anyone running dsh remotely.
 - `dsh-computer` is the shared browser and desktop: its read-only frame
   channel — the agent's pages, and one JPEG of the whole screen — the
   interactive noVNC surface, and the tool/card handoff when an agent needs a
   person to finish login, MFA, CAPTCHA, or consent. Taking over is this
-  plugin's own full-window surface; only the artifact panel seat it renders
-  into is deployment layout. It survives the gateway.
+  plugin's own full-window surface; the desktop preview registers with the
+  harness's right sidebar. It survives the gateway.
 - `dsh-deployment-prompt` corrects the system prompt where the harness assumes
   the person is sitting at this machine: the two shipped sections that hand the
   agent a loopback URL as the address the user is looking at, and call `/app` a
@@ -71,7 +71,7 @@ today:
 - `dsh-artifact-panel` is the workspace beside the conversation — files,
   viewers, a terminal and a canvas.
 - `dsh-scheduled-tasks` is a tenant's schedule: the tools that write one, the
-  timers that fire it, and the control in the sidebar's foot. The durable list
+  timers that fire it, and its global management page. The durable list
   is the gateway's, so none of it survives the gateway's removal.
 - `dsh-brand` is this deployment's marks inside the shell.
 
@@ -201,8 +201,8 @@ document; neither has a module table or a React runtime, so both take markup
 from `dsh-icons` instead. A `DSH_VERSION` bump that did not come back through
 the generators fails `check-icons.mjs`.
 
-Two client halves — `dsh-tenant-account` and `dsh-sandbox-host` — each carry
-one drawn glyph inline. That is not a preference: the shell's module loader reads
+Four client halves — `dsh-tenant-account`, `dsh-sandbox-host`,
+`dsh-scheduled-tasks` and `dsh-computer` — each carry one generated glyph inline. That is not a preference: the shell's module loader reads
 those files as source with `require` bound to its own table, so there is no
 build step to resolve a sibling package through. `check-icons.mjs` holds those
 bytes to the original.

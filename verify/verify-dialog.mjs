@@ -26,7 +26,7 @@ const cookies = jar.split(';').map((pair) => {
   return { name, value: rest.join('='), domain: hostname, path: '/' }
 })
 
-const browser = await chromium.launch()
+const browser = await chromium.launch({ channel: process.env.VERIFY_BROWSER_CHANNEL })
 let failures = 0
 const check = (label, ok, detail) => {
   console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${label}${detail === undefined ? '' : `  ${detail}`}`)

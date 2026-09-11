@@ -12,12 +12,12 @@
   "dsh": {
     "client": {
       "inject": [
-        "slots"
+        "slots", "locale", "layout"
       ],
       "platform": "web"
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-tools": "0.1.2-rc.1"
+    "@deepseek-ai/dsh-tools": "0.1.5-rc.2"
   }
 }

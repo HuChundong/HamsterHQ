@@ -1,8 +1,8 @@
 /**
  * The shared sandbox computer, browser half.
  *
- * It owns three surfaces that are one interaction: the desktop rendered into
- * the artifact panel's seat, the handoff card with a live frame of the screen
+ * It owns three surfaces that are one interaction: the desktop beside the
+ * conversation, the handoff card with a live frame of the screen
  * the person is being asked to take over, and the full-window takeover that
  * card opens. The wait itself is still DSH's public user-questions flow; this
  * plugin only gives one marked question a richer presentation and leaves
@@ -13,7 +13,7 @@ window.__ModuleLoader__.load({
   factory: (require) => {
     const React = require('react')
     const ReactDom = require('react-dom')
-    const ReactDomClient = require('react-dom/client')
+    const { IconRightUpOutline16 } = require('@deepseek-ai/dsh-client-ui-primitives')
     const h = React.createElement
 
     let plugin
@@ -24,8 +24,6 @@ window.__ModuleLoader__.load({
     const QUESTION_PREFIX = 'dsh-computer:user-action:'
     const ACTION_COMPLETED = 'completed'
     const ACTION_SKIPPED = 'skipped'
-    const PANEL_ANCHOR = 'data-dsh-computer-panel'
-    const SCHEDULE_PANEL_ANCHOR = 'data-dsh-scheduled-tasks-panel'
     const CHANNEL = '/browser'
 
     /**
@@ -42,32 +40,34 @@ window.__ModuleLoader__.load({
 
     const DICTIONARY = {
       zh: {
-        'panel.title': '电脑',
+        'panel.title': '云端电脑',
         'panel.open': '新窗口打开',
-        'card.header': '电脑',
+        'panel.launch': '打开',
+        'card.header': '云端电脑',
         'card.badge.waiting': '需要操作',
         'card.badge.finishing': '正在继续',
         'card.badge.completed': '已完成',
         'card.badge.skipped': '已跳过',
         'card.badge.failed': '未能继续',
-        'card.title': '请在电脑上完成操作',
+        'card.title': '请在云端电脑上完成操作',
         'card.instructions': '完成后告诉 agent，它会从当前状态继续。',
         'card.takeover': '接管',
         'card.done': '已完成',
         'card.skip': '跳过',
         'card.answering': '正在把结果交给 agent…',
         'card.answer_failed': '没能提交结果，请再试一次。',
-        'screen.loading': '正在读取电脑画面…',
-        'screen.connecting': '正在连接电脑…',
-        'screen.off': '暂时读不到电脑画面',
-        'screen.alt': '电脑当前画面',
+        'screen.loading': '正在读取云端电脑画面…',
+        'screen.connecting': '正在连接云端电脑…',
+        'screen.off': '暂时读不到云端电脑画面',
+        'screen.alt': '云端电脑当前画面',
         'takeover.close': '收起',
-        'takeover.hint': '你现在直接操作这台电脑，完成后点“已完成”。',
+        'takeover.hint': '你现在直接操作这台云端电脑，完成后点“已完成”。',
       },
       en: {
-        'panel.title': 'Computer',
+        'panel.title': 'Cloud computer',
         'panel.open': 'Open in new window',
-        'card.header': 'Computer',
+        'panel.launch': 'Open',
+        'card.header': 'Cloud computer',
         'card.badge.waiting': 'Action needed',
         'card.badge.finishing': 'Continuing',
         'card.badge.completed': 'Completed',
@@ -98,6 +98,23 @@ window.__ModuleLoader__.load({
     }
 
     const CSS = `
+      .${P}-desktop-link[hidden],
+      .${P}-panel[data-maximised='true'] .${P}-schedule { display: none; }
+
+      .${P}-desktop-link { display: block; position: absolute; inset: 0; cursor: pointer; text-decoration: none; }
+      .${P}-desktop-link:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 3px; }
+      .${P}-launch { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px;
+        background: #111d; color: #fff; font-size: 15px; opacity: 0; transition: opacity 120ms; }
+      .${P}-desktop-link:hover .${P}-launch, .${P}-desktop-link:focus-visible .${P}-launch { opacity: 1; }
+
+      .${P}-nav { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px;
+        padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
+        color: var(--dsw-alias-label-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+      .${P}-nav[data-wide='false'] { justify-content: center; padding: 6px 0; }
+      .${P}-nav:hover { background: var(--dsw-alias-interactive-bg-hover); }
+      .${P}-nav:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: -2px; }
+
       .${P}-tool {
         width: min(640px, 100%);
         box-sizing: border-box;
@@ -301,11 +318,6 @@ window.__ModuleLoader__.load({
         width: 100%;
       }
 
-      [${PANEL_ANCHOR}] {
-        display: block;
-        height: 100%;
-        min-height: 0;
-      }
       .${P}-panel {
         display: flex;
         flex-direction: column;
@@ -313,31 +325,10 @@ window.__ModuleLoader__.load({
         min-height: 0;
         background: var(--dsw-alias-bg-layer-1);
       }
-      .${P}-panel[data-maximised='false'] {
-        gap: 0;
-        overflow-y: auto;
-        padding: 12px;
-        box-sizing: border-box;
-        background: transparent;
-      }
-      .${P}-panel-bar {
-        flex: none;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        padding: 6px 10px;
-        border-bottom: 1px solid var(--dsw-alias-border-l1);
-        color: var(--dsw-alias-label-secondary);
-        font-size: 12px;
-      }
-      .${P}-panel[data-maximised='false'] .${P}-panel-bar {
-        padding: 0 2px 8px;
-        border-bottom: 0;
-      }
-      .${P}-panel-open { color: var(--dsw-alias-label-secondary); text-decoration: none; }
-      .${P}-panel-open:hover { color: var(--dsw-alias-label-primary); }
+      .${P}-panel[data-maximised='false'] { position: relative; overflow: hidden; padding: 12px; box-sizing: border-box; gap: 12px; }
+      .${P}-schedule { flex: 1; min-height: 0; overflow: auto; }
       .${P}-desktop {
+        position: relative;
         flex: 1 1 auto;
         min-height: 0;
         width: 100%;
@@ -392,7 +383,6 @@ window.__ModuleLoader__.load({
         border-radius: 50%;
         animation: ${P}-spin 800ms linear infinite;
       }
-      .${P}-schedule { flex: none; min-height: 0; margin-top: 16px; }
 
       @keyframes ${P}-spin { to { transform: rotate(360deg); } }
       @media (prefers-reduced-motion: reduce) {
@@ -731,7 +721,7 @@ window.__ModuleLoader__.load({
      * colours are painted in over the page on load and again as the theme
      * turns, so the letterbox stays the panel's surface in both.
      */
-    function DesktopFrame({ className, src }) {
+    function DesktopFrame({ className, src, preview = false }) {
       const t = useT()
       const frame = React.useRef(null)
       const [settled, setSettled] = React.useState(false)
@@ -777,6 +767,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: `${P}-frame-host ${className}` },
         h('iframe', {
           ref: frame,
+          tabIndex: preview ? -1 : undefined,
           className: `${P}-frame`,
           title: t('panel.title'),
           src,
@@ -786,8 +777,10 @@ window.__ModuleLoader__.load({
           t('screen.connecting')))
     }
 
-    function ComputerPanel({ maximised }) {
+    function ComputerPanel({ renderSlot, useTabInfo }) {
       const t = useT()
+      const { sidebar } = useTabInfo()
+      const fullscreen = sidebar.fullscreen
       const [frameSrc] = React.useState(computerSrc)
       const [, bump] = React.useState(0)
 
@@ -797,44 +790,26 @@ window.__ModuleLoader__.load({
       React.useEffect(() => observeTheme(() => { bump((n) => n + 1) }), [])
       const href = computerSrc()
 
-      return h('div', { className: `${P}-panel`, 'data-maximised': String(maximised) },
-        h('div', { className: `${P}-panel-bar` },
-          h('span', null, t('panel.title')),
-          h('a', { className: `${P}-panel-open`, href, target: '_blank', rel: 'noopener noreferrer' }, t('panel.open'))),
+      return h('div', { className: `${P}-panel`, 'data-maximised': String(fullscreen) },
         h('div', { className: `${P}-desktop` },
-          h(DesktopFrame, { className: `${P}-desktop-frame`, src: frameSrc })),
-        maximised ? null : h('div', { className: `${P}-schedule`, [SCHEDULE_PANEL_ANCHOR]: '' }))
+          h(DesktopFrame, { className: `${P}-desktop-frame`, src: frameSrc, preview: !fullscreen }),
+          h('a', { className: `${P}-desktop-link`, href, target: '_blank', rel: 'noopener noreferrer',
+            'aria-label': t('panel.open'), hidden: fullscreen },
+            h('span', { className: `${P}-launch` }, h(IconRightUpOutline16, { size: 18 }), t('panel.launch')))),
+        h('div', { className: `${P}-schedule` }, renderSlot('computer.schedule')))
     }
 
-    const mountComputerPanel = () => {
-      let node
-      let root
-      let maximised
-      const scan = () => {
-        const next = document.querySelector(`[${PANEL_ANCHOR}]`)
-        if (next !== node) {
-          root?.unmount()
-          node = next
-          root = next === null ? undefined : ReactDomClient.createRoot(next)
-          maximised = undefined
-        }
-        if (node === null || node === undefined || root === undefined) return
-        const nextMaximised = node.getAttribute('data-maximised') === 'true'
-        if (nextMaximised === maximised) return
-        maximised = nextMaximised
-        root.render(h(ComputerPanel, { maximised }))
-      }
-      scan()
-      const observer = new MutationObserver(scan)
-      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-maximised'] })
-      return () => {
-        observer.disconnect()
-        root?.unmount()
-      }
+    /** The generated dsh-icons laptop-minimal glyph; no client bundler is needed. */
+    function ComputerIcon({ size = 16 }) {
+      return h('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round',
+        'aria-hidden': true },
+      h('path', { d: 'M5 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 2 0 0 1 2 -2z' }),
+      h('path', { d: 'M2 20L22 20' }))
     }
 
     return {
-      inject: ['slots', 'connection', 'locale'],
+      inject: ['slots', 'connection', 'locale', 'sidebarRightTabs', 'sidebarRight', 'layout'],
       apply(ctx) {
         plugin = ctx
         connection = ctx.connection
@@ -848,7 +823,66 @@ window.__ModuleLoader__.load({
           return () => { style.remove() }
         }, 'computer: styles')
 
-        ctx.effect(mountComputerPanel, 'computer: artifact panel seat')
+        ctx.effect(
+          () => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register(
+            { name: 'sidebar.footer.action', id: 'dsh-computer', order: 40 },
+            ({ wide }) => {
+              const t = useT()
+              return h('button', { type: 'button', className: `${P}-nav`, 'data-wide': String(wide),
+              title: t('panel.title'), 'aria-label': t('panel.title'),
+              onClick: () => {
+                if (ctx.sidebarRight.isExpanded() && ctx.sidebarRight.active()?.kind === 'computer') ctx.sidebarRight.toggleExpanded()
+                else if (ctx.sidebarRight.active() !== undefined) ctx.sidebarRight.openTab('computer')
+                else ctx.layout.selectPanel('dsh-computer')
+              } },
+            h(ComputerIcon, { size: 16 }), wide ? t('panel.title') : null)
+            },
+          )), 'computer: global navigation',
+        )
+        ctx.effect(
+          () => ctx.slots.inject('main', () => ctx.slots.register(
+            { name: 'main', key: 'dsh-computer' }, () => null,
+          )), 'computer: global desktop page',
+        )
+
+        // The shell's panel list addresses main keys. Treat that key as a
+        // navigation request, then open the computer after the conversation's
+        // session seat has remounted. No desktop occupies the central panel.
+        function ComputerNavigation({ usePanelInfo, useSessions }) {
+          const panel = usePanelInfo(info => info.activePanelId)
+          const session = useSessions(state => state.current)
+          const pending = React.useRef(false)
+          React.useEffect(() => {
+            if (panel === 'dsh-computer') {
+              pending.current = true
+              ctx.layout.selectPanel(null)
+              return undefined
+            }
+            if (panel !== null) { pending.current = false; return undefined }
+            if (!pending.current || session === undefined) return undefined
+            const frame = requestAnimationFrame(() => {
+              ctx.sidebarRight.openTab('computer')
+              pending.current = false
+            })
+            return () => cancelAnimationFrame(frame)
+          }, [panel, session])
+          return null
+        }
+        ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register(
+          { name: 'shell.overlay', id: 'computer-navigation' }, ComputerNavigation,
+        )), 'computer: global navigation controller')
+
+        ctx.effect(() => ctx.sidebarRightTabs.register({
+          id: 'dsh-computer/desktop', kind: 'computer', priority: 'extension',
+          title: () => ctx.locale.bind(NS)('panel.title'),
+          guide: [{ order: 50, title: () => ctx.locale.bind(NS)('panel.title'),
+            icon: () => h(ComputerIcon, { size: 20 }) }],
+        }), 'computer: right sidebar type')
+        ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
+          { name: 'sidebar.right.pane.tab', key: 'dsh-computer/desktop',
+            children: { 'computer.schedule': { kind: 'single', scope: 'root' } } },
+          ComputerPanel,
+        )), 'computer: right sidebar desktop')
 
         ctx.effect(
           () => ctx.slots.inject('tool.call.toolview', () => ctx.slots.register(

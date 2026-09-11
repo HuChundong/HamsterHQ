@@ -15,7 +15,7 @@ const PROMPT = `Reply with exactly ${ANSWER} and nothing else.`
 const TURN_TIMEOUT_MS = 180_000
 const cookie = process.env.TURN_COOKIE
 if (!cookie) throw new Error('TURN_COOKIE must name an acceptance tenant session')
-const browser = await chromium.launch()
+const browser = await chromium.launch({ channel: process.env.VERIFY_BROWSER_CHANNEL })
 try {
   const context = await browser.newContext()
   await context.addCookies(cookie.split(';').map((part) => {

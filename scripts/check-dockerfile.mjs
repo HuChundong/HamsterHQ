@@ -21,6 +21,19 @@ check(
   'Dockerfile must pin the BuildKit frontend by digest',
 )
 
+// The remote composition must not mount a launcher for host-native apps.
+// Both halves are disabled: omitting only the host leaves the browser polling
+// an unavailable /open-in-app/apps route on every conversation.
+for (const patch of ['cordis.patch.yml', 'harvest.patch.yml']) {
+  const source = readFileSync(join(root, 'sandbox', patch), 'utf8')
+  const rows = source.split(/(?=^- )/m)
+  for (const id of ['open-in-app', 'ui-open-in-app']) {
+    const matching = rows.filter(row => row.startsWith(`- id: ${id}\n`))
+    check(matching.length === 1 && /^  disabled: true$/m.test(matching[0]),
+      `${patch} must disable the native application launcher ${id}`)
+  }
+}
+
 const pinned = dockerfile.match(/^ARG DSH_VERSION=(\S+)$/m)?.[1]
 check(Boolean(pinned), 'Dockerfile must pin ARG DSH_VERSION')
 const scheduled = JSON.parse(readFileSync(join(root, 'packages/dsh-scheduled-tasks/package.json'), 'utf8'))

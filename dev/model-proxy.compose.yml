@@ -1,0 +1,29 @@
+# Acceptance on a dedicated Docker daemon only; Compose projects do not
+# isolate the runtime sandbox-owner label or the suite’s sandbox cleanup. The deployment credential is mounted into this
+# fixed-target proxy, while the gateway passes a nonsecret placeholder to DSH.
+services:
+  model-proxy:
+    image: node:24.19.0-bookworm-slim
+    command: node /app/model-proxy.mjs
+    volumes:
+      - ./dev/model-proxy.mjs:/app/model-proxy.mjs:ro
+      - type: bind
+        source: ${MODEL_SOURCE_ENV:-./.env}
+        target: /run/model-source.env
+        read_only: true
+        bind:
+          create_host_path: false
+    networks: [hamsterhq-net]
+    restart: unless-stopped
+  gateway:
+    environment:
+      SANDBOX_IMAGE: ${LOCAL_SANDBOX_IMAGE:-hamsterhq-sandbox:latest}
+      MODEL_API_KEY: local-proxy-placeholder
+      MODEL_BASE_URL: http://model-proxy:8098/v1
+    depends_on:
+      model-proxy:
+        condition: service_started
+  admin:
+    environment:
+      MODEL_API_KEY: local-proxy-placeholder
+      MODEL_BASE_URL: http://model-proxy:8098/v1

@@ -1,25 +1,10 @@
 /**
  * Scheduled tasks, browser half.
  *
- * One control in the sidebar's foot opens the manager as a dialog; the compact
- * Computer pane mounts that same manager below its desktop card. The control
- * sits where it does because of what the shell actually offers: the sidebar
- * declares five child slots, and four of them — the two brand seats, the
- * workspace region and the settings seat — are `single` and already taken.
- * `sidebar.footer.action` is the one list slot, which is what a second
- * registration needs. There is no seat between the New Session button and the
- * session list, so a control there would mean either taking the region slot
- * and re-rendering the session list ourselves, or patching the harness. Both
- * are the thing the root AGENTS.md forbids, so this asks upstream for a seat
- * instead and sits at the foot meanwhile, above the sandbox row. The shell
- * lays the footer.action list out in a row; SlotOutlet is display:contents, so
- * a CSS column on the wrong ancestor is a no-op. The control walks to the real
- * flex row and columns it, and each seat claims a full line.
- *
- * The foot control is drawn as a quiet row beside the sandbox status — not as
- * a second New Session elevated button. Theme colours come from verified
- * --dsw-alias tokens (the same set dsh-sandbox-host and dsh-tenant-account
- * consume); no Theme API override and no harness CSS-module class names.
+ * The shell owns the global Scheduled panel's navigation and selection. This
+ * plugin contributes a footer control and managers to the global panel and
+ * the cloud computer sidebar. The manager is independent of conversation state.
+ * No footer layout or shell DOM ancestry is changed here.
  *
  * It reads the gateway rather than the sandbox, at `/schedule`. That is not
  * for tidiness: a tenant asking why last night's task did not happen is asking
@@ -37,8 +22,7 @@ window.__ModuleLoader__.load({
   id: 'dsh-scheduled-tasks',
   factory: (require) => {
     const React = require('react')
-    const ReactDom = require('react-dom')
-    const ReactDomClient = require('react-dom/client')
+    const { Button, Switch, IconPlusOutline16, IconClockOutline16, IconChevronLeftOutline14 } = require('@deepseek-ai/dsh-client-ui-primitives')
 
     /** The plugin's client context, kept for the locale service the hook reads. */
     let plugin
@@ -49,23 +33,20 @@ window.__ModuleLoader__.load({
     /** Everything this plugin says, in both languages. */
     const DICTIONARY = {
       zh: {
-        open: '已安排',
-        title: '任务安排',
-        what: '到点时会自动唤醒你的沙箱，在一个全新的会话里执行下面的提示词。新会话不带上下文，所以提示词要能独立读懂。',
+        open: '定时任务',
+        title: '定时任务',
         empty: '还没有安排任何任务。',
         loading: '加载中…',
         unavailable: '这个部署没有启用定时任务。',
         new: '新建任务',
         edit: '编辑',
+        back: '返回',
+        enabled: '已启用',
         remove: '删除',
         removing: '确认删除？',
-        enable: '启用',
-        disable: '停用',
         disabled: '已停用',
-        cancel: '取消',
         save: '保存',
         saving: '保存中…',
-        close: '关闭',
         next: '下次',
         never: '不再运行',
         'field.title': '名称',
@@ -103,23 +84,20 @@ window.__ModuleLoader__.load({
         'error.generic': '没能保存，请再试一次。',
       },
       en: {
-        open: 'Scheduled',
+        open: 'Scheduled tasks',
         title: 'Scheduled tasks',
-        what: 'Each of these wakes your sandbox when it is due and runs the prompt in a brand new conversation. That conversation has no context, so write the prompt to stand on its own.',
         empty: 'Nothing is scheduled yet.',
         loading: 'Loading…',
         unavailable: 'This deployment does not run scheduled tasks.',
         new: 'New task',
         edit: 'Edit',
+        back: 'Back',
+        enabled: 'Enabled',
         remove: 'Delete',
         removing: 'Delete it?',
-        enable: 'Enable',
-        disable: 'Disable',
         disabled: 'Disabled',
-        cancel: 'Cancel',
         save: 'Save',
         saving: 'Saving…',
-        close: 'Close',
         next: 'Next',
         never: 'Not again',
         'field.title': 'Name',
@@ -178,14 +156,6 @@ window.__ModuleLoader__.load({
     const U = 'dsh-scheduled-tasks'
 
     /**
-     * The compact seat exposed by dsh-artifact-panel's Computer pane.
-     *
-     * The clients cannot import one another. A tree-side check holds this
-     * duplicated DOM contract equal to the panel's exported constant.
-     */
-    const PANEL_ANCHOR = 'data-dsh-scheduled-tasks-panel'
-
-    /**
      * The one glyph, copied rather than imported.
      *
      * The shell reads this file as source with `require` bound to its own
@@ -235,104 +205,39 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /**
-     * Footer seat and dialog chrome, restated against verified alias tokens.
-     *
-     * The open control matches the sandbox status row (quiet wash, not an
-     * elevated New Session card). Dialog colours and buttons match the
-     * tenant-account profile dialog. Collapsed rail: 36px icon only.
-     * (No backticks in this CSS: the file is a template literal.)
-     */
+    /** Shared manager styling, confined to this plugin's own elements. */
     const CSS = `
-      /* SlotOutlet wraps list seats in display:contents, so seats participate
-         in footerActions flex layout as siblings. A CSS :has on the contents
-         wrapper cannot set flex-direction (no box). useStackFooterColumn walks
-         past contents ancestors and columns the real flex row. This mark only
-         claims a full row once that parent is a column. */
-      [data-dsh-footer-stack] {
-        display: block;
-        box-sizing: border-box;
-        width: 100%;
-        flex: none;
-        align-self: stretch;
-      }
-      .${U}-open {
-        display: flex; align-items: center; gap: 8px;
-        box-sizing: border-box; width: 100%; margin: 0 0 4px; padding: 8px;
-        border: none; border-radius: 12px;
-        background: transparent;
-        color: var(--dsw-alias-label-primary);
-        font-family: var(--dsw-font-family);
-        font-size: 13px; font-weight: 500; line-height: 18px;
-        text-align: left; cursor: pointer;
-      }
-      .${U}-open:hover { background: var(--dsw-alias-interactive-bg-hover); }
-      .${U}-open[data-wide='false'] {
-        width: 36px; height: 36px; margin: 0 0 4px; padding: 0; gap: 0;
-        justify-content: center;
-      }
-      .${U}-open-icon {
-        flex: none; display: inline-flex; align-items: center; justify-content: center;
-        color: var(--dsw-alias-label-tertiary);
-      }
-      .${U}-open-label {
-        min-width: 0; white-space: nowrap; overflow: hidden;
-        color: var(--dsw-alias-label-secondary);
-      }
+      .${U}-panel[data-inline='true'] .${U}-head { margin-bottom: 12px; }
+      .${U}-panel[data-inline='true'] .${U}-heading { color: var(--dsw-alias-label-secondary); font-size: 15px; }
+      .${U}-panel[data-inline='true'] .${U}-new { color: var(--dsw-alias-label-secondary); }
+      .${U}-panel[data-inline='true'] .${U}-item-title { font-size: 14px; font-weight: 500; }
+      .${U}-panel[data-inline='true'] .${U}-item-line { font-size: 13px; margin-top: 3px; }
+      .${U}-panel[data-inline='true'] .${U}-run { display: none; }
 
-      .${U}-mask {
-        position: fixed; inset: 0; z-index: 1100;
-        display: flex; align-items: center; justify-content: center;
-        background: var(--dsw-alias-bg-mask-1);
-      }
-      .${U}-dialog {
-        display: flex; flex-direction: column;
-        width: min(560px, calc(100vw - 32px));
-        max-height: min(640px, calc(100vh - 64px));
-        padding: 18px 20px 14px; box-sizing: border-box;
-        border-radius: 14px;
-        background: var(--dsw-alias-bg-layer-1);
-        box-shadow: var(--dsw-shadow-lv3);
+      .${U}-clock { flex: none; color: #008749; }
+
+      .${U}-nav { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px;
+        padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
+        color: var(--dsw-alias-label-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+      .${U}-nav[data-wide='false'] { justify-content: center; padding: 6px 0; }
+      .${U}-nav:hover { background: var(--dsw-alias-interactive-bg-hover); }
+      .${U}-nav:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: -2px; }
+
+      .${U}-panel {
+        display: flex; flex: 1; min-width: 0; min-height: 0;
+        overflow: hidden; box-sizing: border-box;
         font-family: var(--dsw-font-family);
         color: var(--dsw-alias-label-primary);
       }
+      .${U}-panel[data-inline='true'] { padding: 0; overflow: visible; }
+      .${U}-panel > .${U}-manager { width: 100%; margin: 0 auto; }
+      .${U}-panel[data-inline='true'] .${U}-list { flex: none; overflow: visible; }
       .${U}-manager { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-      .${U}-inline {
-        display: flex; flex-direction: column; min-height: 0;
-        padding: 16px 2px 8px;
-        border-top: 1px solid var(--dsw-alias-border-l1);
-        font-family: var(--dsw-font-family);
-        color: var(--dsw-alias-label-primary);
-        container-type: inline-size;
-      }
-      .${U}-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
-      .${U}-heading { font-size: 15px; font-weight: 500; }
-      .${U}-inline .${U}-head { margin-bottom: 6px; }
-      .${U}-dismiss {
-        flex: none; width: 28px; height: 28px; padding: 0;
-        border: none; border-radius: 8px;
-        background: transparent; color: var(--dsw-alias-label-tertiary);
-        font-family: var(--dsw-font-family); font-size: 18px; line-height: 1;
-        cursor: pointer;
-      }
-      .${U}-dismiss:hover {
-        background: var(--dsw-alias-interactive-bg-hover);
-        color: var(--dsw-alias-label-primary);
-      }
-      .${U}-what {
-        margin: 4px 0 14px;
-        color: var(--dsw-alias-label-secondary);
-        font-size: 12px; line-height: 18px;
-      }
-      .${U}-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
-      .${U}-inline .${U}-list { flex: none; overflow-y: visible; }
-      .${U}-item {
-        display: flex; align-items: flex-start; gap: 12px;
-        padding: 10px 0;
-        border-top: 1px solid var(--dsw-alias-border-l1);
-      }
+      .${U}-head { display: flex; align-items: center; justify-content: space-between; }
+
+      .${U}-list { flex: 1; min-height: 0; overflow-y: auto; }
       .${U}-item-body { flex: 1; min-width: 0; }
-      .${U}-item-title { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+      .${U}-item-title { font-weight: 500; overflow-wrap: anywhere; }
       .${U}-item-title[data-off='true'] { color: var(--dsw-alias-label-secondary); }
       .${U}-item-line {
         margin-top: 3px;
@@ -340,62 +245,62 @@ window.__ModuleLoader__.load({
         font-size: 12px; line-height: 18px;
         overflow-wrap: anywhere;
       }
-      .${U}-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
-      .${U}-dot[data-state='ok'] { background: var(--dsw-alias-state-success-primary); }
-      .${U}-dot[data-state='failed'] { background: var(--dsw-alias-state-error-primary); }
-      .${U}-dot[data-state='lost'] { background: var(--dsw-alias-state-warn-label); }
-      .${U}-dot[data-state='running'] { background: var(--dsw-alias-state-business-primary); }
-      .${U}-item-actions { display: flex; flex: none; gap: 6px; }
-      .${U}-quiet {
-        padding: 0 8px; height: 26px;
-        border: 1px solid transparent; border-radius: 8px;
-        background: transparent; color: var(--dsw-alias-label-secondary);
-        font-family: var(--dsw-font-family); font-size: 12px; cursor: pointer;
-      }
-      .${U}-quiet:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
-      .${U}-quiet[data-danger='true'] { color: var(--dsw-alias-state-error-primary); }
+
       .${U}-note { padding: 18px 0; color: var(--dsw-alias-label-secondary); font-size: 13px; }
-      .${U}-form { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
-      .${U}-label { color: var(--dsw-alias-label-secondary); font-size: 12px; }
+      .${U}-form { display: flex; flex-direction: column; gap: 6px; overflow: visible; }
       .${U}-input, .${U}-area, .${U}-select {
-        width: 100%; box-sizing: border-box; padding: 7px 10px;
-        border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px;
+        border: 1px solid var(--dsw-alias-border-l2);
         background: transparent; color: var(--dsw-alias-label-primary);
-        font-family: var(--dsw-font-family); font-size: 13px;
+        font-family: var(--dsw-font-family);
       }
-      .${U}-area { min-height: 84px; resize: vertical; line-height: 20px; }
+      .${U}-area { resize: vertical; }
       .${U}-input:focus, .${U}-area:focus, .${U}-select:focus {
         outline: none; border-color: var(--dsw-alias-state-business-primary);
       }
       .${U}-pair { display: flex; gap: 8px; }
       .${U}-hint { color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; }
       .${U}-problem { color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; }
-      .${U}-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-      .${U}-button {
-        height: 32px; padding: 0 14px;
-        border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px;
-        background: transparent; color: var(--dsw-alias-label-primary);
-        font-family: var(--dsw-font-family); font-size: 13px; cursor: pointer;
-      }
-      .${U}-button:hover { background: var(--dsw-alias-interactive-bg-hover); }
-      .${U}-button[data-primary='true'] {
-        border-color: transparent;
-        background: var(--dsw-alias-button-primary-fill);
-        color: var(--dsw-alias-label-primary-foreground);
-      }
-      .${U}-button:disabled { opacity: .55; cursor: default; }
-      .${U}-inline-new { flex: none; }
-      @container (max-width: 520px) {
-        .${U}-item { flex-direction: column; }
-        .${U}-item-actions { align-self: flex-end; }
-      }
+      .${U}-new { flex: none; }
+
+      .${U}-panel { padding: 32px clamp(20px, 5vw, 64px); }
+      .${U}-panel > .${U}-manager { max-width: 760px; }
+      .${U}-manager { min-width: 0; }
+      .${U}-head { flex: none; gap: 12px; min-height: 40px; margin-bottom: 20px; }
+      .${U}-heading { flex: 1; font-size: 22px; font-weight: 600; }
+      .${U}-toggle { display: inline-flex; align-items: center; gap: 5px; }
+      .${U}-back { width: 28px; height: 28px; padding: 0; justify-content: center; flex: none; }
+      .${U}-new { border: 0; width: 36px; padding: 0; display: grid; place-items: center; }
+      .${U}-list { margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+      .${U}-item {
+        width: 100%; display: flex; flex-direction: row; align-items: center; gap: 14px;
+        border: 0; border-radius: 12px; padding: 14px; background: transparent; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+      .${U}-item:hover, .${U}-item:focus-visible { background: var(--dsw-alias-interactive-bg-hover); }
+      .${U}-item:focus-visible, .${U}-back:focus-visible, .${U}-toggle:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: -2px; }
+      .${U}-item-body { display: flex; flex-direction: column; gap: 2px; }
+      .${U}-item-title { font-size: 15px; }
+      .${U}-detail-body { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; }
+      .${U}-label { margin-top: 8px; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+      .${U}-input, .${U}-select, .${U}-area { width: 100%; min-height: 34px; border-radius: 8px; padding: 7px 10px; font-size: 13px; box-sizing: border-box; }
+      .${U}-area { min-height: 120px; line-height: 1.5; }
+      .${U}-button[data-danger='true'] { color: var(--dsw-alias-state-error-primary); }
+      .${U}-panel[data-inline='true'] .${U}-manager[data-detail='true'] {
+        position: absolute; inset: 0; z-index: 3; padding: 0; overflow: hidden; box-sizing: border-box;
+        background: var(--dsw-alias-bg-layer-1); }
+      .${U}-editor { display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
+      .${U}-toolbar { display: flex; align-items: center; flex: none; gap: 8px; height: 36px; padding: 0 12px;
+        border-bottom: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); }
+      .${U}-editor-title { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; white-space: nowrap; }
+      .${U}-toolbar .${U}-button { flex: none; white-space: nowrap; }
+      .${U}-toolbar .${U}-toggle { gap: 5px; padding: 0; font-size: 12px; white-space: nowrap; }
+      .${U}-detail-body { padding: 8px 12px 16px; }
+      .${U}-form > .${U}-label:first-child { margin-top: 0; }
     `
 
     /**
      * One call to the gateway's schedule plane.
      *
      * Answers are read as JSON whatever the status, because the gateway sends
-     * a coded body for every refusal and the code is what the dialog words.
+     * a coded body for every refusal and the manager presents that code.
      *
      * @param {string} method - the HTTP method.
      * @param {string} path - the path under /schedule.
@@ -409,6 +314,8 @@ window.__ModuleLoader__.load({
       const value = await response.json().catch(() => ({}))
       return { status: response.status, value }
     }
+
+    const errorCode = (code) => DICTIONARY.en[`error.${code}`] === undefined ? 'generic' : code
 
     /** The zone this browser is in, which is the only sensible default for a calendar rule. */
     const localZone = () => {
@@ -469,46 +376,59 @@ window.__ModuleLoader__.load({
     /**
      * Everything a tenant can do to their schedule.
      *
-     * One component serves the modal and the compact Computer pane. The chrome
-     * differs; the task state, mutations and form do not. That keeps "all the
-     * dialog's functions in the sidebar" literal instead of maintaining a
-     * second list that will drift from it.
+     * The global panel owns this manager. All task state and mutations stay
+     * gateway-backed so the panel remains useful when no sandbox is running.
      *
-     * @param {{inline?: boolean, onClose?: () => void}} props - the seat and its dismissal.
      * @returns {object} the element.
      */
-    const ScheduleManager = ({ inline = false, onClose = () => {} }) => {
+    const ScheduleManager = ({ inline = false }) => {
       const t = useT()
       const [state, setState] = React.useState({ phase: 'loading', tasks: [] })
       const [editing, setEditing] = React.useState(null)
       const [confirming, setConfirming] = React.useState(null)
+      const [mutating, setMutating] = React.useState(false)
+      const [mutationProblem, setMutationProblem] = React.useState(null)
+      const live = React.useRef(false)
+      const loading = React.useRef(0)
+      const mutationPending = React.useRef(false)
 
       const load = React.useCallback(async () => {
+        const request = ++loading.current
         const answer = await call('GET', '/tasks').catch(() => ({ status: 0, value: {} }))
+        if (!live.current || request !== loading.current) return
         if (answer.status === 501) {
           setState({ phase: 'unavailable', tasks: [] })
           return
         }
         if (answer.value?.ok !== true) {
-          setState({ phase: 'ready', tasks: [], problem: answer.value?.code ?? 'generic' })
+          setState({ phase: 'ready', tasks: [], problem: errorCode(answer.value?.code) })
           return
         }
         setState({ phase: 'ready', tasks: answer.value.tasks ?? [] })
       }, [])
 
-      React.useEffect(() => { void load() }, [load])
-
-      // Escape closes only the modal. In the inline manager Escape belongs to
-      // the rest of the shell and must not make the persistent section vanish.
       React.useEffect(() => {
-        if (inline) return undefined
-        /**
-         * @param {KeyboardEvent} event - the key.
-         */
-        const onKey = (event) => { if (event.key === 'Escape') onClose() }
-        document.addEventListener('keydown', onKey)
-        return () => { document.removeEventListener('keydown', onKey) }
-      }, [inline, onClose])
+        live.current = true
+        void load()
+        return () => { live.current = false; loading.current++ }
+      }, [load])
+
+      const mutate = async (method, task, body, onSuccess) => {
+        if (mutationPending.current) return
+        mutationPending.current = true
+        setMutating(true)
+        setMutationProblem(null)
+        const answer = await call(method, `/tasks/${task.id}`, body).catch(() => ({ value: {} }))
+        mutationPending.current = false
+        if (!live.current) return
+        setMutating(false)
+        if (answer.value?.ok !== true) {
+          setMutationProblem(errorCode(answer.value?.code))
+          return
+        }
+        onSuccess()
+        await load()
+      }
 
       /**
        * Say what a task's rule is, in words.
@@ -529,8 +449,9 @@ window.__ModuleLoader__.load({
        * @param {object} task - the task.
        */
       const toggle = async (task) => {
-        await call('PATCH', `/tasks/${task.id}`, { enabled: !task.enabled }).catch(() => {})
-        await load()
+        await mutate('PATCH', task, { enabled: !task.enabled }, () => {
+          setEditing(current => current?.id === task.id ? { ...current, enabled: !task.enabled } : current)
+        })
       }
 
       /**
@@ -543,144 +464,32 @@ window.__ModuleLoader__.load({
           return
         }
         setConfirming(null)
-        await call('DELETE', `/tasks/${task.id}`).catch(() => {})
-        await load()
+        await mutate('DELETE', task, undefined, () => setEditing(null))
       }
 
-      const body = editing !== null
-        ? React.createElement(Form, {
-          task: editing.id === undefined ? null : editing,
-          onCancel: () => setEditing(null),
-          onSaved: () => { setEditing(null); void load() },
-        })
-        : React.createElement(
-          React.Fragment,
-          null,
-          React.createElement('div', { className: `${U}-what` }, t('what')),
-          state.phase === 'loading'
-            ? React.createElement('div', { className: `${U}-note` }, t('loading'))
-            : state.phase === 'unavailable'
-              ? React.createElement('div', { className: `${U}-note` }, t('unavailable'))
-              : state.tasks.length === 0
-                ? React.createElement('div', { className: `${U}-note` }, t('empty'))
-                : React.createElement(
-                  'div',
-                  { className: `${U}-list` },
-                  state.tasks.map((task) => React.createElement(
-                    'div',
-                    { key: task.id, className: `${U}-item` },
-                    React.createElement(
-                      'div',
-                      { className: `${U}-item-body` },
-                      React.createElement('div', { className: `${U}-item-title`, 'data-off': String(!task.enabled) }, task.title),
-                      React.createElement('div', { className: `${U}-item-line` }, summarize(task)),
-                      React.createElement(
-                        'div',
-                        { className: `${U}-item-line` },
-                        task.lastRun === null
-                          ? null
-                          : React.createElement('span', { className: `${U}-dot`, 'data-state': task.lastRun.status }),
-                        task.enabled
-                          ? `${t('next')} ${task.nextRunAt === null ? t('never') : when(task.nextRunAt)}`
-                          : t('disabled'),
-                        task.lastRun === null ? null : ` · ${t(`run.${task.lastRun.status}`)}`,
-                      ),
-                    ),
-                    React.createElement(
-                      'div',
-                      { className: `${U}-item-actions` },
-                      React.createElement('button', {
-                        type: 'button', className: `${U}-quiet`, onClick: () => { void toggle(task) },
-                      }, task.enabled ? t('disable') : t('enable')),
-                      React.createElement('button', {
-                        type: 'button', className: `${U}-quiet`, onClick: () => setEditing(task),
-                      }, t('edit')),
-                      React.createElement('button', {
-                        type: 'button', className: `${U}-quiet`, 'data-danger': String(confirming === task.id),
-                        onClick: () => { void remove(task) },
-                      }, confirming === task.id ? t('removing') : t('remove')),
-                    ),
-                  )),
-                ),
-          state.problem === undefined
-            ? null
-            : React.createElement('div', { className: `${U}-problem` }, t(`error.${state.problem}`)),
-          inline
-            ? null
-            : React.createElement(
-              'div',
-              { className: `${U}-actions` },
-              React.createElement('button', {
-                type: 'button', className: `${U}-button`, onClick: onClose,
-              }, t('close')),
-              state.phase === 'unavailable'
-                ? null
-                : React.createElement('button', {
-                  type: 'button', className: `${U}-button`, 'data-primary': 'true',
-                  onClick: () => setEditing({}),
-                }, t('new')),
-            ),
-        )
-
-      return React.createElement(
-        'div',
-        { className: `${U}-manager` },
-        React.createElement(
-          'div',
-          { className: `${U}-head` },
-          React.createElement('div', {
-            className: `${U}-heading`, role: 'heading', 'aria-level': '2',
-          }, t('title')),
-          inline
-            ? state.phase !== 'ready' || editing !== null
-              ? null
-              : React.createElement('button', {
-                type: 'button',
-                className: `${U}-button ${U}-inline-new`,
-                'data-primary': 'true',
-                onClick: () => setEditing({}),
-              }, t('new'))
-            : React.createElement(
-              'button',
-              {
-                type: 'button',
-                className: `${U}-dismiss`,
-                title: t('close'),
-                'aria-label': t('close'),
-                onClick: onClose,
-              },
-              '\u00d7',
-            ),
-        ),
-        body,
-      )
-    }
-
-    /**
-     * The modal seat for the manager.
-     *
-     * @param {{onClose: () => void}} props - how to dismiss it.
-     * @returns {object} the element.
-     */
-    const Dialog = ({ onClose }) => {
-      return ReactDom.createPortal(
-        React.createElement(
-          'div',
-          {
-            className: `${U}-mask`,
-            // Only a press that both started and ended on the backdrop
-            // dismisses: a drag that began inside the dialog and released
-            // outside it is somebody selecting text, not somebody leaving.
-            onMouseDown: (event) => { if (event.target === event.currentTarget) onClose() },
-          },
-          React.createElement(
-            'div',
-            { className: `${U}-dialog`, role: 'dialog', 'aria-modal': 'true' },
-            React.createElement(ScheduleManager, { onClose }),
-          ),
-        ),
-        document.body,
-      )
+      const back = () => { setEditing(null); setConfirming(null); setMutationProblem(null) }
+      return React.createElement('div', { className: `${U}-manager`, 'data-detail': String(editing !== null) },
+        editing === null ? React.createElement('div', { className: `${U}-head` },
+          React.createElement('div', { className: `${U}-heading`, role: 'heading', 'aria-level': 2 }, t('title')),
+          state.phase === 'ready' ? React.createElement(Button, {
+            type: 'button', variant: 'ghost', size: 'sm', className: `${U}-new`, title: t('new'), 'aria-label': t('new'),
+            onClick: () => setEditing({}),
+          }, React.createElement(IconPlusOutline16, { size: 20 })) : null) : null,
+        editing !== null ? React.createElement(Form, { key: editing.id ?? 'new', task: editing.id ? editing : null,
+          confirming: confirming === editing.id, mutating, mutationProblem, onToggle: () => { void toggle(editing) },
+          onRemove: () => { void remove(editing) }, onCancel: back, onSaved: () => { back(); void load() } })
+          : state.phase === 'loading' ? React.createElement('div', { className: `${U}-note` }, t('loading'))
+            : state.phase === 'unavailable' ? React.createElement('div', { className: `${U}-note` }, t('unavailable'))
+              : state.tasks.length === 0 ? React.createElement('div', { className: `${U}-note` }, t('empty'))
+                : React.createElement('div', { className: `${U}-list` }, state.tasks.map(task =>
+                  React.createElement('button', { key: task.id, type: 'button', className: `${U}-item`, onClick: () => setEditing(task) },
+                    React.createElement(IconClockOutline16, { size: 20, className: `${U}-clock` }),
+                    React.createElement('span', { className: `${U}-item-body` },
+                      React.createElement('span', { className: `${U}-item-title`, 'data-off': String(!task.enabled) }, task.title),
+                      React.createElement('span', { className: `${U}-item-line` }, summarize(task)),
+                      !inline ? React.createElement('span', { className: `${U}-item-line ${U}-run` },
+                        task.enabled ? `${t('next')} ${task.nextRunAt === null ? t('never') : when(task.nextRunAt)}` : t('disabled')) : null)))),
+        state.problem === undefined ? null : React.createElement('div', { className: `${U}-problem` }, t(`error.${state.problem}`)))
     }
 
     /**
@@ -691,10 +500,10 @@ window.__ModuleLoader__.load({
      * browser is deliberately not told — so the form's job is to send a shape
      * and to word whichever code comes back.
      *
-     * @param {{task: object|null, onCancel: () => void, onSaved: () => void}} props - the seat.
+     * @param {{task: object|null, confirming: boolean, mutating: boolean, mutationProblem: string|null, onToggle: () => void, onRemove: () => void, onCancel: () => void, onSaved: () => void}} props - the seat.
      * @returns {object} the element.
      */
-    const Form = ({ task, onCancel, onSaved }) => {
+    const Form = ({ task, confirming, mutating, mutationProblem, onToggle, onRemove, onCancel, onSaved }) => {
       const t = useT()
       const existing = task ?? {}
       const interval = existing.kind === 'every' ? asInterval(Number(existing.rule?.seconds ?? 3600)) : { size: 1, unit: 'hours' }
@@ -702,13 +511,22 @@ window.__ModuleLoader__.load({
       const [title, setTitle] = React.useState(existing.title ?? '')
       const [prompt, setPrompt] = React.useState(existing.prompt ?? '')
       const [kind, setKind] = React.useState(existing.kind ?? 'cron')
-      const [at, setAt] = React.useState('')
+      const [at, setAt] = React.useState(() => {
+        if (!existing.rule?.at) return ''
+        const value = new Date(existing.rule.at)
+        return new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+      })
       const [size, setSize] = React.useState(String(interval.size))
       const [unit, setUnit] = React.useState(interval.unit)
       const [expression, setExpression] = React.useState(existing.rule?.expression ?? '0 9 * * *')
       const [zone, setZone] = React.useState(existing.timeZone ?? localZone())
       const [saving, setSaving] = React.useState(false)
       const [problem, setProblem] = React.useState(null)
+      const live = React.useRef(false)
+      React.useEffect(() => {
+        live.current = true
+        return () => { live.current = false }
+      }, [])
 
       /**
        * The offset this browser is at, as the `at` field has to carry one.
@@ -738,27 +556,45 @@ window.__ModuleLoader__.load({
         const answer = task === null
           ? await call('POST', '/tasks', payload).catch(() => ({ value: {} }))
           : await call('PATCH', `/tasks/${task.id}`, payload).catch(() => ({ value: {} }))
+        if (!live.current) return
         setSaving(false)
         if (answer.value?.ok !== true) {
           const code = answer.value?.code
-          setProblem(DICTIONARY.en[`error.${code}`] === undefined ? 'generic' : code)
+          setProblem(errorCode(code))
           return
         }
         onSaved()
       }
 
-      return React.createElement(
-        'div',
-        { className: `${U}-form` },
+      return React.createElement('form', { className: `${U}-editor`, onSubmit: event => {
+        event.preventDefault()
+        if (!saving && !mutating) void submit()
+      } },
+        React.createElement('div', { className: `${U}-toolbar` },
+          React.createElement(Button, { type: 'button', variant: 'ghost', size: 'sm', className: `${U}-back`,
+            title: t('back'), 'aria-label': t('back'), onClick: onCancel, disabled: saving || mutating },
+          React.createElement(IconChevronLeftOutline14, { size: 14 })),
+          React.createElement('div', { className: `${U}-editor-title`, role: 'heading', 'aria-level': 2 }, task ? t('edit') : t('new')),
+          task ? React.createElement('label', { className: `${U}-toggle` },
+            React.createElement(Switch, { checked: Boolean(task.enabled), onChange: onToggle,
+              label: task.enabled ? t('enabled') : t('disabled'), disabled: saving || mutating }),
+            task.enabled ? t('enabled') : t('disabled')) : null,
+          task ? React.createElement(Button, { type: 'button', variant: 'outline', size: 'sm', className: `${U}-button`,
+            'data-danger': String(confirming), onClick: onRemove, disabled: saving || mutating },
+            confirming ? t('removing') : t('remove')) : null,
+          React.createElement(Button, { type: 'submit', variant: 'primary', size: 'sm', className: `${U}-button`, disabled: saving || mutating },
+            saving ? t('saving') : t('save'))),
+        React.createElement('div', { className: `${U}-detail-body` },
+        React.createElement('div', { className: `${U}-form` },
         React.createElement('div', { className: `${U}-label` }, t('field.title')),
         React.createElement('input', {
-          className: `${U}-input`, value: title, maxLength: 120,
+          className: `${U}-input`, 'aria-label': t('field.title'), value: title, maxLength: 120,
           onChange: (event) => setTitle(event.target.value),
         }),
 
         React.createElement('div', { className: `${U}-label` }, t('field.prompt')),
         React.createElement('textarea', {
-          className: `${U}-area`, value: prompt, maxLength: 4000,
+          className: `${U}-area`, 'aria-label': t('field.prompt'), value: prompt, maxLength: 4000,
           onChange: (event) => setPrompt(event.target.value),
         }),
         React.createElement('div', { className: `${U}-hint` }, t('hint.prompt')),
@@ -825,178 +661,25 @@ window.__ModuleLoader__.load({
           )
           : null,
 
+        mutationProblem === null ? null : React.createElement('div', { className: `${U}-problem`, role: 'alert' }, t(`error.${mutationProblem}`)),
         problem === null ? null : React.createElement('div', { className: `${U}-problem` }, t(`error.${problem}`)),
 
-        React.createElement(
-          'div',
-          { className: `${U}-actions` },
-          React.createElement('button', {
-            type: 'button', className: `${U}-button`, onClick: onCancel, disabled: saving,
-          }, t('cancel')),
-          React.createElement('button', {
-            type: 'button', className: `${U}-button`, 'data-primary': 'true', disabled: saving,
-            onClick: () => { void submit() },
-          }, saving ? t('saving') : t('save')),
-        ),
-      )
+        task?.lastRun ? React.createElement('div', { className: `${U}-note` }, t(`run.${task.lastRun.status}`)) : null,
+      )))
     }
 
-    /** The persistent manager mounted below the compact Computer card. */
-    const InlineManager = () => {
+    /** Global manager; usable before any conversation has been created. */
+    const SchedulePanel = ({ inline = false }) => {
       const t = useT()
       return React.createElement(
         'section',
-        { className: `${U}-inline`, 'aria-label': t('title') },
-        React.createElement(ScheduleManager, { inline: true }),
-      )
-    }
-
-    /**
-     * Follow the Computer pane's compact seat and give it an independent root.
-     *
-     * The artifact panel itself is an independent React root on document.body,
-     * so a portal from the shell's root does not carry reliable event handling
-     * into it. A root on the seat owns its own listeners and disappears whenever
-     * the Computer pane is maximised, closed or switched away from.
-     *
-     * @returns {() => void} stop following and unmount the current manager.
-     */
-    const mountInlineManager = () => {
-      let target = null
-      let root = null
-
-      const detach = () => {
-        target = null
-        if (root === null) return
-        const stale = root
-        root = null
-        // A target normally disappears during another root's commit. Deferring
-        // avoids synchronously unmounting one root while React is committing the
-        // other one.
-        setTimeout(() => { stale.unmount() }, 0)
-      }
-
-      const reconcile = () => {
-        const next = document.querySelector(`[${PANEL_ANCHOR}]`)
-        if (next === target) return
-        detach()
-        if (next === null) return
-        target = next
-        root = ReactDomClient.createRoot(next)
-        root.render(React.createElement(InlineManager))
-      }
-
-      reconcile()
-      const observer = new MutationObserver(reconcile)
-      observer.observe(document.body, { childList: true, subtree: true })
-      return () => {
-        observer.disconnect()
-        detach()
-      }
-    }
-
-    /**
-     * Column the real footerActions flex row.
-     *
-     * SlotOutlet is display:contents, so this mark's DOM parent is that
-     * invisible wrapper; walking past contents ancestors reaches the shell
-     * row that actually lays scheduled-tasks beside the sandbox status.
-     *
-     * @param {HTMLElement | null} mark - the data-dsh-footer-stack node.
-     * @returns {() => void} restore the previous inline styles.
-     */
-    const stackFooterColumn = (mark) => {
-      if (mark === null) return () => {}
-      let el = mark.parentElement
-      while (el !== null) {
-        const shown = window.getComputedStyle(el)
-        if (shown.display === 'contents') {
-          el = el.parentElement
-          continue
-        }
-        if (shown.display === 'flex' || shown.display === 'inline-flex') {
-          const previous = {
-            flexDirection: el.style.flexDirection,
-            alignItems: el.style.alignItems,
-            width: el.style.width,
-          }
-          el.style.flexDirection = 'column'
-          el.style.alignItems = 'stretch'
-          el.style.width = '100%'
-          return () => {
-            el.style.flexDirection = previous.flexDirection
-            el.style.alignItems = previous.alignItems
-            el.style.width = previous.width
-          }
-        }
-        el = el.parentElement
-      }
-      return () => {}
-    }
-
-    /**
-     * The sidebar seat.
-     *
-     * It renders nothing at all until the gateway has said this deployment has
-     * a scheduler. A control that opens a dialog reading "not available here"
-     * is worse than no control: it advertises a feature by failing at it, in
-     * the one place a tenant looks most often.
-     *
-     * @param {{wide?: boolean}} props - the sidebar's own share; false on the collapsed rail.
-     * @returns {object | null} the element.
-     */
-    const SidebarButton = ({ wide }) => {
-      const t = useT()
-      const [open, setOpen] = React.useState(false)
-      const [available, setAvailable] = React.useState(null)
-      const stackRef = React.useRef(null)
-
-      React.useEffect(() => {
-        let live = true
-        void call('GET', '/tasks')
-          .then((answer) => { if (live) setAvailable(answer.status !== 501 && answer.status !== 401) })
-          .catch(() => { if (live) setAvailable(false) })
-        return () => { live = false }
-      }, [])
-
-      // After mount: the slot anchor is display:contents, so only a walk up the
-      // live tree reaches the flex row that still lays seats horizontally.
-      React.useLayoutEffect(() => {
-        if (available !== true) return undefined
-        return stackFooterColumn(stackRef.current)
-      }, [available])
-
-      if (available !== true) return null
-
-      return React.createElement(
-        React.Fragment,
-        null,
-        React.createElement(
-          'div',
-          { 'data-dsh-footer-stack': '', ref: stackRef },
-          React.createElement(
-            'button',
-            {
-              type: 'button',
-              className: `${U}-open`,
-              'data-wide': String(wide !== false),
-              title: t('open'),
-              onClick: () => setOpen(true),
-            },
-            React.createElement(
-              'span',
-              { className: `${U}-open-icon` },
-              React.createElement(Glyph, { size: wide === false ? 18 : 16 }),
-            ),
-            wide === false ? null : React.createElement('span', { className: `${U}-open-label` }, t('open')),
-          ),
-        ),
-        open ? React.createElement(Dialog, { onClose: () => setOpen(false) }) : null,
+        { className: `${U}-panel`, 'data-inline': String(inline), 'aria-label': t('title') },
+        React.createElement(ScheduleManager, { inline }),
       )
     }
 
     return {
-      inject: ['slots', 'locale'],
+      inject: ['slots', 'locale', 'layout'],
       /**
        * Register the sidebar control.
        * @param {object} ctx - client root context.
@@ -1009,7 +692,7 @@ window.__ModuleLoader__.load({
           'scheduled-tasks: dictionaries',
         )
 
-        // Shared by the shell-root modal and the independent inline root.
+        // Shared by the global panel and the computer sidebar manager.
         ctx.effect(() => {
           const style = document.createElement('style')
           style.setAttribute('data-dsh-scheduled-tasks-style', '')
@@ -1018,20 +701,35 @@ window.__ModuleLoader__.load({
           return () => { style.remove() }
         }, 'scheduled-tasks: styles')
 
-        ctx.effect(mountInlineManager, 'scheduled-tasks: computer panel')
-
-        // `sidebar.footer.action` is a list slot sorted by `order`, and
-        // `dsh-sandbox-host` holds 100 with the sandbox row. Below that number
-        // is first in the list; stackFooterColumn turns the shell's row into a
-        // column so each seat takes a full line. A control the tenant presses
-        // sits over a readout they only glance at.
-        ctx.effect(
-          () => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register(
-            { name: 'sidebar.footer.action', id: 'scheduled-tasks', order: 50 },
-            SidebarButton,
-          )),
-          'scheduled-tasks: sidebar control',
-        )
+        // Register both managers and their footer control when scheduling is available.
+        ctx.effect(() => {
+          let live = true
+          const disposers = []
+          void call('GET', '/tasks').then((answer) => {
+            if (!live || answer.status === 501 || answer.status === 401) return
+            disposers.push(ctx.slots.inject('computer.schedule', () => ctx.slots.register(
+              { name: 'computer.schedule' }, () => React.createElement(SchedulePanel, { inline: true }),
+            )))
+            disposers.push(ctx.slots.inject('main', () => ctx.slots.register(
+              { name: 'main', key: 'scheduled-tasks' },
+              SchedulePanel,
+            )))
+            disposers.push(ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register(
+              { name: 'sidebar.footer.action', id: 'scheduled-tasks', order: 50 },
+              ({ wide, usePanelInfo }) => {
+                const t = useT()
+                const active = usePanelInfo(info => info.activePanelId === 'scheduled-tasks')
+                return React.createElement('button', { type: 'button', className: `${U}-nav`,
+                'data-wide': String(wide), title: t('open'),
+                'aria-label': t('open'), 'aria-pressed': active, onClick: () => ctx.layout.selectPanel(active ? null : 'scheduled-tasks') },
+              React.createElement(Glyph, { size: 16 }), wide ? t('open') : null) },
+            )))
+          }).catch(() => {})
+          return () => {
+            live = false
+            for (const dispose of disposers.reverse()) dispose()
+          }
+        }, 'scheduled-tasks: global panel')
       },
     }
   },

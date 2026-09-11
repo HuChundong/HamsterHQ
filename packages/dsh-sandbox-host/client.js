@@ -1,16 +1,8 @@
 /**
  * The sandbox adaptation layer, browser half.
  *
- * Four surfaces, all of which exist because the backend is not on this machine:
- *
- * - an "附件" group in the trigger menu, so a file has a way in at all;
- * - the same group spliced onto the `+` menu, which cannot host it properly
- *   (see the note on PlusAttachmentGroup);
- * - attachment cards above the composer, bound to the draft the way dsh's own
- *   image rail is bound to it;
- * - a Configuration page in Settings, because the shipped control hands the
- *   settings document to a desktop that is not there — and nothing at all in
- *   the Settings header, where that control used to be.
+ * The sandbox status and configuration-document views. Conversation attachments
+ * use the harness's own upload service, draft cards, and input controls.
  *
  * One file, deliberately: the client-module registry serves a plugin's `client`
  * export verbatim — nothing resolves through node_modules and there is no build
@@ -23,7 +15,6 @@ window.__ModuleLoader__.load({
   id: 'dsh-sandbox-host',
   factory: (require) => {
     const React = require('react')
-    const ReactDom = require('react-dom')
 
     /**
      * The shell's own icon set.
@@ -31,7 +22,7 @@ window.__ModuleLoader__.load({
      * `?? {}` and a `try`, because the module table answers `undefined` for an
      * id it does not carry and every use below is a property read — which on
      * `undefined` is a TypeError during render, and a render error takes the
-     * seat down. A missing glyph should cost the glyph, not the composer.
+     * seat down. A missing glyph should cost the glyph, not the settings page.
      */
     let primitives = {}
     try {
@@ -43,7 +34,7 @@ window.__ModuleLoader__.load({
     /**
      * The one glyph this plugin draws itself.
      *
-     * The nav's other row and the composer's clip are the harness's own,
+     * The configuration row's glyph is the harness's own,
      * required above. A sandbox is not in that set — `ArchiveOutline20` is a
      * lidded box and means archive — so this comes from
      * `packages/dsh-icons`, drawn to the same rules: a 16 grid, a 1.3 stroke
@@ -145,10 +136,8 @@ window.__ModuleLoader__.load({
      * registration and keep showing it; a component re-renders when the
      * language changes, like everything else here.
      *
-     * `data-dsh-section` is how the row is found again — see
-     * `selectSandboxPage`. It used to be found by matching its own visible
-     * text, which is exactly the kind of handle that stops working the moment
-     * the text is translated.
+     * `data-dsh-section` identifies the section independently of its
+     * translated visible label.
      */
     const NavLabel = ({ name, section }) => {
       const t = useT()
@@ -171,9 +160,7 @@ window.__ModuleLoader__.load({
     /**
      * The plugin context, captured at mount.
      *
-     * A module-level holder rather than React context, because two of the three
-     * callers are not components: the trigger source's `onPick` runs inside the
-     * input pipeline, and the upload chain outlives whatever rendered it.
+     * Shared by the settings pages and labels registered by this plugin.
      */
     let plugin
 
@@ -201,30 +188,6 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Translate outside a component, for the callers that are not one.
-     * @returns {(key: string, params?: object) => string} the translator.
-     */
-    const say = () => plugin.locale.bind(NS)
-
-    /**
-     * Read one Blob as base64, without holding a second copy as a JS string of
-     * char codes. `btoa(String.fromCharCode(...bytes))` is the obvious spelling
-     * and it exceeds the argument limit somewhere around a megabyte, which is a
-     * quarter of one chunk.
-     * @param {Blob} blob - the slice to encode.
-     * @returns {Promise<string>} its base64, without the data-URL prefix.
-     */
-    const toBase64 = (blob) => new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onerror = () => { reject(reader.error ?? new Error('could not read the file')) }
-      reader.onload = () => {
-        const result = String(reader.result)
-        resolve(result.slice(result.indexOf(',') + 1))
-      }
-      reader.readAsDataURL(blob)
-    })
-
-    /**
      * One call on the file channel, with the envelope's error thrown.
      * @param {string} endpoint - channel-relative endpoint.
      * @param {object} payload - the request payload.
@@ -234,226 +197,6 @@ window.__ModuleLoader__.load({
       const result = await plugin.connection.rpc.call(CHANNEL, endpoint, payload)
       if (result.ok) return result.value
       throw new Error(result.error.message)
-    }
-
-    /**
-     * Send one file to the sandbox and return where it landed.
-     *
-     * Chunks are sequential rather than parallel. The host appends them in
-     * arrival order, and the tunnel is one socket anyway — parallelism here
-     * would buy nothing and would need sequence numbers to be correct.
-     *
-     * @param {File} file - the browser's file.
-     * @param {(sent: number) => void} onProgress - bytes accepted so far.
-     * @returns {Promise<{path: string, name: string, bytes: number}>} the published file.
-     */
-    const upload = async (file, onProgress) => {
-      const { id, chunkBytes } = await call('upload.begin', { name: file.name, size: file.size })
-      try {
-        for (let offset = 0; offset < file.size; offset += chunkBytes) {
-          const data = await toBase64(file.slice(offset, offset + chunkBytes))
-          const { received } = await call('upload.chunk', { id, data })
-          onProgress(received)
-        }
-        return await call('upload.commit', { id, sessionId: composer.sessionId })
-      } catch (error) {
-        // The staging file would age out on its own, but a browser that failed
-        // mid-upload is exactly the case where the tenant retries immediately
-        // and meets the in-flight limit.
-        await call('upload.abort', { id }).catch(() => {})
-        throw error
-      }
-    }
-
-    // -------------------------------------------------------------- picking --
-
-    /**
-     * Ask the person for files.
-     *
-     * A fresh input each time, removed on either outcome. `cancel` is what
-     * closes the dialog without choosing; without listening for it, every
-     * cancelled pick would leave an element on the page for the life of the
-     * session.
-     *
-     * @returns {Promise<File[]>} what they chose, empty when they cancelled.
-     */
-    const pickFiles = () => new Promise((resolve) => {
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.multiple = true
-      input.style.display = 'none'
-      document.body.append(input)
-      const settle = (files) => { input.remove(); resolve(files) }
-      input.addEventListener('change', () => { settle([...(input.files ?? [])]) }, { once: true })
-      input.addEventListener('cancel', () => { settle([]) }, { once: true })
-      input.click()
-    })
-
-    // --------------------------------------------------------------- store --
-
-    /**
-     * The cards, and the composer they belong to.
-     *
-     * A store rather than props: uploads are started from three places — the
-     * trigger menu, the spliced `+` group, and a drop — and only one of them is
-     * a component. `composer` is the live draft face, refreshed by the card row
-     * on every render, so the non-component callers can still write a path into
-     * the message being composed.
-     */
-    const createStore = () => {
-      const listeners = new Set()
-      /** @type {Array<{key: number, name: string, size: number, sent: number, path?: string, error?: string}>} */
-      let rows = []
-      let nextKey = 1
-      const emit = () => { for (const listener of Array.from(listeners)) listener() }
-      return {
-        subscribe(listener) {
-          listeners.add(listener)
-          return () => { listeners.delete(listener) }
-        },
-        snapshot: () => rows,
-        add(file, sessionId) {
-          const key = nextKey
-          nextKey += 1
-          rows = [...rows, { key, sessionId, name: file.name, size: file.size, sent: 0 }]
-          emit()
-          return key
-        },
-        update(key, patch) {
-          rows = rows.map((row) => (row.key === key ? { ...row, ...patch } : row))
-          emit()
-        },
-        remove(key) {
-          rows = rows.filter((row) => row.key !== key)
-          emit()
-        },
-        /**
-         * Drop the cards whose file has been handed to a turn.
-         *
-         * A card is the receipt for an attachment waiting on the next message.
-         * The moment that message starts running, the notice has been claimed
-         * and the card has nothing left to say — which is what stops it from
-         * becoming the permanent upload log it was in the first cut.
-         */
-        settle() {
-          const next = rows.filter((row) => row.path === undefined && row.error === undefined)
-          if (next.length === rows.length) return
-          rows = next
-          emit()
-        },
-      }
-    }
-
-    const store = createStore()
-
-    /** How long a failed upload keeps its card. */
-    const FAILURE_LINGER_MS = 8000
-
-    /** Which session the uploads belong to, refreshed by the card row. */
-    const composer = { sessionId: undefined }
-
-    /**
-     * Tail of the upload chain.
-     *
-     * One at a time across the whole page: the tunnel is one socket, so
-     * concurrent uploads only take turns more expensively.
-     */
-    let queue = Promise.resolve()
-
-    /**
-     * Upload files and let the host tell the agent about each one.
-     *
-     * Nothing is written into the draft. On a local host the person types a
-     * path because the path is theirs to type; here it would be a path they did
-     * not write appearing in a box that already shows them a card for the same
-     * file. The host injects the notice into the agent's inbox instead, where
-     * it rides the next turn and renders as context rather than as words the
-     * person appears to have said.
-     *
-     * @param {Iterable<File>} files - what to send.
-     */
-    const sendFiles = (files) => {
-      for (const file of files) {
-        const key = store.add(file, composer.sessionId)
-        queue = queue
-          .then(() => upload(file, (sent) => { store.update(key, { sent }) }))
-          .then((published) => {
-            store.update(key, {
-              path: published.path,
-              name: published.name,
-              sent: published.bytes,
-              messageId: published.messageId,
-            })
-          })
-          .catch((error) => {
-            store.update(key, { error: error.message })
-            // A failure has no card lifetime of its own — nothing in the
-            // composer refers to it — so it is the one card that times out.
-            setTimeout(() => { store.remove(key) }, FAILURE_LINGER_MS)
-          })
-      }
-    }
-
-    /** Open the picker and send whatever comes back. */
-    const pickAndSend = () => { void pickFiles().then((files) => { sendFiles(files) }) }
-
-    /**
-     * What this plugin's slash command is called.
-     *
-     * English, lowercase, one word, and NOT the translated label the `+` menu
-     * shows — because this string is not a label, it is what a person types.
-     * The menu matches a query against a candidate's `name`, so a Chinese name
-     * made the command unreachable from the keyboard in either language: `/up`
-     * matched nothing, and the row could only ever be clicked. The shell's own
-     * commands are named the same way for the same reason, and what a row says
-     * IN a language is the description beside it.
-     */
-    const UPLOAD = 'upload'
-
-    /**
-     * Whether a typed query still names this command.
-     *
-     * Subsequence rather than prefix, which is how the shell's command source
-     * ranks its own rows — `/upl`, `/uld` and `/u` all still find it, and a
-     * query that has run past the name (`/upx`) drops it. Case-folded because
-     * nothing about a command is case.
-     *
-     * @param {string} query - what has been typed after the trigger.
-     * @returns {boolean} whether the command survives it.
-     */
-    const named = (query) => {
-      const want = query.toLowerCase()
-      let at = 0
-      for (const ch of UPLOAD) {
-        if (at < want.length && want[at] === ch) at += 1
-      }
-      return at === want.length
-    }
-
-    /**
-     * Subscribe a component to the store.
-     * @returns {Array<object>} the current rows.
-     */
-    const useRows = () => {
-      const [rows, setRows] = React.useState(store.snapshot)
-      React.useEffect(() => store.subscribe(() => { setRows(store.snapshot()) }), [])
-      return rows
-    }
-
-    // ---------------------------------------------------------------- copy --
-
-    /**
-     * Human byte count, for a line nobody should have to decode.
-     * @param {number} bytes - the count.
-     * @returns {string} e.g. `1.4 MB`.
-     */
-    const humanBytes = (bytes) => {
-      if (bytes < 1024) return `${String(bytes)} B`
-      const units = ['KB', 'MB', 'GB']
-      let value = bytes / 1024
-      let unit = 0
-      while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
-      return `${value < 10 ? value.toFixed(1) : String(Math.round(value))} ${units[unit]}`
     }
 
     /**
@@ -475,11 +218,6 @@ window.__ModuleLoader__.load({
      */
     const DICTIONARY = {
       zh: {
-        'attach.group': '附件',
-        'attach.item.about': '从这台电脑选择文件，送进你的沙箱',
-        'attach.drop': '松手即可上传到你的沙箱',
-        'attach.uploading': '上传中 {sent} / {size}',
-        'attach.remove': '移除附件 {name}',
 
         sandbox: '沙箱',
         configuration: '配置文件',
@@ -523,11 +261,6 @@ window.__ModuleLoader__.load({
         download: '下载',
       },
       en: {
-        'attach.group': 'Attachments',
-        'attach.item.about': 'Choose a file on this computer and send it to your sandbox',
-        'attach.drop': 'Drop to upload to your sandbox',
-        'attach.uploading': 'Uploading {sent} / {size}',
-        'attach.remove': 'Remove attachment {name}',
 
         sandbox: 'Sandbox',
         configuration: 'Configuration',
@@ -606,52 +339,6 @@ window.__ModuleLoader__.load({
     const ARC_MS = 420
 
     const STYLE = `
-      .${P}-cards { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 14px 0; }
-      .${P}-card {
-        display: inline-flex;
-        align-items: center;
-        max-width: 16rem;
-        gap: 8px;
-        padding: 6px 10px;
-        border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
-        border-radius: 10px;
-        background: var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
-        font-size: 13px;
-        line-height: 18px;
-      }
-      .${P}-icon { flex: none; color: var(--dsw-alias-label-tertiary, #81858c); }
-      .${P}-text { flex: 0 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-      .${P}-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-      .${P}-meta { color: var(--dsw-alias-label-tertiary, #81858c); font-size: 12px; line-height: 16px; }
-      .${P}-fail { color: var(--dsw-alias-state-error-primary, #ec1313); }
-      .${P}-bar {
-        height: 2px;
-        border-radius: 2px;
-        background: var(--dsw-alias-border-l1, rgb(0 0 0 / 4%));
-        overflow: hidden;
-      }
-      .${P}-bar > i { display: block; height: 100%; background: var(--dsw-alias-label-tertiary, #81858c); }
-      .${P}-x {
-        flex: none;
-        width: 22px; height: 22px;
-        display: inline-flex; align-items: center; justify-content: center;
-        border: none; border-radius: 6px; background: transparent;
-        color: var(--dsw-alias-label-tertiary, #81858c);
-        cursor: pointer; font-size: 14px; line-height: 1; padding: 0;
-      }
-      .${P}-x:hover { background: var(--dsw-alias-button-floating-hover, rgb(241 243 245)); }
-      .${P}-drop {
-        display: flex; align-items: center; justify-content: center;
-        padding: 10px;
-        border: 1px dashed var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
-        border-radius: 12px;
-        color: var(--dsw-alias-label-tertiary, #81858c);
-        font-size: 13px;
-      }
-      .${P}-drop[data-over='true'] {
-        border-color: var(--dsw-alias-label-primary, #0f1115);
-        color: var(--dsw-alias-label-primary, #0f1115);
-      }
       .${P}-document {
         margin: 0; padding: 12px 14px; max-height: 420px; overflow: auto;
         border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
@@ -670,16 +357,14 @@ window.__ModuleLoader__.load({
         font-family: inherit; font-size: 13px; cursor: pointer;
       }
       .${P}-button:hover { background: var(--dsw-alias-button-floating-hover, rgb(241 243 245)); }
+      .${P}-sandbox-compact { display:flex; height:28px; width:100%; border:0; background:transparent; cursor:pointer; align-items:center; justify-content:center; }
       .${P}-sandbox {
         display: flex; align-items: center; justify-content: space-between;
         gap: 8px; width: 100%; box-sizing: border-box;
-        padding: 8px; border-radius: 12px;
+        padding: 8px; border: 0; border-radius: 12px; cursor: pointer; text-align: start; color: inherit; font: inherit;
         background: transparent;
         transition: background 120ms ease;
       }
-      /* The same card the sidebar's own rows take under the pointer, at the
-         radius they use. Nothing here is clickable, so the cursor is left
-         alone: the tint says "these figures are one thing", not "press me". */
       /* The wash the shell uses for its own hoverable rows, not a solid fill.
           The account row directly below this one is inside the shell's Settings
           button and hovers with that wash; a solid fill here made two rows in
@@ -688,18 +373,6 @@ window.__ModuleLoader__.load({
           the same colour in dark, so a fill can silently equal its own
           background. An overlay cannot. */
       .${P}-sandbox:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 5%)); }
-      /* Native trigger rows receive the same fill from React's active class.
-         A row rendered through this plugin's portal is outside that indexed
-         list, so pointer movement never gives it the class. Paint the portal
-         row from the shared theme token, and clear the native row whose stale
-         active state would otherwise leave two choices highlighted. */
-      .${P}-plus-upload:is(:hover, :focus-visible) {
-        background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
-      }
-      [role='listbox']:has(.${P}-plus-upload:is(:hover, :focus-visible))
-        [role='option']:not(.${P}-plus-upload) {
-        background: transparent;
-      }
       .${P}-sandbox-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .${P}-sandbox-title { font-size: 12px; color: var(--dsw-alias-label-tertiary, #81858c); line-height: 16px; }
       .${P}-sandbox-state {
@@ -746,394 +419,6 @@ window.__ModuleLoader__.load({
 
     /** The stylesheet, mounted by whichever of our seats renders first. */
     const Style = () => React.createElement('style', null, STYLE)
-
-    /** A paperclip, at the size the composer's own chrome uses. */
-    const Clip = ({ size = 16 }) => (primitives.IconPaperclipOutline16 === undefined
-      ? null
-      : React.createElement(primitives.IconPaperclipOutline16, { size, className: `${P}-icon` }))
-
-    // ------------------------------------------------------------ the cards --
-
-    /**
-     * The attachment cards, rendered where dsh renders its own image rail.
-     *
-     * The slot this registers into (`conversation.input.dock`) paints a row
-     * ABOVE the composer card, and dsh's image thumbnails sit INSIDE it, above
-     * the editor. Dsh now exposes that rail as
-     * `conversation.input.attachments`, but it is a single slot already
-     * occupied by the shipped image UI. Taking it would make generic files
-     * visible by removing image attachments. This instead puts a container of
-     * its own beside that rail and renders into it through a portal.
-     *
-     * No additive slot reaches the image rail, so this locates the shipped
-     * input scrollport by its data marker and renders through a portal;
-     * reported upstream. It keys on that marker rather than on the card's
-     * hashed class name, and re-seats its container when React rebuilds the
-     * composer.
-     *
-     * @param {object} props - the session standard kit.
-     * @returns {object|null} the cards, or nothing to show.
-     */
-    const AttachmentCards = ({ useSession, sessionId }) => {
-      const t = useT()
-      const rows = useRows()
-      const [dragging, setDragging] = React.useState(false)
-      const running = useSession((state) => state.running) ?? false
-      const [seat, setSeat] = React.useState(null)
-      // A node React owns and never moves: the anchor the placement below walks
-      // up from, so the composer card is found by structure rather than by a
-      // document-wide query.
-      const anchor = React.useRef(null)
-      // Cards belong to the session they were uploaded from; the store is one
-      // module-level list shared by every scope that mounts this.
-      const mine = rows.filter((row) => row.sessionId === sessionId)
-
-      composer.sessionId = sessionId
-
-      // A container of our own, placed in the composer card and filled through
-      // a portal.
-      //
-      // Moving React's OWN node there instead is what froze the page: React
-      // still believes the node is a child of the dock container, and the first
-      // time it unmounts the entry — which happens when the composer is rebuilt
-      // on the blank-to-active flip — `removeChild` throws on a node that is no
-      // longer there, and it throws again on every retry. A portal inverts it:
-      // React renders into a container it does not own the position of, and
-      // this side owns nothing React renders.
-      const held = React.useRef(null)
-      held.current ??= (() => {
-        const container = document.createElement('div')
-        container.dataset.dshSandboxHost = 'attachments'
-        return container
-      })()
-
-      // Placed after every render, which costs one `isConnected` read in the
-      // case that matters and a walk only when the composer has been rebuilt.
-      //
-      // The first cut watched `document.body` for childList instead. That is a
-      // callback on every React commit anywhere in the page — every token of a
-      // streaming reply — each one running a document-wide
-      // `querySelector('textarea')`. It is also unnecessary: this component
-      // re-renders on the same commit that rebuilds the composer, because the
-      // input state it reads changes with it.
-      React.useLayoutEffect(() => {
-        const container = held.current
-        // The whole cost in the common case. Everything below runs once, and
-        // again only when the composer has been rebuilt under it.
-        if (container.isConnected) return
-        const dock = anchor.current
-        if (dock === null) return
-        // The input scrollport belonging to THIS composer, found by walking up
-        // from a node React keeps in the dock row rather than by a
-        // document-wide query — so another editor elsewhere on the page cannot
-        // claim it. Dsh marks the scrollport explicitly; the textarea this used
-        // to key on disappeared when the composer moved to Lexical in 0.1.2.
-        let scope = dock.parentElement
-        let scroll = null
-        while (scope !== null && scroll === null) {
-          scroll = scope.querySelector('[data-input-scroll]')
-          if (scroll === null) scope = scope.parentElement
-        }
-        if (scroll === null || scroll.parentElement === null) return
-        scroll.before(container)
-        setSeat(container)
-      })
-
-      React.useEffect(() => () => { held.current?.remove() }, [])
-
-      // The turn claims the notices, so the cards have nothing left to say.
-      const wasRunning = React.useRef(running)
-      React.useEffect(() => {
-        if (running && !wasRunning.current) store.settle()
-        wasRunning.current = running
-      }, [running])
-
-      // Non-image file drags, taken before dsh sees them.
-      //
-      // dsh claims document-level drops for the image rail and answers anything
-      // else with "仅支持 PNG、JPG、WebP、GIF 格式的图片" — true of its own
-      // attachment plane and false of this deployment. Capture phase plus
-      // `stopPropagation` means its handler never runs for a drag carrying no
-      // image at all; a drag carrying one is left entirely alone.
-      React.useEffect(() => {
-        const onlyFiles = (transfer) => {
-          const items = [...(transfer?.items ?? [])].filter((item) => item.kind === 'file')
-          return items.length > 0 && items.every((item) => !String(item.type).startsWith('image/'))
-        }
-        // The hint is driven from here rather than from a window listener,
-        // because `stopPropagation` at capture means nothing further out ever
-        // sees these events.
-        let depth = 0
-        const guard = (event) => {
-          if (!onlyFiles(event.dataTransfer)) return
-          event.stopPropagation()
-          if (event.type === 'dragenter') { depth += 1; setDragging(true); return }
-          if (event.type === 'dragleave') {
-            depth = Math.max(0, depth - 1)
-            if (depth === 0) setDragging(false)
-            return
-          }
-          event.preventDefault()
-          if (event.type !== 'drop') return
-          depth = 0
-          setDragging(false)
-          sendFiles(event.dataTransfer?.files ?? [])
-        }
-        const kinds = ['dragenter', 'dragover', 'dragleave', 'drop']
-        for (const kind of kinds) document.addEventListener(kind, guard, true)
-        return () => { for (const kind of kinds) document.removeEventListener(kind, guard, true) }
-      }, [])
-
-      /**
-       * Take a card off the message, and the notice off the agent with it.
-       * @param {object} row - the card's row.
-       */
-      const detach = (row) => {
-        if (row.messageId !== undefined) {
-          void call('upload.retract', { sessionId, messageId: row.messageId }).catch(() => {})
-        }
-        store.remove(row.key)
-      }
-
-      const body = !dragging && mine.length === 0
-        ? null
-        : React.createElement(
-          'div',
-          { className: `${P}-cards` },
-          React.createElement(Style),
-          dragging && mine.length === 0 && React.createElement(
-            'div',
-            { className: `${P}-drop` },
-            t('attach.drop'),
-          ),
-          ...mine.map((row) => {
-            const done = row.path !== undefined
-            const failed = row.error !== undefined
-            return React.createElement(
-              'div',
-              { key: row.key, className: `${P}-card` },
-              React.createElement(Clip, null),
-              React.createElement(
-                'span',
-                { className: `${P}-text` },
-                React.createElement('span', { className: `${P}-name`, title: row.path ?? row.name }, row.name),
-                React.createElement(
-                  'span',
-                  { className: `${P}-meta${failed ? ` ${P}-fail` : ''}` },
-                  failed
-                    ? row.error
-                    : done
-                      ? humanBytes(row.size)
-                      : t('attach.uploading', { sent: humanBytes(row.sent), size: humanBytes(row.size) }),
-                ),
-                !done && !failed && React.createElement(
-                  'span',
-                  { className: `${P}-bar` },
-                  React.createElement('i', {
-                    style: { width: `${String(row.size === 0 ? 100 : Math.round((row.sent / row.size) * 100))}%` },
-                  }),
-                ),
-              ),
-              React.createElement(
-                'button',
-                {
-                  type: 'button',
-                  className: `${P}-x`,
-                  // The wording dsh uses for the same gesture on an image is
-                  // "移除图片 <name>"; this is its sibling.
-                  title: t('attach.remove', { name: row.name }),
-                  'aria-label': t('attach.remove', { name: row.name }),
-                  onClick: () => { detach(row) },
-                },
-                '×',
-              ),
-            )
-          }),
-        )
-
-      return React.createElement(
-        React.Fragment,
-        null,
-        React.createElement('div', { ref: anchor, style: { display: 'none' } }),
-        seat === null ? null : ReactDom.createPortal(body, seat),
-      )
-    }
-
-    // ------------------------------------------------------ the + addition --
-
-    /**
-     * Read the class names an element carries, minus the ones that mark state.
-     *
-     * The shell's classes are content-hashed CSS-module names, so they cannot
-     * be written down. They are read off the live element's class list; the
-     * intersection across siblings then inherits hover, focus and theme from
-     * the same stylesheet the real rows use, and keeps inheriting them
-     * through an upstream restyle. The intersection is what drops the state
-     * classes: the highlighted row carries one the others do not.
-     *
-     * @param {NodeListOf<Element>|Element[]} kin - the siblings to compare.
-     * @returns {string} the classes every one of them has.
-     */
-    const sharedClasses = (kin) => {
-      const lists = [...kin].map((el) => [...el.classList])
-      if (lists.length === 0) return ''
-      return lists[0].filter((name) => lists.every((list) => list.includes(name))).join(' ')
-    }
-
-    /**
-     * The "附件" group, added to the `+` menu's own panel.
-     *
-     * The honest route is closed: `+` calls
-     * `inputTriggers.toggleSource('command', …)`, which seeds the menu with
-     * exactly one source, so a registered source appears when the person types
-     * `/` and never under `+`. Reported upstream; see docs/sandbox-pitfalls.md.
-     *
-     * So this puts its group INSIDE the shipped panel rather than drawing a
-     * second one above it — the person sees one card, which is what a menu is.
-     * Everything it keys on is a role or an ARIA state: the panel is
-     * `[role=listbox]`, its rows are `[role=option]`, its headings are
-     * `[role=presentation][data-source]`, and whether to appear at all comes
-     * from `aria-expanded` on the `+` button, true only for the launcher and
-     * false while the person is typing a trigger.
-     *
-     * The container goes in as the panel's first child and React renders into
-     * it through a portal — never a node moved after the fact, which is what
-     * froze the page when the attachment cards did it.
-     *
-     * @returns {object|null} the group, or nothing.
-     */
-    const PlusAttachmentGroup = () => {
-      const t = useT()
-      const [seat, setSeat] = React.useState(null)
-      const [look, setLook] = React.useState(null)
-      const held = React.useRef(null)
-      held.current ??= document.createElement('div')
-
-      React.useEffect(() => {
-        const container = held.current
-        /** The panel currently being watched for its rows arriving. */
-        const watched = { viewport: null, observer: null }
-
-        /** Stop following a panel that has gone. */
-        const unwatch = () => {
-          watched.observer?.disconnect()
-          watched.viewport = null
-          watched.observer = null
-        }
-
-        /** Find the launcher's panel and sit in it, or leave. */
-        const place = () => {
-          const launcher = document.querySelector('button[aria-haspopup="listbox"][aria-expanded="true"]')
-          const panel = launcher === null ? null : document.querySelector('[role="listbox"]')
-          // `data-source` is the shell's own marking, so this cannot pick up
-          // the heading rendered below — but the filter above is the rule, and
-          // this is the one place it is enforced by the selector instead.
-          const heading = panel?.querySelector('[role="presentation"][data-source]')
-          // The viewport is whatever holds the headings; naming it by class
-          // would be naming a hash.
-          const viewport = heading?.parentElement
-          if (viewport === undefined || viewport === null) {
-            unwatch()
-            container.remove()
-            setSeat(null)
-            return
-          }
-          // The rows arrive after the panel does — the source is asked for its
-          // candidates asynchronously, and the first frames hold a loading row
-          // instead. Measuring then yields nothing to copy, which is how the
-          // group rendered once as an unstyled button. Watching the viewport
-          // costs nothing while the menu is shut and ends when it closes.
-          if (watched.viewport !== viewport) {
-            unwatch()
-            watched.viewport = viewport
-            watched.observer = new MutationObserver(() => { place() })
-            watched.observer.observe(viewport, { childList: true })
-          }
-          if (container.parentElement !== viewport || container.previousSibling !== null) {
-            viewport.prepend(container)
-          }
-          // Everything measured has to come from the shell's own rows, never
-          // from ours: this runs again after the group is in place, and the
-          // intersection with a row of ours that has not been styled yet is
-          // empty — which is how the group rendered once as a bare button.
-          const theirs = (selector) => [...panel.querySelectorAll(selector)]
-            .filter((el) => !container.contains(el))
-          const next = {
-            heading: heading.className,
-            option: sharedClasses(theirs('[role="option"]')),
-            name: sharedClasses(theirs('[role="option"] > span:first-child')),
-            description: sharedClasses(theirs('[role="option"] > span:last-child')),
-          }
-          setSeat(container)
-          // Replaced only when it actually differs: placing the group is
-          // itself a mutation of the viewport, and a new object every time
-          // would re-render on the observation of our own work.
-          setLook((current) => (current !== null
-            && current.heading === next.heading
-            && current.option === next.option
-            && current.name === next.name
-            && current.description === next.description
-            ? current
-            : next))
-        }
-
-        // `aria-expanded` alone, not the subtree: watching childList over the
-        // document would re-run this on every token of a streaming reply, and
-        // the one signal that matters is the launcher opening or closing. The
-        // panel is built in the same gesture, sometimes a frame later, so each
-        // flip is handled now and again on the next frame.
-        const soon = () => { place(); requestAnimationFrame(place) }
-        soon()
-        const observer = new MutationObserver(soon)
-        observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['aria-expanded'] })
-        return () => {
-          observer.disconnect()
-          unwatch()
-          container.remove()
-        }
-      }, [])
-
-      // Nothing until there is something to copy: a row rendered before the
-      // shell's own have arrived is a row with no styling at all.
-      if (seat === null || look === null || look.option === '') return null
-
-      return ReactDom.createPortal(
-        React.createElement(
-          React.Fragment,
-          null,
-          React.createElement(Style),
-          React.createElement('div', { className: look.heading, role: 'presentation' }, t('attach.group')),
-          React.createElement(
-            'button',
-            {
-              type: 'button',
-              role: 'option',
-              'aria-selected': false,
-              className: `${look.option} ${P}-plus-upload`,
-              'data-dsh-sandbox-host': 'plus-upload',
-              // The composer keeps focus through its own chrome the same way.
-              onMouseDown: (event) => { event.preventDefault() },
-              onClick: () => {
-                // Closing is the launcher's own toggle: a click inside the
-                // composer area is not the outside-pointer gesture that
-                // dismisses the menu.
-                document.querySelector('button[aria-haspopup="listbox"][aria-expanded="true"]')?.click()
-                pickAndSend()
-              },
-            },
-            // The same name the `/` menu's candidate carries, because it is
-            // the same command — and because this panel is the shell's own,
-            // with the shell's commands listed under it: `compact`, `export`,
-            // `goal`. A Chinese label in that column read as a different kind
-            // of thing from its neighbours, and made the one command this
-            // deployment adds the only one nobody could type.
-            React.createElement('span', { className: look.name }, UPLOAD),
-            React.createElement('span', { className: look.description }, t('attach.item.about')),
-          ),
-        ),
-        seat,
-      )
-    }
 
     // --------------------------------------------------------- sandbox bar --
 
@@ -1205,21 +490,6 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /**
-     * The sandbox's own account of itself, at the sidebar's foot.
-     *
-     * Running is not asked for and could not be answered from inside: a
-     * sandbox that is not running answers nothing, and the gateway says so
-     * with a 503. So the state is read from whether the call arrives at all —
-     * the only version of the question that is not a guess.
-     *
-     * Polled rather than pushed. A push would need a frame kind in the tunnel
-     * protocol and a gateway that holds per-tenant state; a poll costs one
-     * small round trip every few seconds and only while somebody is looking.
-     *
-     * @param {object} props - the sidebar's owner share (`wide`).
-     * @returns {object|null} the status row.
-     */
     /**
      * Subscribe to the sandbox's own numbers.
      *
@@ -1375,90 +645,28 @@ window.__ModuleLoader__.load({
 
     const SandboxStatus = ({ wide }) => {
       const t = useT()
-      const { status, stats } = useSandboxStats()
-      const dot = statusDot(status)
-      const text = t(statusKey(status))
+      const { stats } = useSandboxStats()
 
       const pct = (part) => (part && part.totalBytes > 0 ? part.usedBytes / part.totalBytes : null)
       const gb = (bytes) => `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
       const asText = (part) => (part ? `${gb(part.usedBytes)} / ${gb(part.totalBytes)}` : t('status.unknown'))
 
-      // Declared with the other hooks, above the early return below. Hooks
-      // after a conditional return are not hooks: on the render where the rail
-      // is narrow the component returns first, React counts fewer of them than
-      // last time, and the whole seat crashes with "rendered more hooks than
-      // during the previous render". That is exactly what folding the sidebar
-      // did.
-      const seat = React.useRef(null)
+      const openSettings = () => document.dispatchEvent(new CustomEvent('dsh-settings-open', { detail: { section: 'sandbox' } }))
 
-      /**
-       * Land on the sandbox page when the panel is opened from this row.
-       *
-       * Listened for on the document in the CAPTURE phase, not with an
-       * `onClick` on the row. The shell's settings trigger — the button this
-       * seat sits inside — carries a capture listener that swallows the click
-       * before it reaches anything nested in it, so a handler on the row never
-       * ran at all. This project has met that button before: the account menu
-       * had to be moved out of it for the same reason. Capture from the
-       * document runs first, ahead of the trigger's own, so the click is seen
-       * without taking it away from the trigger that needs it.
-       */
-      React.useEffect(() => {
-        const onCapture = (event) => {
-          if (seat.current?.contains(event.target) !== true) return
-          selectSandboxPage()
-        }
-        document.addEventListener('click', onCapture, true)
-        return () => { document.removeEventListener('click', onCapture, true) }
-      }, [])
-
-      const selectSandboxPage = () => {
-        let tries = 0
-        const attempt = () => {
-          tries += 1
-          const dialog = document.querySelector('[role="dialog"]')
-          // By the marker the row renders, not by what it says: matching the
-          // visible text worked only while there was one language for it to be
-          // in.
-          const row = dialog?.querySelector('[data-dsh-section="sandbox"]')?.closest('button') ?? undefined
-          // Stop when the row is the one selected, not when it has been
-          // clicked once. A single click was the first version and it landed
-          // before the shell had settled its own initial section, which then
-          // overwrote it — the panel opened on the general page as if nothing
-          // had been asked for.
-          if (row?.getAttribute('aria-current') === 'true') return
-          row?.click()
-          if (tries < 40) window.setTimeout(attempt, 50)
-        }
-        window.setTimeout(attempt, 0)
-      }
-
-      // Nothing at all on the 56px rail. A lone dot there was the first cut,
-      // and it read as a stray mark: with no label beside it, nothing says the
-      // colour is about a sandbox, and the three rings it stood in for cannot
-      // fit at that width either. The row returns when the column does — which
-      // is also what the shell's own chrome does with everything it cannot
-      // render narrow.
-      if (!wide) return null
-
+      if (!wide) return React.createElement('button', {
+        type: 'button', onClick: openSettings, 'aria-haspopup': 'dialog',
+        className: `${P}-sandbox-compact`,
+        title: t('sandbox'), 'aria-label': t('sandbox'),
+      }, React.createElement(Style), React.createElement(Glyph, { name: 'sandbox', size: 16 }))
 
       return React.createElement(
-        'div',
-        // The row is not the button — the shell's settings trigger wraps this
-        // seat, so the click that opens the panel is already on its way. All
-        // this decides is which page it lands on; see the capture listener.
-        { className: `${P}-sandbox`, ref: seat },
+        'button',
+        { type: 'button', onClick: openSettings, 'aria-haspopup': 'dialog', className: `${P}-sandbox`, 'aria-label': t('sandbox') },
         React.createElement(Style),
         React.createElement(
           'span',
           { className: `${P}-sandbox-text` },
           React.createElement('span', { className: `${P}-sandbox-title` }, t('sandbox')),
-          React.createElement(
-            'span',
-            { className: `${P}-sandbox-state` },
-            React.createElement('span', { className: `${P}-dot`, style: { background: dot } }),
-            text,
-          ),
         ),
         React.createElement(
           'span',
@@ -1486,20 +694,6 @@ window.__ModuleLoader__.load({
     // ------------------------------------------------------------- settings --
 
     /**
-     * The configuration document, read rather than opened.
-     *
-     * A page rather than a header button, because the gesture changed. The
-     * shipped control hands a path to the host desktop; there is no desktop
-     * here, so what a person can actually be given is the document itself —
-     * and a document does not fit in the header's action row.
-     *
-     * Read-only on purpose. Everything the file holds is editable in the
-     * sections beside this one, and an editor here would be a second, weaker
-     * way to write the same values — one with no schema behind it.
-     *
-     * @returns {object} the page.
-     */
-    /**
      * The sandbox, in the settings panel.
      *
      * The sidebar row says whether the machine is alive in the corner of a
@@ -1516,8 +710,7 @@ window.__ModuleLoader__.load({
      */
     const SandboxSection = () => {
       const t = useT()
-      // The same subscription the sidebar row uses. Two watchers of one
-      // sandbox now cost one sample rather than two polls.
+      // The gateway supplies pushed readings to both the sidebar and this page.
       const state = useSandboxStats()
 
       const { status, stats } = state
@@ -1674,6 +867,20 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /**
+     * The configuration document, read rather than opened.
+     *
+     * A page rather than a header button, because the gesture changed. The
+     * shipped control hands a path to the host desktop; there is no desktop
+     * here, so what a person can actually be given is the document itself —
+     * and a document does not fit in the header's action row.
+     *
+     * Read-only on purpose. Everything the file holds is editable in the
+     * sections beside this one, and an editor here would be a second, weaker
+     * way to write the same values — one with no schema behind it.
+     *
+     * @returns {object} the page.
+     */
     const ConfigurationSection = () => {
       const t = useT()
       const [state, setState] = React.useState({ status: 'loading' })
@@ -1763,68 +970,6 @@ window.__ModuleLoader__.load({
           () => ctx.locale.register(NS, DICTIONARY),
           'sandbox-host: dictionaries',
         )
-
-        ctx.effect(
-          () => ctx.slots.inject('conversation.input.dock', () => ctx.slots.register(
-            { name: 'conversation.input.dock', id: 'sandbox-attachments', order: 100 },
-            AttachmentCards,
-          )),
-          'sandbox-host: attachment cards',
-        )
-
-        ctx.effect(
-          () => ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register(
-            { name: 'conversation.input.overlay', id: 'sandbox-attach-group', order: 100 },
-            PlusAttachmentGroup,
-          )),
-          'sandbox-host: attachment group spliced onto the + menu',
-        )
-
-        // The honest entry: a trigger source, so "附件" is a group beside
-        // "命令" whenever the person types `/`. Optional rather than injected
-        // at the plugin level — a composition without ui-input-trigger should
-        // lose this entry, not the uploads.
-        ctx.inject(['inputTriggers'], (triggerCtx) => {
-          triggerCtx.effect(
-            () => triggerCtx.inputTriggers.registerSource({
-              trigger: '/',
-              // The menu titles a group by looking its source name up in the
-              // shell's dictionary and returning an unknown key verbatim, so
-              // the name IS the heading.
-              name: say()('attach.group'),
-              order: 50,
-              /**
-               * The command, when the query still names it.
-               *
-               * Filtering here is not an optimisation — it is the contract.
-               * The menu asks every source for candidates and renders what
-               * comes back; nothing downstream drops a row. A source that
-               * ignores `req.query` therefore sits in the menu through every
-               * keystroke, which is what this one did: typing `/goal` left the
-               * upload row below the goal command, under a heading of its own,
-               * as though it were something `/goal` could still become.
-               *
-               * @param {object} _session - the session projection, unused.
-               * @param {{query: string}} req - the request, for its query.
-               * @returns {Promise<Array<object>>} the command, or nothing.
-               */
-              candidates: (_session, req) => Promise.resolve(named(req.query)
-                ? [{ name: UPLOAD, description: say()('attach.item.about') }]
-                : []),
-              /**
-               * Open the picker, and clear the trigger token.
-               * @returns {{text: string}} the token's replacement.
-               */
-              onPick: () => {
-                pickAndSend()
-                // Not 'handled': that outcome leaves the `/` the person typed
-                // sitting in the draft, because nothing consumes the span.
-                return { text: '' }
-              },
-            }),
-            'sandbox-host: attachment trigger source',
-          )
-        })
 
         // Beside the settings control at the sidebar's foot. A list slot, so
         // this adds a row rather than replacing anything.

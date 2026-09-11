@@ -78,7 +78,7 @@ packages/               the npm packages this repository owns
   tunnel-protocol/        the frame protocol both ends of the tunnel speak
   dsh-gateway-tunnel/     cordis plugin: a sandbox's /api traffic, carried out
   dsh-sandbox-host/       cordis plugin: what a browser needs when the backend
-                          is on another machine — uploads, and the settings
+                          is on another machine — status, and the settings
                           document read rather than opened
   dsh-computer/           cordis plugin: the shared browser/desktop, live
                           preview, and human-action handoff card

@@ -10,10 +10,10 @@
  */
 
 import { command } from './api.js'
+import { fileWorkspace } from './file-workspace.js'
 import { NS, ROOT } from './constants.js'
 import { useT } from './i18n.js'
 import { h, React } from './runtime.js'
-import { store } from './store.js'
 import { treeStore, useTree } from './tree-store.js'
 /**
  * The menu a row opens, wherever it was opened from.
@@ -143,12 +143,12 @@ export function AskDialog() {
     try {
       if (kind === 'delete') {
         await command('remove', { path: entry.path })
+        fileWorkspace.removed(entry.path)
         // Straight away, rather than waiting for the viewer to ask for a
         // file and be told it is not there. This is the one case where
         // exactly what went is already known, so nothing has to be
         // discovered — and a tab that is only closed once its contents
         // fail shows the failure first.
-        store.forget(entry.path)
       }
       else if (kind === 'rename') await command('move', { from: entry.path, to: `${parent}/${value.trim()}` })
       else if (kind === 'mkdir') await command('mkdir', { path: `${into}/${value.trim()}` })
