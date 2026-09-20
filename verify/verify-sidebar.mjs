@@ -130,7 +130,7 @@ try {
     new URL(page.url()).pathname.startsWith('/app'),
     'acceptance cookie is expired or sign-in was redirected',
   )
-  const computer = page.getByRole('button', { name: /^(Cloud computer|云端电脑)$/ })
+  const computer = page.locator('.dsh-computer-nav')
   await computer.waitFor({ timeout: BOOT_TIMEOUT })
   const navigationRpc = await harnessRpc(GATEWAY, cookie)
   await selectFixtureSession(page, navigationRpc, BOOT_TIMEOUT)

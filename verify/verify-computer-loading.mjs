@@ -102,7 +102,7 @@ try {
   })
   try {
     await shell.goto(`${GATEWAY}/app`, { waitUntil: 'domcontentloaded', timeout: CONNECT_TIMEOUT_MS })
-    await shell.getByRole('button', { name: /^(Cloud computer|云端电脑)$/ }).click({ timeout: CONNECT_TIMEOUT_MS })
+    await shell.locator('.dsh-computer-nav').click({ timeout: CONNECT_TIMEOUT_MS })
     await shell.locator('.dsh-computer-frame-cover').waitFor({ state: 'visible', timeout: UI_TIMEOUT_MS })
     check('the shell panel covers an iframe before its document arrives', true)
   } finally {

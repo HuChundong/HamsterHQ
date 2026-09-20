@@ -79,7 +79,7 @@ try {
   await page.goto(GATEWAY + '/app')
   await selectFixtureSession(page, rpc, BOOT_TIMEOUT)
   await page
-    .getByRole('button', { name: /^(Cloud computer|云端电脑)$/ })
+    .locator('.dsh-computer-nav')
     .first()
     .click()
   const newTab = page.getByRole('button', { name: /^(New tab|新建标签页|新标签页)$/ })
@@ -171,13 +171,13 @@ try {
   const chat = await page.getByRole('tab', { name: 'Chat', exact: true }).boundingBox()
   assert(desktop && chat && desktop.x >= chat.x + chat.width - 2, 'computer stays in the right column')
   await page
-    .getByRole('button', { name: /^(Cloud computer|云端电脑)$/ })
+    .locator('.dsh-computer-nav')
     .first()
     .click()
   await page.locator('.dsh-computer-panel').waitFor({ state: 'hidden' })
   assert.equal(await page.locator('.dsh-computer-panel').count(), 0, 'second click closes the computer tab instead of hiding the sidebar')
   await page
-    .getByRole('button', { name: /^(Cloud computer|云端电脑)$/ })
+    .locator('.dsh-computer-nav')
     .first()
     .click()
   await page.locator('.dsh-computer-panel').waitFor()
