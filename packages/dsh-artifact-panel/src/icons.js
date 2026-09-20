@@ -7,7 +7,7 @@
  * product in the same window, which is what this replaced.
  *
  * The rest are in `dsh-icons`, and only because the harness set has no drawing
- * that means them: a terminal, the second half of the fullscreen pair, a plain
+ * that means them: the second half of the fullscreen pair, a plain
  * file, and the three file kinds the tree labels. They are drawn to the same
  * rules — a 16 grid, a 1.3 stroke expanded to a filled outline, `currentColor`,
  * no ink of their own.
@@ -122,14 +122,6 @@ const glyphs = () => (TABLE ??= {
   code: extracted.code,
   copy: primitives.IconCopyOutline16,
   refresh: primitives.IconRefreshOutline16,
-  terminal: extracted.terminal,
-  // The browser-preview TAB: a window frame, not the globe — the globe
-  // already marks an .html file in the tree, and a tool and a file sharing
-  // one mark is what `brush` was introduced to end.
-  window: extracted.window,
-  // Session-header Computer control (and the tab it opens). laptop-minimal
-  // from lucide — not `window`, which already means the Browser tab.
-  computer: extracted.computer,
   shrink: extracted.shrink,
   file: extracted.file,
   image: extracted.image,

@@ -38,10 +38,10 @@ plugin absent from the harvest composition.
 
 ## The one package with a build, and why
 
-`dsh-artifact-panel` is the exception: it needs xterm, and the shell's module
-table carries React and nothing else it could use. So it is bundled with esbuild
-into `lib/client.js` as an IIFE with `require` left external, and it declares that
-output as its client entry in `package.json`.
+`dsh-artifact-panel` is the exception: its file and canvas source modules use
+the workspace-path helper and shared icons outside the shell's module table.
+It bundles them with esbuild into `lib/client.js` as an IIFE with `require`
+left external, and declares that output as its client entry in `package.json`.
 
 `lib/` is gitignored — it is derived — and `scripts/check.sh` builds it before
 running any check, because `check-plugin-load` reads the served file and would

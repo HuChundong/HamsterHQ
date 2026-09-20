@@ -69,7 +69,7 @@ today:
   steps a deployment with its own sign-in page has already said. None of it
   means anything without the gateway.
 - `dsh-artifact-panel` is the workspace beside the conversation — files,
-  viewers, a terminal and a canvas.
+  viewers and a canvas. Browser and Terminal belong to the official shell.
 - `dsh-scheduled-tasks` is a tenant's schedule: the tools that write one, the
   timers that fire it, and its global management page. The durable list
   is the gateway's, so none of it survives the gateway's removal.
@@ -169,9 +169,9 @@ specification's own published answers, not against your own reading of it.**
 ## Icons come from the harness
 
 **Do not draw an icon that `@deepseek-ai/dsh-client-ui-primitives` already
-carries.** It has 70, MIT, and every browser half of every plugin can `require`
+carries.** The set is MIT, and every browser half of every plugin can `require`
 it from the shell's module table exactly the way it requires React. A window
-may hold only one icon style: the harness's filled 16-grid outlines. Drawing a
+may hold only one icon style: the harness's filled outlines. Drawing a
 second set beside them is the thing this rule exists to prevent.
 
 What the harness has no drawing for lives in `packages/dsh-icons`: 24 glyphs,
@@ -282,7 +282,7 @@ it rather than borrowing an administrator's. `VERIFY_ADMIN_URL` says where that
 service is, defaulting to `http://localhost:8091`; with no admin service running
 those two checks are skipped.
 
-It spends real model tokens and removes every sandbox, so it belongs on a
+It spends real model tokens and removes the verification accounts' sandboxes, so it belongs on a
 deployment you are willing to disturb. CI cannot run it, which is exactly why a
 green CI is not evidence that a behaviour change works.
 

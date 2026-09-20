@@ -27,6 +27,22 @@ export function shellAssets(graph) {
   return [...graph.entries, ...graph.batches ?? []]
 }
 
+/**
+ * Discover package-local lazy imports in a published entry or sibling chunk.
+ * The host serves these outside combos, using the owning entry's revision.
+ * @param {object} entry - owning boot graph entry.
+ * @param {string} source - published JavaScript response.
+ * @returns {string[]} revision-addressed sibling requests.
+ */
+export function lazyAssets(entry, source) {
+  const requests = [...source.matchAll(/\brequire\.async\(\s*(["'])(\.\/client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js)\1\s*\)/g)]
+  if (requests.length === 0) return []
+  const prefix = `/plugins/??${entry.id}/client.js&rev=`
+  if (!entry.url.startsWith(prefix)) throw new Error(`shell: cannot resolve lazy chunks for ${entry.id}`)
+  const revision = entry.url.slice(prefix.length)
+  return [...new Set(requests.map((match) => `/plugins/${entry.id}/${match[2].slice(2)}?rev=${revision}`))]
+}
+
 /** @param {object} graph - boot graph. @param {string} id - package name. @returns {string[]} all served copies. */
 export function moduleAssets(graph, id) {
   const entry = graph.entries.find((row) => row.id === id)

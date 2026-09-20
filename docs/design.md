@@ -49,13 +49,19 @@ deployment does not have 404s, because the only thing a miss can mean is a web
 image that does not match the sandbox image, and answering it from a sandbox
 would both hide that and put interface bytes back on a per-tenant component.
 
-That also removed the one frontend path which was not a static artifact.
-`/plugins/events` is the client hot-reload channel: the browser opens it and
-holds it, expecting a live host to push rebuild notices. Nothing rebuilds these
-bundles while a tenant is signed in, so the row is switched off in
-[`sandbox/cordis.patch.yml`](../sandbox/cordis.patch.yml) — applied to the harvest
-and the sandbox alike, or the harvested manifest would name a composition the
-backend does not run.
+The official Browser and Terminal own their sidebar tab types. My Computer owns
+the shared sandbox desktop; only the recovery page retains the envd terminal,
+because it must work when DSH is down. Per-tenant plugin management is disabled
+in both compositions: installed client bundles cannot update the deployment's
+harvested graph. `scripts/check-dockerfile.mjs` enforces that restriction.
+
+The tenant composition disables the official modules and client-hmr rows through
+Cordis configuration. It neither generates frontend bundles and source maps nor
+polls their files. The build-time harvest keeps modules enabled to generate all
+static artifacts, and disables client-hmr because nginx has no rebuild stream.
+API routes, authenticated settings and the gateway tunnel remain active.
+`scripts/check-dockerfile.mjs` enforces this split; the live acceptance suite
+checks that the harvested UI still works against that backend.
 
 What needs a session is the app surface — `/`, `/index.html`, `/plugins/*` —
 not the shell assets, which carry nothing of any tenant's. Gating those
@@ -635,9 +641,8 @@ PDF was illegible while every command still reported success. And its task
 budget refuses heavy pages outright: Wikipedia's main page failed to open
 with "autonomous browser task exceeded its task budget". Chromium draws with
 the image's own fontconfig stack — the wqy-microhei installed for matplotlib
-now serves the browser too — and its screenshots are what the panel's browser
-tab shows, polled about once a second over the `/browser` channel
-`dsh-computer` registers. The memory argument that chose Obscura was real and its
+now serves the browser too. My Computer owns the shared desktop and human
+handoff; the sidebar Browser uses the official DSH web-page viewer. The memory argument that chose Obscura was real and its
 price is now paid knowingly: roughly 100 MB idle against 30, and 300–500 MB
 with a heavy page open, out of a sandbox's 2–4 GB.
 
@@ -819,7 +824,7 @@ helper copied into it. What it asks is read from the backend process itself
 rather than from a shell beside it, since the two runtimes start that process
 differently and a shell answered about the wrong one.
 
-It also removes every sandbox and checks that `/` still answers with its boot
+It also removes the verification accounts' sandboxes and checks that `/` still answers with its boot
 manifest, that a client bundle still answers, that an unknown frontend path
 404s rather than reaching a sandbox, and that none of it started one — the
 property the frontend split exists to provide.

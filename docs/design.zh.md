@@ -39,10 +39,16 @@ Vite 构建产物是一个外壳，不是可独立运行的应用：只有 dsh �
 就是 web 镜像与 sandbox 镜像不匹配，而用沙箱去应答既会掩盖这一点，又会把界面字节重新放回
 一个按租户存在的组件上。
 
-这同时也清掉了唯一一个不是静态产物的前端路径。`/plugins/events` 是客户端热重载通道：
-浏览器会打开并保持它，等待一个活着的宿主推送重建通知。而在租户使用期间没有任何东西会重建
-这些 bundle，因此该行在 [`sandbox/cordis.patch.yml`](../sandbox/cordis.patch.yml) 中被关闭
-——采集与沙箱同时应用该补丁，否则采集出的 manifest 会指名一份后端并不运行的组合。
+官方 Browser 和 Terminal 负责各自的侧栏标签类型。“我的电脑”负责共享沙箱桌面；
+只有故障恢复页保留 envd 终端，因为 DSH 停止时仍需修复环境。两份组合都禁用
+租户插件管理：新安装的浏览器插件无法更新部署构建时采集的模块图。
+`scripts/check-dockerfile.mjs` 检查这项限制。
+
+租户组合通过 Cordis 配置禁用官方 modules 和 client-hmr，不再生成前端合并包和
+source map，也不再轮询前端文件。构建期采集保留 modules，以生成完整静态产物；
+client-hmr 则保持禁用，因为 nginx 不提供热更新流。API 路由、认证配置接口和网关隧道
+继续运行。`scripts/check-dockerfile.mjs` 约束这项分离，真实部署验收检查静态界面与后端
+仍能完整配合。
 
 需要会话的是应用界面——`/`、`/index.html`、`/plugins/*`——而不是外壳资源，后者不含任何
 租户的数据。对它们设防毫无收益，反而会破坏浏览器按设计不携带凭据发出的那些请求：
@@ -441,8 +447,7 @@ Liberation 字体：把字体挂进 `/usr/share/fonts` 和 `~/.fonts` 都没有�
 另外它的任务预算会直接拒绝重页面：维基百科主页打不开，报
 "autonomous browser task exceeded its task budget"。Chromium 用镜像自己的
 fontconfig 字体栈绘制——当初为 matplotlib 装的 wqy-microhei 现在也服务于浏览
-器——面板的浏览器 tab 展示的就是它的截图，经 `dsh-computer` 注册的
-`/browser` 通道约一秒轮询一张。当初选 Obscura 的内存论证
+器。“我的电脑”负责共享桌面和人工接管；侧栏浏览器使用 DSH 官方网页查看器。当初选 Obscura 的内存论证
 是真实的，如今是明码付账：空转约 100 MB 对 30 MB，重页面打开时 300–500 MB，出
 自一个 2–4 GB 的沙箱。
 
@@ -568,7 +573,7 @@ SANDBOX_RUNTIME=cube COMPOSE_FILE=../compose.yml:../compose.cube.yml \
 不是从旁边的一个 shell 读的，因为两种运行时启动那个进程的方式不同，问 shell 得到的是另一个进程
 的答案。
 
-它还会删除所有沙箱，并检查 `/` 仍带着 boot manifest 应答、客户端 bundle 仍可获取、
+它还会删除验证账号的沙箱，并检查 `/` 仍带着 boot manifest 应答、客户端 bundle 仍可获取、
 未知前端路径返回 404 而不是抵达沙箱，且这些请求都没有启动任何沙箱——这正是前端拆分存在
 的意义。
 

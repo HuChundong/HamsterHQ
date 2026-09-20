@@ -1,4 +1,4 @@
-/** Computer alongside a conversation and persistent terminal shells. Uses only the supplied acceptance tenant. */
+/** Computer alongside a conversation and its embedded schedule. Uses only the supplied acceptance tenant. */
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { harnessRpc } from './harness-rpc.mjs'
@@ -8,8 +8,6 @@ const require = createRequire(new URL(process.env.PLAYWRIGHT_FROM ?? './package.
 const { chromium } = require('playwright')
 const GATEWAY = process.env.GATEWAY ?? 'http://localhost:8080'
 const UI_TIMEOUT = 15_000
-const OUTPUT_TIMEOUT = 10_000
-const OUTPUT_POLL_MS = 100
 const BOOT_TIMEOUT = 120_000
 const DESKTOP_TIMEOUT = 60_000
 const TASK_DELAY_MS = 24 * 60 * 60 * 1000
@@ -99,13 +97,8 @@ try {
     .locator('.dsh-computer-frame-cover')
     .getByText(/Connecting/)
     .waitFor()
-  assert.equal(
-    await page
-      .locator('.dsh-sandbox-host-sandbox-state, .dsh-sandbox-host-sandbox .dsh-sandbox-host-dot')
-      .count(),
-    0,
-    'left footer has no connection status',
-  )
+  await page.locator('.dsh-sandbox-host-sandbox-state[data-status="running"]').waitFor()
+  assert.equal(await page.locator('.dsh-sandbox-host-sandbox-state').innerText(), 'Running')
   releaseDesktop()
   await page.frameLocator('iframe.dsh-computer-frame').locator('canvas').waitFor({ timeout: DESKTOP_TIMEOUT })
   await page.locator('.dsh-computer-schedule').getByText('Scheduled tasks', { exact: true }).waitFor()
@@ -283,53 +276,7 @@ try {
   assert(await page.getByRole('tab', { name: 'Chat', exact: true }).isVisible())
   console.log('PASS schedule detail saves and both footer entries toggle')
   console.log('PASS left Computer opens one right tab beside conversation with schedule')
-  const outputs = []
-  const sockets = []
-  page.on('websocket', (socket) => {
-    if (!socket.url().includes('/sandbox/pty')) return
-    sockets.push(socket)
-    socket.on('framereceived', (frame) => {
-      try {
-        const m = JSON.parse(frame.payload)
-        if (m.type === 'out') outputs.push(Buffer.from(m.data, 'base64').toString())
-      } catch {}
-    })
-  })
-  await tool(/^(Terminal|终端)$/)
-  await page.locator('.xterm-helper-textarea').waitFor()
-  async function command(text) {
-    const input = page.locator('.xterm-helper-textarea')
-    await input.focus()
-    await page.keyboard.type(text)
-    await input.press('Enter')
-  }
-  async function output(text) {
-    const deadline = Date.now() + OUTPUT_TIMEOUT
-    while (Date.now() < deadline) {
-      if (outputs.join('').includes(text)) return
-      await page.waitForTimeout(OUTPUT_POLL_MS)
-    }
-    throw new Error('missing shell output ' + text)
-  }
-  await command('export DSH_RESTORE_CHECK=retained; echo ready')
-  await output('ready')
-  const count = sockets.length
-  await page
-    .getByRole('tab', { name: /^Terminal|^终端/ })
-    .locator('[data-dockkit-tab-close]')
-    .click()
-  await tool(/^(Terminal|终端)$/)
-  await command('printf "VALUE=%s\\n" "$DSH_RESTORE_CHECK"')
-  await output('VALUE=retained')
-  assert.equal(sockets.length, count, 'outer tab reopen keeps PTY')
-  await page
-    .getByRole('button', { name: /^End |^结束/ })
-    .first()
-    .click()
 
-  await page.waitForTimeout(300)
-  assert(sockets[0].isClosed(), 'explicit end closes original PTY')
-  console.log('PASS terminal retains shell across outer close, explicit end closes it')
 } finally {
   releaseDesktop()
   if (scheduleFixture)

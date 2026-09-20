@@ -851,7 +851,9 @@ window.__ModuleLoader__.load({
         // session seat has remounted. No desktop occupies the central panel.
         function ComputerNavigation({ usePanelInfo, useSessions }) {
           const panel = usePanelInfo(info => info.activePanelId)
-          const session = useSessions(state => state.current)
+          // Selection is a main-view retain in the published Session catalog.
+          const session = useSessions(state => Object.values(state.byId)
+            .find(row => (row.retainedBy.mainView ?? 0) > 0)?.id)
           const pending = React.useRef(false)
           React.useEffect(() => {
             if (panel === 'dsh-computer') {

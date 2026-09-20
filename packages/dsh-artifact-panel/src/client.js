@@ -1,12 +1,10 @@
 /**
  * Workspace tools contributed to DSH's docking surface. The harness owns
  * geometry, tabs, navigation and session lifetimes; this plugin owns the
- * enhanced file tree, terminal, live canvas and browser observation.
+ * enhanced file tree and live canvas. Browser and Terminal belong to DSH.
  */
-import terminalCss from '@xterm/xterm/css/xterm.css'
 import { fileAddressFor, parseFileAddress, resolveWorkspacePath } from '@deepseek-ai/dsh-util-workspace-path'
 import { basename, insideWorkspace } from './api.js'
-import { BrowserPane, setBrowserPlane } from './browser-pane.js'
 import { Canvas } from './canvas.js'
 import { NS, ROOT } from './constants.js'
 import { FileTree } from './file-tree.js'
@@ -18,7 +16,6 @@ import { DICTIONARY, LOCALE_NS, say, setPlugin, useT } from './i18n.js'
 import { icon } from './icons.js'
 import { boot, h, React } from './runtime.js'
 import { CSS } from './styles.js'
-import { disposeTerminalPane, TerminalPane } from './terminal-pane.js'
 import { AskDialog, RowActions } from './tree-dialogs.js'
 import { workspaceWatch } from './watch.js'
 
@@ -91,11 +88,9 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['slots', 'locale', 'connection', 'sidebarRightTabs', 'sidebarRight'],
+      inject: ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight'],
       apply(ctx) {
         setPlugin(ctx)
-        setBrowserPlane(ctx.connection)
-        ctx.effect(() => () => disposeTerminalPane(), 'artifact-panel: terminal lifetime')
         ctx.effect(() => () => fileWorkspace.clear(), 'artifact-panel: file lifetime cleanup')
         ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
           name: 'sidebar.right.pane.tab.title', key: 'dsh-artifact-panel/file',
@@ -107,7 +102,7 @@ window.__ModuleLoader__.load({
         ctx.effect(() => {
           const style = document.createElement('style')
           style.setAttribute('data-dsh-artifact-panel-style', '')
-          style.textContent = `${terminalCss}\n${CSS}`
+          style.textContent = CSS
           document.head.appendChild(style)
           return () => style.remove()
         }, 'artifact-panel: content styles')
@@ -136,9 +131,7 @@ window.__ModuleLoader__.load({
           order, title: () => say()(label), icon: () => icon(glyph, 20),
         }])
         register('files', 'tool.files', Files, { guide: guide('tool.files', 'files', 10) })
-        register('terminal', 'tool.terminal', TerminalPane, { guide: guide('tool.terminal', 'terminal', 20) })
         register('canvas', 'tool.canvas', Canvas, { guide: guide('tool.canvas', 'brush', 30) })
-        register('browser', 'tool.browser', BrowserPane, { guide: guide('tool.browser', 'window', 40) })
         register('file', 'tool.files', Files, {
           canOpen: (address) => parseFileAddress(address)?.scope === 'session',
           patterns: ['dsh-resource://file/**'],

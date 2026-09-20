@@ -14,7 +14,6 @@
       "inject": [
         "slots",
         "locale",
-        "connection",
         "sidebarRightTabs",
         "sidebarRight"
       ],
@@ -26,9 +25,7 @@
     "build": "node build.mjs"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-util-workspace-path": "0.1.5-rc.2",
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/xterm": "^5.5.0",
+    "@deepseek-ai/dsh-util-workspace-path": "0.1.6-alpha.2",
     "esbuild": "^0.25.0"
   },
   "dependencies": {

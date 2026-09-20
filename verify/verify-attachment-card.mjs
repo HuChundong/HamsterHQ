@@ -47,7 +47,13 @@ const card = name => page.locator('[data-composer-card]').locator('div[title]').
 
 async function newSession() {
   await page.getByRole('button', { name: /^(New session|新建会话)$/ }).first().click()
-  if (!await composer().isVisible()) {
+  // New-session navigation mounts the composer asynchronously. Do not mistake
+  // that transition for a missing workspace and open a second dialog.
+  const ready = await composer().waitFor({ state: 'visible', timeout: 5000 }).then(() => true, error => {
+    if (error.name !== 'TimeoutError') throw error
+    return false
+  })
+  if (!ready) {
     await page.getByRole('button', { name: /choose workspace|选择工作区/i }).first().click()
     await page.getByRole('button', { name: /^(Open|打开)$/ }).click()
   }
@@ -73,7 +79,8 @@ async function upload(name, body, intake) {
   await context.route(carrier, capture)
   if (intake === 'chooser') {
     const chooser = page.waitForEvent('filechooser')
-    await page.getByRole('button', { name: /^(Add attachment|添加附件)$/ }).click()
+    await page.getByRole('button', { name: /^(Add files or run commands|添加文件或运行命令)$/ }).click()
+    await page.getByRole('option', { name: /^(File|文件)$/ }).click()
     await (await chooser).setFiles({ name, mimeType: 'text/plain', buffer: body })
   } else {
     await page.evaluate(({ name, text }) => {

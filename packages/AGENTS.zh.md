@@ -29,8 +29,8 @@
 
 ## 唯一带构建步骤的包，以及为什么
 
-`dsh-artifact-panel` 是那个例外：它需要 xterm，而 shell 的模块表里有 React，没有别的它能用的
-东西。所以它用 esbuild 打包成 `lib/client.js`，形态是 IIFE 且把 `require` 留作 external，并在
+`dsh-artifact-panel` 是那个例外：文件和画布源码模块使用 shell 模块表之外的工作区路径辅助函数
+及共享图标。它用 esbuild 打包成 `lib/client.js`，形态是 IIFE 且把 `require` 留作 external，并在
 `package.json` 里把那个产物声明为自己的 client 入口。
 
 `lib/` 是 gitignore 的——它是派生物——而 `scripts/check.sh` 会在跑任何检查之前先构建它，因为
