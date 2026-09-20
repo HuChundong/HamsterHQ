@@ -67,17 +67,11 @@ export const fromServer = (t, problem, fallback, values) => {
 
 export const DICTIONARY = {
   zh: {
-    'terminal.n': '终端 {n}',
-    terminal: '终端',
 
     'tool.files': '文件',
     'tool.files.note': '浏览这台沙箱里的工作区',
-    'tool.terminal': '终端',
-    'tool.terminal.note': '在沙箱里开一个 shell',
     'tool.canvas': '画布',
     'tool.canvas.note': '看 agent 正在做的页面',
-    'tool.browser': '浏览器',
-    'tool.browser.note': '看 agent 正在浏览的网页',
     'tool.computer': '云端电脑',
     'tool.computer.note': '通过桌面直接操作沙箱',
     'computer.launch': '打开云端电脑',
@@ -115,13 +109,6 @@ export const DICTIONARY = {
     expand: '展开{title}',
     collapse: '收起{title}',
 
-    'terminal.end': '结束',
-    'terminal.end.of': '结束 {name}',
-    'terminal.new': '新建会话',
-    'terminal.list': '会话列表',
-    'terminal.count': '{n} 个会话',
-    'terminal.unreachable': '连不上终端。',
-    'terminal.over': '这个会话已经结束了。关掉这个标签再开一个。',
 
     preview: '预览',
     source: '源码',
@@ -135,12 +122,6 @@ export const DICTIONARY = {
     'canvas.none.note': '让 agent 在工作区里写一个 .html，这里会自己出现。',
     reload: '重新加载',
 
-    'browser.off': '沙箱里没有浏览器在运行',
-    'browser.off.note': '这台沙箱没有带浏览器，或者它已经退出了。',
-    'browser.none': '还没有打开的网页',
-    'browser.none.note': '让 agent 打开一个网页，这里会跟着显示。',
-    'browser.list': '页面列表',
-    'browser.count': '{n} 个页面',
 
     'menu.create': '新建文件',
     'menu.mkdir': '新建文件夹',
@@ -173,17 +154,11 @@ export const DICTIONARY = {
     'error.file.unreadable': '读不到这个文件。',
   },
   en: {
-    'terminal.n': 'Terminal {n}',
-    terminal: 'Terminal',
 
     'tool.files': 'Files',
     'tool.files.note': 'Browse the workspace on this sandbox',
-    'tool.terminal': 'Terminal',
-    'tool.terminal.note': 'Open a shell in the sandbox',
     'tool.canvas': 'Canvas',
     'tool.canvas.note': 'See the page the agent is building',
-    'tool.browser': 'Browser',
-    'tool.browser.note': 'Watch the page the agent is browsing',
     'tool.computer': 'Cloud computer',
     'tool.computer.note': 'Operate the sandbox desktop directly',
     'computer.launch': 'Open cloud computer',
@@ -221,13 +196,6 @@ export const DICTIONARY = {
     expand: 'Show {title}',
     collapse: 'Hide {title}',
 
-    'terminal.end': 'End',
-    'terminal.end.of': 'End {name}',
-    'terminal.new': 'New session',
-    'terminal.list': 'Sessions',
-    'terminal.count': '{n} sessions',
-    'terminal.unreachable': 'Could not reach the terminal.',
-    'terminal.over': 'This session has ended. Close the tab and open another.',
 
     preview: 'Preview',
     source: 'Source',
@@ -241,12 +209,6 @@ export const DICTIONARY = {
     'canvas.none.note': 'Ask the agent to write a .html in the workspace and it appears here by itself.',
     reload: 'Reload',
 
-    'browser.off': 'No browser is running in the sandbox',
-    'browser.off.note': 'This sandbox carries no browser, or it has exited.',
-    'browser.none': 'No page is open yet',
-    'browser.none.note': 'Ask the agent to open a page and it shows up here as it browses.',
-    'browser.list': 'Pages',
-    'browser.count': '{n} pages',
 
     'menu.create': 'New file',
     'menu.mkdir': 'New folder',

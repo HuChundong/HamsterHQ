@@ -19,7 +19,7 @@ overrides the environment; use a fresh Compose project and database for acceptan
 
 ## Run and verify
 
-**Use a dedicated Docker daemon or host containing no user sandboxes.** The runtime and acceptance runner use a fixed sandbox-owner label, and the suite removes every sandbox with that label, regardless of Compose project or test email. A fresh project/database/network alone does not isolate that cleanup. Do not run this suite against the Docker daemon used by your everyday deployment. There is no configurable DSH_LABEL isolation.
+**Use a dedicated Docker daemon or host containing no user sandboxes.** The runtime uses a fixed sandbox-owner label, and gateway startup reaps labeled sandboxes absent from its own database. The acceptance runner only removes its two verification accounts' sandboxes, but that does not isolate gateway startup. A fresh project/database/network alone does not isolate that cleanup. Do not run this suite against the Docker daemon used by your everyday deployment. There is no configurable DSH_LABEL isolation.
 
 Prepare a separate local environment file, such as /tmp/dsh-sidebar.env, from
 .env.example. Give it fresh session/database secrets, set SANDBOX_RUNTIME=docker,
@@ -50,12 +50,17 @@ SANDBOX_RUNTIME=docker GATEWAY=http://localhost:18090 ./verify.sh
 
 Use the gateway port configured in the local environment. The suite's default
 addresses are test sinks; never substitute a person's real address. Its model
-turns spend real tokens through the proxy. The suite removes every sandbox bearing the runtime owner label on that daemon.
+turns spend real tokens through the proxy. The suite removes sandboxes belonging to its two verification accounts.
 The proxy is development-only and does not change CubeSandbox credential injection.
 
 For full desktop acceptance, set LOCAL_SANDBOX_IMAGE=hamsterhq-desktop:latest in
-the local environment, then run docker compose up -d gateway. On the isolated daemon, the suite clears the old acceptance sandboxes before creating desktop containers. From
-verify, keeping the Compose exports above, run
+the local environment, then run docker compose up -d gateway. Remove the two
+verification accounts’ existing sandboxes on the isolated daemon first, so the
+next request creates desktop containers. If Chromium reports pthread_create
+resource errors at the default 512 PID limit, set SANDBOX_PIDS_LIMIT: 1024 in
+the local Compose override’s gateway environment and recreate the gateway and
+verification sandboxes. This limit counts threads too. From verify, keeping
+the Compose exports above, run
 
 ```sh
 VERIFY_DESKTOP=1 SANDBOX_RUNTIME=docker GATEWAY=http://localhost:18090 ./verify.sh

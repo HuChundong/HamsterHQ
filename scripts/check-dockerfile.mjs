@@ -32,7 +32,23 @@ for (const patch of ['cordis.patch.yml', 'harvest.patch.yml']) {
     check(matching.length === 1 && /^  disabled: true$/m.test(matching[0]),
       `${patch} must disable the native application launcher ${id}`)
   }
+  const manager = rows.filter(row => row.startsWith('- id: ui-plugin-manager\n'))
+  check(manager.length === 1 && /^  disabled: true$/m.test(manager[0]),
+    `${patch} must disable per-tenant plugin management for the static shell`)
+  const terminal = rows.filter(row => row.startsWith('- id: terminal-controller\n'))
+  check(terminal.length === 1 && /^    scrollback: 5000$/m.test(terminal[0]),
+    `${patch} must preserve the workspace terminal's 5000-line history`)
 }
+
+// The build owns client artifacts; tenant hosts must not compose or poll them.
+const runtimePatch = readFileSync(join(root, 'sandbox/cordis.patch.yml'), 'utf8')
+const harvestPatch = readFileSync(join(root, 'sandbox/harvest.patch.yml'), 'utf8')
+for (const id of ['modules', 'client-hmr']) {
+  check(new RegExp(`^- id: ${id}\\n  disabled: true$`, 'm').test(runtimePatch),
+    `runtime must disable frontend-only ${id}`)
+}
+check(!/^- id: modules\n  disabled: true$/m.test(harvestPatch),
+  'harvest must keep the official client module registry')
 
 const pinned = dockerfile.match(/^ARG DSH_VERSION=(\S+)$/m)?.[1]
 check(Boolean(pinned), 'Dockerfile must pin ARG DSH_VERSION')

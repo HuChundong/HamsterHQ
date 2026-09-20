@@ -17,7 +17,7 @@
  *   node /app/verify-cube.mjs ids
  *   node /app/verify-cube.mjs ids-of <owner>
  *   node /app/verify-cube.mjs exec <sandboxId> <shell command>
- *   node /app/verify-cube.mjs remove-all
+ *   node /app/verify-cube.mjs remove-owners <owner> [owner...]
  */
 
 import process from 'node:process'
@@ -55,8 +55,11 @@ switch (command) {
     process.exit(exitCode)
     break
   }
-  case 'remove-all': {
-    for (const sandbox of await listSandboxes(OWNER_KEY)) await removeSandbox(sandbox.sandboxId)
+  case 'remove-owners': {
+    if (!args.length) throw new Error('remove-owners requires explicit acceptance owners')
+    for (const sandbox of await listSandboxes(OWNER_KEY)) {
+      if (args.includes(sandbox.owner)) await removeSandbox(sandbox.sandboxId)
+    }
     break
   }
   default:

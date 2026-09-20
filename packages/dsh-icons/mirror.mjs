@@ -52,7 +52,7 @@ const WANTED = {
   // rather than at the call site.
   'panel-right': { name: 'IconPanelLeftOutline16', flipX: true },
   plus: 'IconPlusOutline16',
-  send: 'IconSendOutline16',
+  send: 'IconSendOutline14',
   copy: 'IconCopyOutline16',
 }
 

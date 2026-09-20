@@ -224,6 +224,7 @@ window.__ModuleLoader__.load({
 
         'status.running': '运行中',
         'status.starting': '连接中',
+        'status.reconnecting': '重连中',
         'status.claiming': '申请中',
         'status.unknown': '未知',
 
@@ -267,6 +268,7 @@ window.__ModuleLoader__.load({
 
         'status.running': 'Running',
         'status.starting': 'Connecting',
+        'status.reconnecting': 'Reconnecting',
         'status.claiming': 'Requesting',
         'status.unknown': 'Unknown',
 
@@ -529,6 +531,7 @@ window.__ModuleLoader__.load({
         let timer
         let delay = BASE_MS
         let stopped = false
+        let wasConnected = false
 
         const clearTimer = () => {
           if (timer === undefined) return
@@ -571,12 +574,13 @@ window.__ModuleLoader__.load({
             return
           }
           if (reading.ok === true) {
+            wasConnected = true
             delay = BASE_MS
             clearTimer()
             setState({ status: 'running', stats: reading.stats ?? null })
             return
           }
-          setState((current) => ({ status: 'starting', stats: current.stats }))
+          setState((current) => ({ status: wasConnected ? 'reconnecting' : 'starting', stats: current.stats }))
           // Do not sit on this generation waiting for a dial-in push: probe
           // again on a backoff. The open stream may still deliver `ok: true`
           // first, which cancels the timer above.
@@ -584,10 +588,10 @@ window.__ModuleLoader__.load({
         }
 
         const onError = () => {
-          // Connecting blips fire error with readyState still CONNECTING;
-          // only a closed stream needs us to take the probe over.
+          // A reconnecting EventSource is not evidence of a live tunnel.
+          // Let native retries continue, but immediately invalidate the label.
+          setState((current) => ({ status: wasConnected ? 'reconnecting' : 'starting', stats: current.stats }))
           if (source !== undefined && source.readyState !== EventSource.CLOSED) return
-          setState((current) => ({ status: 'starting', stats: current.stats }))
           closeSource()
           scheduleReopen()
         }
@@ -625,7 +629,7 @@ window.__ModuleLoader__.load({
      */
     const statusDot = (status) => (status === 'running'
       ? 'var(--dsw-alias-state-success-primary, #22c55e)'
-      : status === 'starting' || status === 'claiming'
+      : status === 'starting' || status === 'claiming' || status === 'reconnecting'
         ? 'var(--dsw-alias-state-warn-label, #dd8629)'
         : 'var(--dsw-alias-border-l2, rgb(0 0 0 / 25%))')
 
@@ -639,13 +643,13 @@ window.__ModuleLoader__.load({
      * @param {string} status - the state.
      * @returns {string} the key.
      */
-    const statusKey = (status) => (['running', 'starting', 'claiming'].includes(status)
+    const statusKey = (status) => (['running', 'starting', 'claiming', 'reconnecting'].includes(status)
       ? `status.${status}`
       : 'status.unknown')
 
     const SandboxStatus = ({ wide }) => {
       const t = useT()
-      const { stats } = useSandboxStats()
+      const { status, stats } = useSandboxStats()
 
       const pct = (part) => (part && part.totalBytes > 0 ? part.usedBytes / part.totalBytes : null)
       const gb = (bytes) => `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
@@ -656,7 +660,7 @@ window.__ModuleLoader__.load({
       if (!wide) return React.createElement('button', {
         type: 'button', onClick: openSettings, 'aria-haspopup': 'dialog',
         className: `${P}-sandbox-compact`,
-        title: t('sandbox'), 'aria-label': t('sandbox'),
+        title: `${t('sandbox')}: ${t(statusKey(status))}`, 'aria-label': `${t('sandbox')}: ${t(statusKey(status))}`,
       }, React.createElement(Style), React.createElement(Glyph, { name: 'sandbox', size: 16 }))
 
       return React.createElement(
@@ -667,6 +671,9 @@ window.__ModuleLoader__.load({
           'span',
           { className: `${P}-sandbox-text` },
           React.createElement('span', { className: `${P}-sandbox-title` }, t('sandbox')),
+          React.createElement('span', { className: `${P}-sandbox-state`, role: 'status', 'aria-live': 'polite', 'data-status': status },
+            React.createElement('span', { className: `${P}-dot`, 'aria-hidden': true, style: { background: statusDot(status) } }),
+            t(statusKey(status))),
         ),
         React.createElement(
           'span',

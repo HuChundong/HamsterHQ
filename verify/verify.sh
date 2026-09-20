@@ -155,11 +155,9 @@ sandbox_owners() {  # -> the owning tenant of each running sandbox, one per line
   esac
 }
 
-sandbox_handles() {  # -> a handle per running sandbox, one per line
-  case "$RUNTIME" in
-    docker) docker ps --filter "label=$DSH_LABEL" -q ;;
-    cube)   cube ids ;;
-  esac
+sandbox_handles() {  # -> running handles owned by this acceptance run
+  sandbox_handles_of "$ALICE"
+  sandbox_handles_of "$BOB"
 }
 
 # Scoped to one tenant, because the deployment under test is not necessarily
@@ -192,17 +190,19 @@ sandbox_sh() {  # sandbox_sh <handle> <shell command> -> its stdout
   esac
 }
 
-sandbox_remove_all() {
+sandbox_remove_fixtures() {
   case "$RUNTIME" in
     # Collected into an array first: the ids have to reach `docker rm` as
     # separate arguments, which an array says without an unquoted expansion.
     # Guarded on the count because `docker rm` with none is an error.
     docker)
-      local ids=()
-      while IFS= read -r id; do ids+=("$id"); done < <(docker ps -aq --filter "label=$DSH_LABEL")
+      local ids=() owner
+      for owner in "$ALICE" "$BOB"; do
+        while IFS= read -r id; do ids+=("$id"); done < <(docker ps -aq --filter "label=$DSH_LABEL=$owner")
+      done
       [ "${#ids[@]}" -eq 0 ] || docker rm -f "${ids[@]}" > /dev/null 2>&1 || true
       ;;
-    cube)   cube remove-all > /dev/null 2>&1 || true ;;
+    cube)   cube remove-owners "$ALICE" "$BOB" > /dev/null 2>&1 || true ;;
   esac
 }
 
@@ -510,7 +510,9 @@ done
 TURN_COOKIE=$(awk -F '\t' 'NF == 7 { printf "%s=%s;", $6, $7 }' "$JAR_A" | sed 's/;$//')
 ATTACHMENT_BOB_COOKIE=$(awk -F '\t' 'NF == 7 { printf "%s=%s;", $6, $7 }' "$JAR_B" | sed 's/;$//')
 export TURN_COOKIE ATTACHMENT_BOB_COOKIE
-browser_suites=(verify-sidebar.mjs verify-attachment-card.mjs verify-turn.mjs verify-restored-files.mjs verify-main-file-link.mjs verify-settings.mjs)
+# The real turn leaves a visible nonblank conversation for fixture-dependent
+# sidebar, official-tool and file-preview checks on a freshly created tenant.
+browser_suites=(verify-turn.mjs verify-sandbox-status.mjs verify-official-tools.mjs verify-sidebar.mjs verify-attachment-card.mjs verify-restored-files.mjs verify-main-file-link.mjs verify-settings.mjs)
 # Desktop deployments can require a real RFB connection and exercise noVNC's
 # loading and recovery UI. A light sandbox has no desktop to connect to.
 if [ "${VERIFY_DESKTOP:-0}" = 1 ]; then browser_suites+=(verify-restored-computer-terminal.mjs verify-computer-loading.mjs); fi
@@ -632,9 +634,9 @@ docker compose exec -T -e "GATEWAY=$INTERNAL_GATEWAY" -e "VERIFY_ALICE=$ALICE" \
 echo
 echo '=== 13. The interface loads with no sandbox running ==='
 echo '     (the point of serving the whole frontend from the web deployment)'
-echo '     DESTRUCTIVE: removes every sandbox, ending any session open in a browser.'
-sandbox_remove_all
-check 'no sandbox is running' 0 "$(sandbox_handles | grep -c .)"
+echo "     Removes only the two acceptance tenants' sandboxes."
+sandbox_remove_fixtures
+check 'no acceptance sandbox is running' 0 "$(sandbox_handles | grep -c .)"
 # `/app`, not `/`: the shell is served there, and `/` is the landing page —
 # which sends a signed-in caller on to `/app` rather than answering with it.
 SHELL_HTML=$(curl -s -m 30 -b "$JAR_A" "$GATEWAY/app")
@@ -667,7 +669,7 @@ check 'still no sandbox after that' 0 \
 if docker compose exec -T gateway node -e 'import("/app/gateway/src/persistence.js").then((m)=>process.exit(m.persists()?0:1))' 2>/dev/null; then
   echo
   echo '=== 13b. A tenant keeps their workspace when the sandbox does not ==='
-  # Section 13 has just removed every sandbox, so this request builds a new
+  # Section 13 has just removed both acceptance sandboxes, so this request builds a new
   # machine — a different VM with a different id — and the file has to be in it.
   # That is the whole claim: the sandbox is disposable and the tenant's work is
   # not.
@@ -675,7 +677,7 @@ if docker compose exec -T gateway node -e 'import("/app/gateway/src/persistence.
   MARKER="kept-$$"
   BEFORE=$(sandbox_handles_of "$ALICE" | head -1)
   sandbox_sh "$BEFORE" "printf '%s' '$MARKER' > /mnt/workspace/.verify-marker" > /dev/null
-  sandbox_remove_all
+  sandbox_remove_fixtures
   api "$JAR_A" session/modelCatalog > /dev/null
   AFTER=$(sandbox_handles_of "$ALICE" | head -1)
   check 'the sandbox really is a different one' 1 "$([ "$AFTER" != "$BEFORE" ] && echo 1 || echo 0)"

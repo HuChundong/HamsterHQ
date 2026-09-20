@@ -78,3 +78,10 @@ both module entries and batches, while `shell-assets.mjs` maps each complete URL
 to a distinct file. nginx uses the generated exact request-URI map; dropping the
 query would collapse all bundles into one. `check-shell-assets.mjs` checks that
 mapping and that the existing loopback patch reaches every served copy.
+
+Lazy client chunks are absent from that graph. The harvester follows published
+package-local `require.async('./client.*.js')` imports recursively, using the
+owning entry's revision even when the import is inside another chunk. Scanning
+a combined batch loses that ownership. `check-shell-assets.mjs` checks owner
+and revision resolution; `check-images.sh` checks the discovered files and the
+official terminal and PDF chunks in nginx's document root.

@@ -179,7 +179,7 @@ cd verify && SANDBOX_RUNTIME=cube COMPOSE_FILE=../compose.yml:../compose.cube.ym
   GATEWAY=https://host:8443 ./verify.sh
 ```
 
-It spends real model tokens and removes every sandbox, and it signs in as the
+It spends real model tokens and removes the verification accounts' sandboxes, and it signs in as the
 addresses it is given, so never point it at a person's real address.
 
 ## What the review is looking for

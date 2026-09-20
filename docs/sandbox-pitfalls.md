@@ -759,6 +759,36 @@ rather than an API: `scripts/check-images.sh` greps the installed bundles for
 both, so a `DSH_VERSION` bump that renames one fails a build instead of quietly
 restoring the sentence about 127.0.0.1.
 
+## An existing sidebar tab concealed a session catalog change
+
+During the 0.1.6-alpha.2 upgrade, Computer navigation worked after the official
+Browser test but failed with an empty right sidebar. Persisted tabs and test
+interference first looked responsible. The actual change was upstream removing
+SessionListState.current: the empty-sidebar path read that missing field, while
+an existing tab bypassed the path entirely.
+
+Computer now finds the session retained by mainView, as the published layout
+does. check-computer-layout.mjs executes the registered controller against a
+catalog without current, and verify-sidebar.mjs closes all right-side tabs
+before opening Computer. A preceding Browser test can no longer hide it.
+
+## Frontend composition looked like a slow tunnel
+
+Production 0.1.5-rc.2 took about 15 seconds between the gateway's sandbox-started
+and tunnel-connected logs. The first explanation was a slow dial or session
+storage. An isolated sandbox without tenant data instead took 12.54 seconds to
+listen, then 148 ms to begin its tunnel handshake. CPU sampling attributed
+seconds to client-modules newline counting, combo assembly and source maps.
+The work blocked the same Node process that serves the API.
+
+0.1.6-alpha.2 defers those payloads. The tenant composition additionally disables
+modules and client-hmr; the build-time harvest keeps the registry. See
+[the static frontend design](design.md#the-frontend-does-not-need-a-sandbox).
+Run node scripts/measure-startup.mjs against built images to measure process
+start to the first authenticated-route-gated tunnel dial without tenant data or
+model calls. STARTUP_PATCH can select a baseline composition. This is not the
+full VM creation time; compare on the same machine and image version.
+
 ## What generalizes
 
 - **A snapshot cannot hold what is only knowable later.** Everything

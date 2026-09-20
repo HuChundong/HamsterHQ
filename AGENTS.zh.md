@@ -48,7 +48,7 @@ harness 上才成立的改动，不是这个项目能交付的改动。
   它在拿掉网关后仍然成立：任何把 dsh 跑在用户碰不到的机器上的人，都欠 agent 同样这两处更正。
 - `dsh-tenant-account` 是谁登录着、怎么退出，以及一个自带登录页的部署已经说过一遍的引导步骤。
   没有网关，这些一个字都不成立。
-- `dsh-artifact-panel` 是对话旁边的工作区——文件、预览、终端、画布。
+- `dsh-artifact-panel` 是对话旁边的工作区——文件、预览、画布。浏览器与终端由官方 shell 管理。
 - `dsh-scheduled-tasks` 是一个租户的日程：写入它的工具、触发它的定时器，以及全局管理
   页面。那份持久的列表是网关的，所以它没有一行能在网关消失后成立。
 - `dsh-brand` 是外壳内部这套部署自己的标识。
@@ -125,9 +125,8 @@ HMAC 加一次取模——为这段 `node:crypto` 算术引一个依赖，风险
 
 ## 图标来自 harness
 
-**不要画 `@deepseek-ai/dsh-client-ui-primitives` 已经有的图标。** 它有 70 个，
-MIT；每个插件的浏览器半边都可以从 shell 的模块表里 `require` 它，方式和
-require React 完全一样。一个窗口里只允许一种图标风格：harness 的 16 网格填充
+**不要画 `@deepseek-ai/dsh-client-ui-primitives` 已经有的图标。** 图标集采用 MIT 许可；每个插件的浏览器半边都可以从 shell 的模块表里 `require` 它，方式和
+require React 完全一样。一个窗口里只允许一种图标风格：harness 的填充
 轮廓。在旁边再画一套，正是这条规矩要防的事。
 
 harness 没有画的那些放在 `packages/dsh-icons`：24 个字形，由 `extract.mjs` 从
@@ -218,7 +217,7 @@ cd verify && SANDBOX_RUNTIME=cube COMPOSE_FILE=../compose.yml:../compose.cube.ym
 一个运营会话，而不是借用某个管理员的身份。`VERIFY_ADMIN_URL` 指出该服务在哪，默认
 `http://localhost:8091`；没有 admin 服务在跑，这两项就跳过。
 
-它会消耗真实模型 token，并删除所有沙箱，所以只该在你愿意打扰的那套部署上跑。CI 跑不了它——
+它会消耗真实模型 token，并删除验证账号的沙箱，所以只该在你愿意打扰的那套部署上跑。CI 跑不了它——
 这恰恰说明：**CI 绿了并不能证明一个行为改动是对的。**
 
 改了 sandbox 镜像还意味着要建新的 CubeSandbox 模板——模板是创建那一刻拍下的快照，把已有模板

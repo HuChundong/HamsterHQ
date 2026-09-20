@@ -2,7 +2,7 @@
 
 [中文](artifact-panel.zh.md)
 
-`packages/dsh-artifact-panel` contributes content to DSH's right sidebar. DSH owns the frame, navigation, tab strip, resizing and context lifetime. The deployment supplies enhanced Files, Terminal, Canvas and Browser observation. The left Cloud computer entry opens its right-sidebar tab beside the current conversation; scheduled tasks also retain their global page.
+`packages/dsh-artifact-panel` contributes content to DSH's right sidebar. DSH owns the frame, navigation, tab strip, resizing and context lifetime. The deployment supplies enhanced Files and Canvas; DSH supplies Browser and Terminal. The left Cloud computer entry opens its right-sidebar tab beside the current conversation; scheduled tasks also retain their global page.
 
 ## Navigation and ownership
 
@@ -18,7 +18,7 @@ Computer and scheduled tasks register footer actions above sandbox status. Compu
 
 Files owns its directory tree and viewers, using the gateway's envd-backed file routes. Each file opens in a DSH resource tab with its preview and collapsible directory tree together. The plugin reads text and images through `/sandbox/raw/*`, and HTML through the existing ticketed preview channel so relative assets resolve. PDF uses the browser's embedded viewer; unsupported binaries offer a download. Markdown retains source/preview switching.
 
-The type claims standard session file addresses at the extension priority. Main-conversation file links and deliverable actions therefore open the same owned file surface through DSH's public resource navigation; no Remote method is replaced. The official shell still owns outer tabs, resizing and session selection. In the pinned 0.1.5-rc.2 release, user-message @file chips do not invoke resource navigation; only upstream-wired file actions reach this surface. The published chat bundle omits the openFile prop from UserMessageNodeView. This upstream limitation is not patched here.
+The type claims standard session file addresses at the extension priority. Main-conversation file links and deliverable actions therefore open the same owned file surface through DSH's public resource navigation; no Remote method is replaced. The official shell still owns outer tabs, resizing and session selection.
 
 Breadcrumbs reveal directories, the selected file is highlighted, and copy actions read the complete authenticated file. The workspace watcher directly refreshes owned viewers and the tree. File deletion closes matching resource tabs through their tab-owned actions. There is no DOM activation adapter for another previewer's reload control.
 
@@ -28,19 +28,17 @@ Gateway file routes accept any absolute path in the caller's sandbox. `/mnt/work
 
 ## Terminal lifetime
 
-Shells belong to the workspace rather than an outer DSH tab. Switching sessions, panes or global pages, and closing the outer terminal tab, preserves their processes and scrollback.
+DSH owns the terminal renderer, PTY and session lifetime. Its built-in terminal uses the authenticated DSH API and remote mux carried by the gateway tunnel. Reconnecting can recover the running process and its screen; closing a terminal tab ends its process. Terminals belong to the current DSH session.
 
-`terminal-pane.js` keeps one content root for the plugin lifetime and attaches it to the current terminal seat. Closing an individual shell ends that process; disposing the plugin releases every socket. Closing a tool tab only hides the workspace.
+The artifact plugin registers neither a terminal type nor a separate renderer. The gateway's independent envd terminal remains on the recovery page so a tenant can repair a sandbox when DSH cannot start.
 
-xterm is bundled because the shell's module table does not supply it. The browser's `/sandbox/pty` WebSocket carries input, output and resize messages to the gateway. The renderer fits after layout and reports size changes through a `ResizeObserver`.
-
-## Canvas and browser observation
+## Canvas and browser
 
 Canvas remains a ticketed HTML surface, separate from upstream document previews. It follows the newest HTML page using the workspace watcher and refreshes when relevant files change. Opening Canvas expresses the user's intent to follow that output; producing a file does not open another tab automatically.
 
 The preview uses path-encoded URLs so relative assets resolve alongside the document. Its iframe and response CSP omit `allow-same-origin`, giving the document an opaque origin. The short-lived ticket authorizes the preview without handing the sandbox page the tenant's normal session credentials. The gateway's preview routes remain the authority for expiry and response headers.
 
-Browser is a read-only view of the agent's browser. It requests page lists and JPEG frames through the `/browser` channel owned by `dsh-computer`; frame polling pauses when the document is hidden. It does not become an interactive desktop or own the browser process.
+DSH's built-in Browser owns ordinary webpage tabs. It displays an iframe in the user's browser; it does not share the sandbox Chromium session. The artifact plugin has no browser registration or screenshot polling. Watching and taking over the sandbox browser belongs to Cloud computer.
 
 ## Cloud computer and human takeover
 

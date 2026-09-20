@@ -17,9 +17,6 @@
 /** The shell's React. Undefined until `boot()`. @type {object} */
 export let React
 
-/** The shell's `react-dom/client`, for terminal content lifetimes. @type {object} */
-export let ReactDomClient
-
 /**
  * The shell's UI primitives, or an empty table.
  *
@@ -50,7 +47,6 @@ export const h = (...args) => React.createElement(...args)
  */
 export function boot(require) {
   React = require('react')
-  ReactDomClient = require('react-dom/client')
   try {
     // `?? {}` and not just the call: a module table that does not carry this
     // package answers with undefined rather than throwing.

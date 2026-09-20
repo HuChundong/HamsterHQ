@@ -1,18 +1,7 @@
 /**
  * Bundle the panel's browser half.
  *
- * This is the first package here with a build step, and it exists for one
- * reason: the terminal needs a renderer. ANSI parsing, a scrollback, a cursor
- * and selection are not things to reimplement, and the shell's module table
- * carries React and nothing else this could use. So xterm has to come from
- * somewhere.
- *
- * It comes from inside this package, bundled, rather than from a file placed
- * in the deployment's web image. Serving it as a static asset would have
- * worked and would have needed no bundler — and it would have made this a
- * plugin that only runs where somebody has already put xterm next to the
- * shell. A plugin that cannot be handed to another dsh deployment is not
- * really a plugin.
+ * Bundle the file and canvas modules with their workspace-path helper.
  *
  * What is NOT bundled is anything the shell already provides. The source calls
  * `require('react')` and friends, but that `require` is the parameter of the
@@ -47,9 +36,6 @@ const result = await build({
   minify: false,
   legalComments: 'inline',
   define: { 'process.env.NODE_ENV': '"production"' },
-  // xterm's stylesheet arrives as a string the panel injects, so the plugin
-  // stays one file — the registry serves exactly one per plugin.
-  loader: { '.css': 'text' },
   logLevel: 'info',
 })
 

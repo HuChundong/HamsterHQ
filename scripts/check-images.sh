@@ -324,6 +324,21 @@ patched=$(docker run --rm --entrypoint sh "$WEB" -c '
 ' 2>/dev/null || echo error)
 check 'all served Connection copies persist non-loopback settings' patched "$patched"
 
+# Lazy chunks do not appear in the boot graph. Their entry can load normally
+# while opening a terminal or PDF fails; check the bytes shipped to nginx.
+lazy=$(docker run --rm --entrypoint sh "$WEB" -c '
+  cd /usr/share/nginx/html
+  test -s dsh-lazy-assets.txt || exit 1
+  while IFS= read -r asset; do
+    test -n "$asset" && test -s ".${asset}" || exit 1
+  done < dsh-lazy-assets.txt
+  for asset in dsh-client-ui-sidebar-terminal/client.terminal.js dsh-client-ui-sidebar-documentpreview/client.pdf.js; do
+    test -s "plugins/@deepseek-ai/$asset" || exit 1
+  done
+  echo present
+' 2>/dev/null || echo error)
+check 'the shell ships terminal, PDF and discovered lazy chunks' present "$lazy"
+
 echo
 echo "=== the gateway image ==="
 

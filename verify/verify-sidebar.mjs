@@ -134,6 +134,12 @@ try {
   await computer.waitFor({ timeout: BOOT_TIMEOUT })
   const navigationRpc = await harnessRpc(GATEWAY, cookie)
   await selectFixtureSession(page, navigationRpc, BOOT_TIMEOUT)
+  // Exercise the global-navigation path with no existing right tab. A prior
+  // Browser tab would bypass this path and conceal a stale Session selector.
+  const right = page.locator('[data-sidebar-right-panel]')
+  if (!(await right.isVisible())) await page.getByRole('button', { name: /^(Open right sidebar|打开右侧边栏)$/ }).click()
+  const closes = right.locator('[data-dockkit-tab-close]')
+  while (await closes.count()) await closes.last().click()
   await computer.click()
   await page.locator('.dsh-computer-panel').waitFor()
   assert.equal(await page.locator('.dsh-computer-panel[data-maximised="true"]').count(), 0)
@@ -263,37 +269,23 @@ try {
   await page.getByText(`sidebar-${suffix}.pdf`, { exact: true }).click()
   await page.locator('iframe[title="' + `sidebar-${suffix}.pdf` + '"]').waitFor()
 
-  const ptys = []
-  page.on('websocket', (socket) => {
-    if (new URL(socket.url()).pathname !== '/sandbox/pty') return
-    const entry = { closed: false }
-    socket.on('close', () => {
-      entry.closed = true
-    })
-    ptys.push(entry)
-  })
-  await page
-    .getByRole('button', { name: /^(New tab|新标签页)$/ })
-    .last()
-    .click()
-  await page.getByRole('button', { name: /^(Terminal|终端)$/ }).click()
-  await page.locator('[data-dsh-artifact-panel][data-tool="terminal"] .xterm').waitFor()
-  await page.locator('.xterm-rows').filter({ hasText: /\S/ }).waitFor()
-  assert.equal(ptys.length, 1, 'opening a terminal creates one transport')
-  await page.getByText(sessionTitles[1], { exact: true }).click()
-  assert.equal(ptys[0].closed, false, 'switching sessions must retain the first terminal')
-  await page.getByText(sessionTitles[0], { exact: true }).click()
-  await page.locator('[data-dsh-artifact-panel][data-tool="terminal"] .xterm').waitFor()
-  assert.equal(ptys.length, 1, 'returning to a session must reuse its terminal')
-  assert.equal(ptys[0].closed, false)
   await page
     .getByRole('button', { name: /^(New session|新建会话)$/ })
     .first()
     .click()
-  await page.locator('[data-slot="conversation.session.header"] > header').waitFor({ state: 'hidden' })
+  // Upstream keeps navigation corners on blank sessions; only the previous
+  // conversation's title, actions and view tabs disappear.
+  const blankHeader = page.locator('[data-slot="conversation.session.header"] > header')
+  await blankHeader.waitFor({ state: 'visible' })
+  await blankHeader.locator('nav').waitFor({ state: 'hidden' })
+  await blankHeader.getByRole('tablist').waitFor({ state: 'hidden' })
+  for (const title of sessionTitles) assert.equal(await blankHeader.getByText(title, { exact: true }).count(), 0)
+  const blankComposer = page.locator('[data-composer-input][contenteditable="true"]').first()
+  await blankComposer.waitFor()
+  assert.equal(await blankComposer.textContent(), '', 'a new conversation must start with an empty composer')
   assert.deepEqual(errors, [], 'sidebar navigation must not throw in the browser')
   console.log(
-    'PASS: global pages, footer entries, compact header, official file preview and session terminal retention work',
+    'PASS: global pages, footer entries, compact header, official file preview work',
   )
 } finally {
   // A failed screenshot or cleanup request must not leave the browser running

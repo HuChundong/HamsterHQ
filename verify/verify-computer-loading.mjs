@@ -124,7 +124,7 @@ try {
   await frame.waitForFunction((theme) => document.documentElement.getAttribute('data-hhq-theme') === theme, targetTheme, { timeout: UI_TIMEOUT_MS })
   const after = await frame.evaluate(() => ({ origin: performance.timeOrigin, url: location.href }))
   check('a theme change repaints the desktop without reloading it', before.origin === after.origin && before.url === after.url)
-  const newWindow = new URL(await shell.locator('.dsh-computer-panel-open').getAttribute('href'), GATEWAY)
+  const newWindow = new URL(await shell.locator('.dsh-computer-desktop-link').getAttribute('href'), GATEWAY)
   check('the new-window link follows the updated theme', newWindow.searchParams.get('theme') === targetTheme)
   await shell.keyboard.press('Escape')
   if (SCREENSHOT) await shell.screenshot({ path: SCREENSHOT.replace(/(\.[^.]+)?$/, '-panel$1') })

@@ -37,7 +37,8 @@ export async function checkArtifactPanelOpen(plugin) {
   for (const service of ['sidebarRightTabs', 'sidebarRight', 'slots']) assert(plugin.inject.includes(service))
   assert(!plugin.inject.includes('remote.session'), 'file opens must not replace session Remote methods')
   plugin.apply(ctx)
-  assert.deepEqual(types.map(type => type.kind), ['files', 'terminal', 'canvas', 'browser', 'file'])
+  assert.deepEqual(types.map(type => type.kind), ['files', 'canvas', 'file'],
+    'Browser and Terminal must remain owned by the official shell')
   for (const type of types) {
     assert.equal(type.priority, 'extension')
     if (type.guide !== undefined) {

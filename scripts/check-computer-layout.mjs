@@ -23,13 +23,26 @@ for (const [name, id] of [['dsh-computer', 'dsh-computer'], ['dsh-scheduled-task
       const types = []
       const cleanups = []
       const noop = () => {}
-      const react = { createElement: noop }
+      const pendingRef = { current: false }
+      const effects = []
+      const frames = []
+      const opened = []
+      const selectedPanels = []
+      const react = {
+        createElement: noop,
+        useRef: () => pendingRef,
+        useEffect: callback => { effects.push(callback) },
+      }
       vm.runInNewContext(source, {
         window: { __ModuleLoader__: { load: ({ factory }) => { plugin = factory(() => react) } } },
         fetch: async () => ({ status, json: async () => ({ ok: true, tasks: [] }) }),
+        requestAnimationFrame: callback => { frames.push(callback); return frames.length },
+        cancelAnimationFrame: noop,
       })
       plugin.apply({
         connection: {},
+        layout: { selectPanel: panel => { selectedPanels.push(panel) } },
+        sidebarRight: { openTab: kind => { opened.push(kind) } },
         sidebarRightTabs: { register: definition => { types.push(definition); return noop } },
         locale: { bind: () => key => key },
         effect: (setup, label) => {
@@ -57,6 +70,29 @@ for (const [name, id] of [['dsh-computer', 'dsh-computer'], ['dsh-scheduled-task
           assert.equal(desktop?.options.key, types[0]?.id)
           assert.equal(desktop?.options.children?.['computer.schedule']?.kind, 'single')
           assert.equal(typeof desktop?.Body, 'function')
+          const controller = registrations.find(entry => entry.options.id === 'computer-navigation')
+          assert.equal(typeof controller?.Body, 'function')
+          // The published SessionListState has no current field. A retained
+          // background row must not hide the row owned by the main view.
+          const sessions = { byId: {
+            background: { id: 'background', retainedBy: { mainView: 0 } },
+            conversation: { id: 'conversation', retainedBy: { mainView: 1 } },
+          } }
+          const renderNavigation = panel => {
+            controller.Body({
+              usePanelInfo: select => select({ activePanelId: panel }),
+              useSessions: select => select(sessions),
+            })
+            for (const effect of effects.splice(0)) effect()
+            for (const frame of frames.splice(0)) frame()
+          }
+          renderNavigation('dsh-computer')
+          assert.deepEqual(selectedPanels, [null], 'Computer returns to the conversation seat')
+          assert.deepEqual(opened, [], 'opening waits for the conversation seat to remount')
+          renderNavigation(null)
+          assert.deepEqual(opened, ['computer'], 'the main-view retained session opens Computer from an empty sidebar')
+          renderNavigation(null)
+          assert.deepEqual(opened, ['computer'], 'a settled navigation request does not open a second tab')
         } else {
           assert.equal(typeof registrations.find(entry => entry.options.name === 'computer.schedule')?.Body, 'function')
         }

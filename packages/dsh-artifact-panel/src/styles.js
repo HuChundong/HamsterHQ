@@ -61,7 +61,6 @@ export const CSS = `
       overflow: hidden;
     }
   }
-  .${NS}-terminal-lifetime { height:100%; min-height:0; min-width:0; display:flex; flex:1; }
   .${NS}-content { height:100%; min-height:0; min-width:0; display:flex; flex-direction:column; color:var(--dsw-alias-label-primary); }
   /* Shared content controls use the same round ghost geometry as DSH. */
   .${NS}-icon-button {
@@ -137,53 +136,6 @@ export const CSS = `
     font-family: var(--dsw-font-family);
     font-size: 12px;
   }
-  /* One shell's screen. All of them are laid out; only one is shown. */
-  .${NS}-console-slot {
-    height: 100%;
-  }
-
-  /* The terminal fills its tab; xterm draws inside it. */
-  .${NS}-console {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    padding: 8px 0 0 10px;
-    box-sizing: border-box;
-    background: var(--dsw-alias-bg-layer-1);
-  }
-  .${NS}-console-screen {
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-  .${NS}-console-note {
-    flex: none;
-    padding: 8px 10px;
-    color: var(--dsw-alias-label-tertiary);
-    font-family: var(--dsw-font-family);
-    font-size: 12px;
-  }
-
-  /* The browser preview: one frame, letterboxed rather than cropped. The
-     frame keeps the page's own aspect, so a panel narrower than the page
-     shows all of it smaller instead of a corner of it actual-size. */
-  .${NS}-shot-box {
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    height: 100%;
-    overflow: auto;
-    padding: 10px;
-    box-sizing: border-box;
-    background: var(--dsw-alias-bg-layer-1);
-  }
-  .${NS}-shot {
-    display: block;
-    max-width: 100%;
-    height: auto;
-    border-radius: 6px;
-    border: 1px solid var(--dsw-alias-border-l1);
-  }
-
   /* The row menu and the questions it leads to. Both are drawn at the
      panel's level rather than inside the column a row lives in, so neither
      is clipped by that column's scrolling. */

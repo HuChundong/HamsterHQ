@@ -21,7 +21,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
-import { assetPath, bootGraph, comboMap, shellAssets } from './shell-assets.mjs'
+import { assetPath, bootGraph, comboMap, lazyAssets, shellAssets } from './shell-assets.mjs'
 
 /** Where dsh is booted for the harvest. */
 const AUTHORITY = '127.0.0.1:3080'
@@ -141,7 +141,9 @@ try {
   const rows = shellAssets(graph).filter((entry) => typeof entry?.url === 'string')
   if (rows.length === 0) throw new Error('harvest-shell: the boot manifest names no bundles')
   const urls = new Set()
-  for (const row of rows) {
+  const lazyUrls = new Set()
+  const queue = rows.map((row) => ({ ...row, owner: row.id === undefined ? undefined : row }))
+  for (const row of queue) {
     if (urls.has(row.url)) continue
     const bundle = await get(row.url)
     if (bundle.status !== 200) throw new Error(`harvest-shell: ${row.url} answered ${bundle.status}`)
@@ -150,6 +152,16 @@ try {
     save(assetPath(row.url), bundle.body)
     urls.add(row.url)
     if (row.id !== undefined) save(`/plugins/${row.id}/client.js`, bundle.body)
+    // Inspect individual entries, not combos: a relative import belongs to
+    // its package, and a batch can contain several packages using the same name.
+    // Queueing siblings recursively also covers chunks that import more chunks.
+    if (row.owner !== undefined) {
+      for (const url of lazyAssets(row.owner, bundle.body.toString('utf8'))) {
+        if (lazyUrls.has(url)) continue
+        lazyUrls.add(url)
+        queue.push({ url, owner: row.owner })
+      }
+    }
     const mapUrl = /\/\/# sourceMappingURL=(\S+)/.exec(bundle.body.toString('utf8'))?.[1]
     if (mapUrl?.startsWith('/plugins/')) {
       const sourceMap = await get(mapUrl)
@@ -159,8 +171,9 @@ try {
     }
   }
   save('/dsh-combos.conf', Buffer.from(comboMap(urls)))
+  save('/dsh-lazy-assets.txt', Buffer.from([...lazyUrls].map(assetPath).join('\n') + '\n'))
 
-  console.log(`harvest-shell: saved index.html and ${rows.length} client bundle(s) to ${outputDir}`)
+  console.log(`harvest-shell: saved index.html, ${rows.length} client bundles and ${lazyUrls.size} lazy chunks to ${outputDir}`)
 } finally {
   host.kill('SIGTERM')
 }

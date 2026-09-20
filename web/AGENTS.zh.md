@@ -61,3 +61,8 @@ nginx 实际将要服务的那个 bundle，找那个被 patch 过的值。那条
 `shell-assets.mjs` 把每个完整 URL 映射到独立文件。nginx 使用生成的精确请求 URI 映射；
 丢掉查询参数会让所有 bundle 落到同一处。`check-shell-assets.mjs` 检查映射与现有环回补丁
 是否覆盖每一个被服务的副本。
+
+延迟加载的客户端分块不在该清单中。采集器递归跟随发布物中包内的
+`require.async('./client.*.js')` 导入，即使导入位于另一个分块，也使用所属模块条目的版本。
+扫描组合批次会丢失这种归属。`check-shell-assets.mjs` 检查模块归属与版本解析；
+`check-images.sh` 检查 nginx 文档根目录中的已发现文件以及官方终端、PDF 分块。

@@ -16,7 +16,7 @@ scripts/check-dev-proxy.mjs 在树检查中验证这些代理行为。
 
 ## Run and verify
 
-**必须使用没有用户沙箱的独立 Docker daemon 或主机。** 运行时与验收脚本采用固定的沙箱归属标签；套件删除该标签下的全部沙箱，不按 Compose 项目或测试邮箱区分。仅新建项目、数据库和网络不能隔离这一步清理。不要在日常部署使用的 Docker daemon 上运行套件；DSH_LABEL 不是可配置的隔离手段。
+**必须使用没有用户沙箱的独立 Docker daemon 或主机。** 运行时采用固定的沙箱归属标签；网关启动时会删除带此标签但不在自身数据库中的沙箱。验收脚本只删除两个验证账号的沙箱，但这不能隔离网关启动时的清理。仅新建项目、数据库和网络不能隔离这一步清理。不要在日常部署使用的 Docker daemon 上运行套件；DSH_LABEL 不是可配置的隔离手段。
 
 从 .env.example 准备独立环境文件，例如 /tmp/dsh-sidebar.env。生成新的会话和数据库
 秘密，设置 SANDBOX_RUNTIME=docker，并通过 EMAIL_API_URL=http://mailbox:8025/emails
@@ -43,12 +43,15 @@ SANDBOX_RUNTIME=docker GATEWAY=http://localhost:18090 ./verify.sh
 ```
 
 使用本机环境文件配置的 gateway 端口。验收默认邮箱是测试接收地址，绝不能替换为真实
-人员邮箱。模型轮次通过代理消耗真实 token，验收会删除该 daemon 上带运行时归属标签的全部 sandbox。
+人员邮箱。模型轮次通过代理消耗真实 token，验收会删除两个验证账号的沙箱。
 代理只用于开发，不改变 CubeSandbox 的凭据注入方式。
 
 完整桌面验收前，在本机环境文件设置 LOCAL_SANDBOX_IMAGE=hamsterhq-desktop:latest，
-然后执行 docker compose up -d gateway。在隔离 daemon 上，套件会清理旧验收 sandbox，再创建
-桌面镜像容器。请从 verify 目录运行以下验收命令，并保留上述 Compose 环境变量：
+然后执行 docker compose up -d gateway。先在隔离 daemon 上删除两个验证账号已有的沙箱，
+让下一次请求创建桌面镜像容器。如果 Chromium 在默认 512 PID 限制下报 pthread_create
+资源不足，在本地 Compose override 的 gateway environment 中设置 SANDBOX_PIDS_LIMIT: 1024，
+再重建 gateway 容器和验证沙箱；该额度也计算线程。请从 verify 目录运行以下验收命令，
+并保留上述 Compose 环境变量：
 
 ```sh
 VERIFY_DESKTOP=1 SANDBOX_RUNTIME=docker GATEWAY=http://localhost:18090 ./verify.sh

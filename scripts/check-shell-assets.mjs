@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { assetPath, bootGraph, comboMap, moduleAssets, shellAssets } from '../web/shell-assets.mjs'
+import { assetPath, bootGraph, comboMap, lazyAssets, moduleAssets, shellAssets } from '../web/shell-assets.mjs'
 
 const id = '@deepseek-ai/dsh-client-connection'
 const first = `/plugins/??${id}/client.js&rev=one`
@@ -21,6 +21,11 @@ assert.match(comboMap([first, batch, map]), /map \$request_uri \$dsh_combo_asset
 for (const url of [first, batch, map]) assert.ok(comboMap([url]).includes(`"${url}" "${assetPath(url)}"`))
 assert.throws(() => comboMap(['/plugins/??example/client.js&rev=$host']))
 assert.throws(() => assetPath('/api/settings/describe'))
+const lazy = lazyAssets(graph.entries[0], 'require.async("./client.pdf.js"); require.async("./client.pdf.js"); require.async(\'./client.worker.js\'); require.async("another-package")')
+assert.deepEqual(lazy, [`/plugins/${id}/client.pdf.js?rev=one`, `/plugins/${id}/client.worker.js?rev=one`])
+assert.deepEqual(lazyAssets(graph.entries[0], 'require.async("./../client.bad.js")'), [])
+assert.throws(() => lazyAssets({ id, url: batch }, 'require.async("./client.pdf.js")'))
+assert.deepEqual(lazyAssets({ id: 'other', url: '/plugins/??other/client.js&rev=two' }, 'require.async("./client.pdf.js")'), ['/plugins/other/client.pdf.js?rev=two'])
 
 const shell = await mkdtemp(join(tmpdir(), 'check-dsh-shell-'))
 try {
@@ -39,4 +44,4 @@ try {
 } finally {
   await rm(shell, { recursive: true, force: true })
 }
-console.log('check-shell-assets: combo queries remain distinct and every Connection copy is patched')
+console.log('check-shell-assets: combo queries remain distinct, lazy chunks retain their owner and revision, and every Connection copy is patched')
