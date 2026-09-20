@@ -120,7 +120,7 @@ try {
     await bobPage.locator('input[name="name"]').fill('Attachment isolation acceptance')
     await bobPage.getByRole('button', { name: /^(Get started|Start|开始使用)$/ }).click()
   }
-  await bobPage.getByRole('button', { name: /^(Cloud computer|云端电脑)$/ }).waitFor({ timeout: TIMEOUT })
+  await bobPage.locator('.dsh-computer-nav').waitFor({ timeout: TIMEOUT })
   const probe = Buffer.from(randomUUID())
   const written = await bobContext.request.post(`${GATEWAY}/sandbox/fs/write?path=${encodeURIComponent(bobProbe)}`, { data: probe })
   assert.equal(written.status(), 200, 'the second tenant’s filesystem must be ready')
