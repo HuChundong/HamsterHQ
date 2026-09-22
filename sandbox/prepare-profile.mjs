@@ -1,5 +1,5 @@
 /** Keep tenant configuration persistent while refreshing image-owned packages. */
-import { mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, lstatSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, lstatSync, rmSync, symlinkSync, copyFileSync } from 'node:fs'
 import path from 'node:path'
 
 const [home, imageHome] = process.argv.slice(2)
@@ -25,6 +25,12 @@ if (process.env.MODEL_PROVIDER_ID) {
 const temporary = `${manifestPath}.preparing`
 writeFileSync(temporary, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 })
 renameSync(temporary, manifestPath)
+// Retain upstream's package-manager policy without overwriting tenant edits.
+const workspace = path.join(profile, 'pnpm-workspace.yaml')
+const imageWorkspace = path.join(image, 'pnpm-workspace.yaml')
+if (!lstatSync(workspace, { throwIfNoEntry: false }) && lstatSync(imageWorkspace, { throwIfNoEntry: false })) {
+  copyFileSync(imageWorkspace, workspace)
+}
 const patch = path.join(profile, 'cordis.patch.yml')
 if (!lstatSync(patch, { throwIfNoEntry: false })) writeFileSync(patch, '[]\n', { mode: 0o600 })
 

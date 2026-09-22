@@ -718,17 +718,14 @@ else entirely.
 `MODEL_API`, `MODEL_COMPAT` and their neighbours describe one endpoint: what it
 is called, what protocol it speaks, which model it serves, and the
 compatibility switches an OpenAI-compatible gateway needs that nothing can
-infer from a URL. `packages/dsh-model-defaults/cordis.patch.yml` builds one provider profile
-out of them, as the harness's own default. That layer is applied only when
-`MODEL_PROVIDER_ID` is set, and it is a second patch file for exactly that
-reason: a patch entry replaces the config it names rather than merging into it,
-so applying it with nothing configured overwrites the harness's own default
-model with nothing and the backend refuses to boot. A deployment that has named
-no model applies no layer and comes up on whatever the harness ships. Nothing
-is written into a tenant's
-settings: the profile is the base that a tenant's `llm-pi-ai:` section merges
-over, per provider, so a change to the deployment's model reaches every sandbox
-on its next start — and a tenant who has configured their own keeps it.
+infer from a URL. The `dsh-model-defaults` bundle builds one provider profile
+out of them, as the harness's default. It is enabled only when
+`MODEL_PROVIDER_ID` is set: a patch entry replaces the config it names, so an
+empty model config would prevent startup. A deployment without a model uses
+the harness defaults. The bundle precedes the persistent tenant profile patch.
+A tenant settings edit stores the entry's complete config under upstream's
+profile rules; that entry then remains overridden until reset. Unmodified
+entries continue to inherit deployment defaults on the next sandbox start.
 
 The names are the deployment's own and deliberately not a provider's. They were
 `DEEPSEEK_*` for a while, which put this deployment's endpoint and key on the

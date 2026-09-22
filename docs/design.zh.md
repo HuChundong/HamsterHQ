@@ -499,12 +499,11 @@ CubeSandbox 下这道栅栏是 CubeEgress，在沙箱外面。在纯 Docker 下�
 
 **路由是配置，不是代码。** `MODEL_PROVIDER_ID`、`MODEL_ID`、`MODEL_API`、`MODEL_COMPAT` 这一组描述
 一个端点：它叫什么、说哪种协议、服务哪个模型，以及一个 OpenAI 兼容网关需要而没人能从 URL 猜出来的
-兼容开关。`packages/dsh-model-defaults/cordis.patch.yml` 用它们拼出一份供应商 profile，作为 harness 自己的默认值。
-这一层只在 `MODEL_PROVIDER_ID` 有值时才被应用，单独成一个补丁文件正是为了这个：补丁条目是**替换**它
-指名的那份 config 而不是并进去，所以什么都没配还应用它，等于把 harness 自己的默认模型覆盖成空，后端
-直接起不来。没指定模型的部署不应用这一层，跟着 harness 自带的默认走。不往
-租户的 settings 里写任何东西：这份 profile 是 base，租户的 `llm-pi-ai:` 分节按 provider 逐个合并在
-它上面——所以改一次部署的模型，下一次开沙箱就全都跟上，而自己配过供应商的租户保留他自己的。
+兼容开关。`dsh-model-defaults` 组合包用它们拼出供应商 profile，作为 harness 的默认值。
+这一层只在 `MODEL_PROVIDER_ID` 有值时启用：补丁条目替换指定的 config，空模型配置会阻止启动。
+未指定模型的部署使用 harness 默认值。组合包位于租户持久 profile patch 之前。
+按照上游的 profile 规则，租户修改设置会保存该条目的完整 config，直到重置前都保留覆盖值；
+未修改的条目在下次启动沙箱时继续继承部署默认值。
 
 这组名字是部署自己的，刻意不用某个供应商的。它们一度叫 `DEEPSEEK_*`，那等于把本部署的端点和密钥
 按在了 DeepSeek 自家适配器读的两个名字上：想用自己的 DeepSeek 密钥打 DeepSeek 官方端点的租户，
