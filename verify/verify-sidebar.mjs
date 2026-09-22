@@ -60,10 +60,11 @@ let rpc
 page.on('pageerror', (error) => errors.push(error.message))
 
 /** Assert the account and sandbox remain below the global navigation. */
-async function footerBelow(navigation) {
+async function footerBelow(navigation, collapsed = false) {
   const top = await navigation.boundingBox()
   assert(top, 'global panel navigation is missing')
-  for (const seat of [page.locator('.dsh-tenant-account-row'), page.locator('.dsh-sandbox-host-sandbox')]) {
+  const sandbox = collapsed ? '.dsh-sandbox-host-sandbox-compact' : '.dsh-sandbox-host-sandbox'
+  for (const seat of [page.locator('.dsh-tenant-account-row'), page.locator(sandbox)]) {
     await seat.waitFor({ state: 'visible' })
     const box = await seat.boundingBox()
     assert(box.y > top.y + top.height, 'a bottom entry moved into global navigation')
@@ -164,7 +165,7 @@ try {
 
   await computer.click()
   await page.getByRole('button', { name: /^(Collapse sidebar|收起侧边栏)$/ }).click()
-  await footerBelow(computer)
+  await footerBelow(computer, true)
   await sandboxShortcut('.dsh-sandbox-host-sandbox-compact', 'Enter')
   for (const key of ['Enter', 'Space']) {
     const account = page.getByRole('button', { name: /^(Account|账户)$/ })
