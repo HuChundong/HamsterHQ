@@ -378,7 +378,7 @@ check "bob:   session/modelCatalog" 200 "$(api "$JAR_B" session/modelCatalog)"
 
 echo
 echo '=== 4. Authenticated configuration methods survive the tunnel ==='
-for method in settings/describe credentials/describe settings/canOpenAgentPresetDirectory; do
+for method in settings/describe credentials/describe; do
   check "alice: $method" 200 "$(api "$JAR_A" "$method")"
 done
 

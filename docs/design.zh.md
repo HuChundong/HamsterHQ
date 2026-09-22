@@ -39,7 +39,9 @@ Vite 构建产物是一个外壳，不是可独立运行的应用：只有 dsh �
 就是 web 镜像与 sandbox 镜像不匹配，而用沙箱去应答既会掩盖这一点，又会把界面字节重新放回
 一个按租户存在的组件上。
 
-官方 Browser 和 Terminal 负责各自的侧栏标签类型。“我的电脑”负责共享沙箱桌面；
+官方 Browser 和 Terminal 负责各自的侧栏标签类型。上游从 0.1.7 起默认关闭 Web profile
+的 Browser，两份组合显式启用它，`scripts/check-dockerfile.mjs` 检查这一选择。
+“我的电脑”负责共享沙箱桌面；
 只有故障恢复页保留 envd 终端，因为 DSH 停止时仍需修复环境。两份组合都禁用
 租户插件管理：新安装的浏览器插件无法更新部署构建时采集的模块图。
 `scripts/check-dockerfile.mjs` 检查这项限制。

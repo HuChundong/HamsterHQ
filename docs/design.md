@@ -49,7 +49,9 @@ deployment does not have 404s, because the only thing a miss can mean is a web
 image that does not match the sandbox image, and answering it from a sandbox
 would both hide that and put interface bytes back on a per-tenant component.
 
-The official Browser and Terminal own their sidebar tab types. My Computer owns
+The official Browser and Terminal own their sidebar tab types. Both compositions
+explicitly enable Browser, which upstream Web profiles disable by default from
+0.1.7; `scripts/check-dockerfile.mjs` holds that opt-in. My Computer owns
 the shared sandbox desktop; only the recovery page retains the envd terminal,
 because it must work when DSH is down. Per-tenant plugin management is disabled
 in both compositions: installed client bundles cannot update the deployment's

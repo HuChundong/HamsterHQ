@@ -115,3 +115,8 @@
 - id: terminal-controller
   config:
     scrollback: 5000
+
+# Upstream web profiles opt in to Browser tabs since 0.1.7. Preserve this
+# deployment's existing sandboxed HTTP(S) browser beside the terminal.
+- id: ui-sidebar-browser
+  disabled: false
