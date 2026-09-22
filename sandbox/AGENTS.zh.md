@@ -60,7 +60,9 @@ gateway 的那个 reporter。它存在是因为 envd 没法 watch 一个网络�
 - `cordis.patch.yml` 是一个租户的沙箱真正运行的东西。`dsh-gateway-tunnel` 在这里，别处都没有。
 - `harvest.patch.yml` 只在构建时用，用来 harvest 那个静态 shell。`dsh-brand` 在这里，而**不在**
   运行时的组合里，因为浏览器加载的那个 shell 里已经带着它了。
-- `../packages/dsh-model-defaults/cordis.patch.yml` 是只在 `MODEL_PROVIDER_ID` 被设置时启用的具名 profile 组合包；它在租户 patch 之前，所以模型设置仍可修改。
+- `../packages/dsh-model-defaults/index.js` 为租户拥有的具名组合包生成普通模型元数据，
+  只在 `MODEL_PROVIDER_ID` 被设置时启用。它在租户 patch 之前，所以设置仍可修改；
+  设置编辑器无法合并聚合 JavaScript 表达式。`check-profile-storage` 验证元数据且排除凭据值。
 
 一个被放进错误文件里的插件，要么对谁都不加载，要么加载两次，而这两种在构建时都不会说话。
 

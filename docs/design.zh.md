@@ -502,6 +502,8 @@ CubeSandbox 下这道栅栏是 CubeEgress，在沙箱外面。在纯 Docker 下�
 兼容开关。`dsh-model-defaults` 组合包用它们拼出供应商 profile，作为 harness 的默认值。
 这一层只在 `MODEL_PROVIDER_ID` 有值时启用：补丁条目替换指定的 config，空模型配置会阻止启动。
 未指定模型的部署使用 harness 默认值。组合包位于租户持久 profile patch 之前。
+启动准备过程把普通 JSON 配置写进租户拥有的组合包；聚合 JavaScript 表达式留下的包装对象
+无法被上游设置编辑器合并进供应商表单修改。只序列化凭据环境变量名，不写它的值。
 按照上游的 profile 规则，租户修改设置会保存该条目的完整 config，直到重置前都保留覆盖值；
 未修改的条目在下次启动沙箱时继续继承部署默认值。
 

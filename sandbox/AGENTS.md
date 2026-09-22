@@ -71,9 +71,11 @@ Two runtime layers and the harvest patch, and which one a plugin belongs in is n
 - `harvest.patch.yml` is build-time only, for harvesting the static shell.
   `dsh-brand` is here and **not** in the runtime composition, because the shell
   the browser loads already carries it.
-- `../packages/dsh-model-defaults/cordis.patch.yml` is a named profile bundle
-  enabled only when `MODEL_PROVIDER_ID` is set. It precedes the tenant profile
-  patch so model settings remain editable.
+- `../packages/dsh-model-defaults/index.js` builds plain model metadata for a
+  tenant-owned named bundle, enabled only when `MODEL_PROVIDER_ID` is set.
+  It precedes the tenant patch so settings remain editable; aggregate JavaScript
+  expressions cannot be merged by the settings editor. `check-profile-storage`
+  checks this metadata and excludes credential values.
 
 A plugin put in the wrong file loads for nobody, or loads twice, and neither says
 so at build time.

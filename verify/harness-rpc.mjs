@@ -24,7 +24,8 @@ export async function harnessRpc(gateway, cookie) {
       fetch: async (url, init) => {
         const headers = new Headers(init.headers)
         headers.set('Cookie', cookie)
-        const result = await fetch(url, { ...init, headers })
+        // Browser fetch resolves the published client's relative API URLs.
+        const result = await fetch(new URL(url, `${gateway.replace(/\/$/, '')}/`), { ...init, headers })
         status = result.status
         return result
       },

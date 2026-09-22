@@ -831,3 +831,23 @@ full VM creation time; compare on the same machine and image version.
 - **Additive is not corrective.** A registry that only lets you add cannot fix
   what is already there. Find the seam that returns the assembled value, or
   accept the sentence.
+
+## DSH 0.1.7 changed the settings owner and asset addresses
+
+The first upgrade attempt treated the model configuration as a layering problem:
+move the model CLI overlay below the tenant patch and keep the patch on the
+volume. Theme writes worked, but a real provider edit still failed with
+`$.providers.__jsExpr expected object`. The settings editor merges raw inherited
+configuration, so the whole-provider JavaScript expression was being merged as
+a provider record. The deployment now materializes plain model metadata through
+its own bundle builder; `scripts/check-images.sh` runs the published editor
+against a disposable volume, edits both provider and model settings, then
+recreates the container and checks the saved values.
+
+The same release made boot-graph asset addresses relative. Concatenating the
+host and an entry produced `http://127.0.0.1:3080plugins/??...`, and the image
+build failed before harvesting the shell. Source maps also became query-only
+references. Resolve each reference against its document or owning script;
+changing only the fetch URL would leave combo maps and lazy chunks inconsistent.
+`scripts/check-shell-assets.mjs` covers those references without rewriting the
+published boot graph.

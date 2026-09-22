@@ -722,7 +722,11 @@ infer from a URL. The `dsh-model-defaults` bundle builds one provider profile
 out of them, as the harness's default. It is enabled only when
 `MODEL_PROVIDER_ID` is set: a patch entry replaces the config it names, so an
 empty model config would prevent startup. A deployment without a model uses
-the harness defaults. The bundle precedes the persistent tenant profile patch.
+the harness defaults. The bundle precedes the persistent tenant profile patch. Boot preparation writes
+plain JSON configuration into the tenant-owned bundle; aggregate JavaScript
+expressions leave expression wrappers that the upstream settings editor cannot
+merge into provider form updates. Only the credential environment-variable name
+is serialized, never its value.
 A tenant settings edit stores the entry's complete config under upstream's
 profile rules; that entry then remains overridden until reset. Unmodified
 entries continue to inherit deployment defaults on the next sandbox start.

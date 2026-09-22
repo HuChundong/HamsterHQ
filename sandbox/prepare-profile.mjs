@@ -1,6 +1,7 @@
 /** Keep tenant configuration persistent while refreshing image-owned packages. */
 import { mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, lstatSync, rmSync, symlinkSync, copyFileSync } from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const [home, imageHome] = process.argv.slice(2)
 if (!home || !imageHome || path.resolve(home) === path.resolve(imageHome)) throw new Error('prepare-profile requires distinct tenant and image homes')
@@ -44,9 +45,23 @@ for (const entry of readdirSync(path.join(image, 'node_modules'), { withFileType
     ? readdirSync(path.join(image, 'node_modules', entry.name)).map(name => `${entry.name}/${name}`)
     : [entry.name]
   for (const name of names) {
+    if (name === defaults) continue
     const destination = path.join(modules, name)
     mkdirSync(path.dirname(destination), { recursive: true })
     rmSync(destination, { force: true, recursive: true })
     symlinkSync(path.join(image, 'node_modules', name), destination)
   }
 }
+
+// Materialize only deployment metadata, never the credential value. Keeping the
+// inherited config plain avoids merging an upstream __jsExpr wrapper into form edits.
+const { modelDefaults } = await import(pathToFileURL(path.join(image, 'node_modules', defaults, 'index.js')))
+const generated = path.join(modules, defaults)
+if (lstatSync(generated, { throwIfNoEntry: false })?.isSymbolicLink()) rmSync(generated)
+mkdirSync(generated, { recursive: true })
+writeFileSync(path.join(generated, 'package.json'), `${JSON.stringify({
+  name: defaults, version: '1.0.0', private: true, dsh: { bundle: { patch: './cordis.patch.yml' } },
+})}\n`, { mode: 0o600 })
+const generatedPatch = path.join(generated, 'cordis.patch.yml')
+writeFileSync(`${generatedPatch}.preparing`, `${JSON.stringify(modelDefaults(process.env), null, 2)}\n`, { mode: 0o600 })
+renameSync(`${generatedPatch}.preparing`, generatedPatch)
