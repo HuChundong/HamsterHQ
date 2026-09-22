@@ -33,10 +33,14 @@ page.on('response', (response) => {
 })
 const fixture = '/mnt/workspace/official-terminal-' + randomUUID()
 async function openTool(kind) {
-  const panel = page.locator('[data-sidebar-right-panel]')
-  if (!(await panel.isVisible())) await page.getByRole('button', { name: /^(Open right sidebar|打开右侧边栏)$/ }).click()
-  const guide = panel.locator(`button[data-sidebar-right-guide-entry="${kind}"], [data-sidebar-right-guide-entry="${kind}"] button`).first()
-  if (!(await guide.isVisible())) await page.getByRole('button', { name: /^(New tab|新标签页|新建标签页)$/ }).last().click()
+  // The panel root stays visible while its dock children slide offscreen.
+  // Its explicit open state, rather than the root's box, owns visibility.
+  const panel = page.locator('[data-sidebar-right-panel]:visible').last()
+  if (await panel.getAttribute('data-sidebar-right-open') === null) {
+    await page.getByRole('button', { name: /^(Open right sidebar|打开右侧边栏)$/ }).click()
+  }
+  const guide = panel.locator(`button[data-sidebar-right-guide-entry="${kind}"]:visible, [data-sidebar-right-guide-entry="${kind}"] button:visible`).first()
+  if (!(await guide.isVisible())) await panel.getByRole('button', { name: /^(New tab|新标签页|新建标签页)$/ }).last().click()
   await guide.click()
 }
 async function command(value) {

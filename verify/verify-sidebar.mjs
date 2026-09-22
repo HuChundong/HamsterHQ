@@ -71,27 +71,28 @@ async function footerBelow(navigation) {
   }
 }
 
-/** Title, view switch and actions stay on one line in the available column. */
+/** The title and actions fit one row; upstream places view tabs below it. */
 async function compactHeader() {
-  const header = page.locator('[data-slot="conversation.session.header"] > header')
+  const header = page.locator('header:has(> [data-slot="conversation.session.header"])')
   await header.waitFor({ state: 'visible' })
   // The sidebar animates its width; measure after it has given the column
   // enough room, rather than measuring the old expanded width mid-transition.
   await page.waitForFunction(() => {
-    const element = globalThis.document.querySelector('[data-slot="conversation.session.header"] > header')
+    const element = globalThis.document.querySelector('header:has(> [data-slot="conversation.session.header"])')
     return element?.getBoundingClientRect().width >= Math.min(globalThis.innerWidth - 70, 400)
   })
   const result = await header.evaluate((element) => {
     const rect = element.getBoundingClientRect()
     const parts = [
       ...element.querySelectorAll(
-        'nav, [role="tablist"], [data-slot="conversation.session.header.utilities"] button, [data-conversation-header-corner] button',
+        'nav, [data-slot="conversation.session.header.utilities"] button, [data-conversation-header-corner] button',
       ),
     ]
       .map((part) => part.getBoundingClientRect())
       .filter((box) => box.width > 0)
     return {
       height: rect.height,
+      titleRowHeight: Math.max(...parts.map(box => box.bottom)) - Math.min(...parts.map(box => box.y)),
       aligned: parts.every(
         (box) => Math.abs(box.y + box.height / 2 - (parts[0].y + parts[0].height / 2)) < 3,
       ),
@@ -99,7 +100,8 @@ async function compactHeader() {
       titleWidth: parts[0].width,
     }
   })
-  assert(result.height < 60 && result.aligned, 'the conversation header must occupy one row')
+  assert(result.height < 100 && result.titleRowHeight < 40 && result.aligned,
+    'the title and actions must occupy one row above the view tabs')
   assert(
     result.inside && result.titleWidth > 20,
     `header controls and title must fit the conversation column: ${JSON.stringify(result)}`,
@@ -275,10 +277,10 @@ try {
     .click()
   // Upstream keeps navigation corners on blank sessions; only the previous
   // conversation's title, actions and view tabs disappear.
-  const blankHeader = page.locator('[data-slot="conversation.session.header"] > header')
+  const blankHeader = page.locator('header:has(> [data-slot="conversation.session.header"])')
   await blankHeader.waitFor({ state: 'visible' })
   await blankHeader.locator('nav').waitFor({ state: 'hidden' })
-  await blankHeader.getByRole('tablist').waitFor({ state: 'hidden' })
+  await page.locator('[data-slot="conversation.session.header"]').getByRole('tablist').waitFor({ state: 'hidden' })
   for (const title of sessionTitles) assert.equal(await blankHeader.getByText(title, { exact: true }).count(), 0)
   const blankComposer = page.locator('[data-composer-input][contenteditable="true"]').first()
   await blankComposer.waitFor()

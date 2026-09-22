@@ -9,12 +9,30 @@ export function bootGraph(html) {
 }
 
 /**
+ * Resolve published references exactly as the root-mounted shell does.
+ * The served document keeps upstream's base href="./"; at /app (no trailing
+ * slash) that is the site root. A source map instead resolves against its
+ * owning script, including upstream's query-only combo map references.
+ * @param {string} reference - published asset or source-map reference.
+ * @param {string} [parent] - owning script URL, otherwise the document root.
+ * @returns {string} canonical request URI, including the complete query.
+ */
+export function assetUrl(reference, parent = '/') {
+  const origin = 'http://dsh.invalid'
+  const url = new URL(reference, new URL(parent, `${origin}/`))
+  if (url.origin !== origin || !url.pathname.startsWith('/plugins/') || url.hash) {
+    throw new Error('shell: asset is outside /plugins/')
+  }
+  return url.pathname + url.search
+}
+
+/**
  * Preserve each complete URL as an independent file; combo queries name bytes.
  * @param {string} url - the exact upstream asset URL.
  * @returns {string} path below nginx's document root.
  */
 export function assetPath(url) {
-  if (!url.startsWith('/plugins/')) throw new Error('shell: asset is outside /plugins/')
+  url = assetUrl(url)
   if (url.startsWith('/plugins/??')) {
     const hash = createHash('sha256').update(url).digest('hex')
     return `/plugins/combos/${hash}.${url.includes('/client.js.map') ? 'map' : 'js'}`
@@ -38,8 +56,9 @@ export function lazyAssets(entry, source) {
   const requests = [...source.matchAll(/\brequire\.async\(\s*(["'])(\.\/client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js)\1\s*\)/g)]
   if (requests.length === 0) return []
   const prefix = `/plugins/??${entry.id}/client.js&rev=`
-  if (!entry.url.startsWith(prefix)) throw new Error(`shell: cannot resolve lazy chunks for ${entry.id}`)
-  const revision = entry.url.slice(prefix.length)
+  const url = assetUrl(entry.url)
+  if (!url.startsWith(prefix)) throw new Error(`shell: cannot resolve lazy chunks for ${entry.id}`)
+  const revision = url.slice(prefix.length)
   return [...new Set(requests.map((match) => `/plugins/${entry.id}/${match[2].slice(2)}?rev=${revision}`))]
 }
 
@@ -57,7 +76,7 @@ export function moduleAssets(graph, id) {
 /** @param {Iterable<string>} urls - combo URLs. @returns {string} exact-match nginx map. */
 export function comboMap(urls) {
   const rows = []
-  for (const url of urls) {
+  for (const url of new Set([...urls].map((url) => assetUrl(url)))) {
     if (!url.startsWith('/plugins/??')) continue
     if (/[\s"\\$;]/.test(url)) throw new Error('shell: combo URL cannot be quoted safely in nginx')
     rows.push(`  "${url}" "${assetPath(url)}";`)

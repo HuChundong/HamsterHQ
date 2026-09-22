@@ -22,7 +22,7 @@ window.__ModuleLoader__.load({
   id: 'dsh-scheduled-tasks',
   factory: (require) => {
     const React = require('react')
-    const { Button, Switch, IconPlusOutline16, IconClockOutline16, IconChevronLeftOutline14 } = require('@deepseek-ai/dsh-client-ui-primitives')
+    const { Button, Switch, IconPlusOutlineMedium, IconClockOutlineMedium, IconChevronLeftOutlineMedium } = require('@deepseek-ai/dsh-client-ui-primitives')
 
     /** The plugin's client context, kept for the locale service the hook reads. */
     let plugin
@@ -474,7 +474,7 @@ window.__ModuleLoader__.load({
           state.phase === 'ready' ? React.createElement(Button, {
             type: 'button', variant: 'ghost', size: 'sm', className: `${U}-new`, title: t('new'), 'aria-label': t('new'),
             onClick: () => setEditing({}),
-          }, React.createElement(IconPlusOutline16, { size: 20 })) : null) : null,
+          }, React.createElement(IconPlusOutlineMedium, { size: 20 })) : null) : null,
         editing !== null ? React.createElement(Form, { key: editing.id ?? 'new', task: editing.id ? editing : null,
           confirming: confirming === editing.id, mutating, mutationProblem, onToggle: () => { void toggle(editing) },
           onRemove: () => { void remove(editing) }, onCancel: back, onSaved: () => { back(); void load() } })
@@ -483,7 +483,7 @@ window.__ModuleLoader__.load({
               : state.tasks.length === 0 ? React.createElement('div', { className: `${U}-note` }, t('empty'))
                 : React.createElement('div', { className: `${U}-list` }, state.tasks.map(task =>
                   React.createElement('button', { key: task.id, type: 'button', className: `${U}-item`, onClick: () => setEditing(task) },
-                    React.createElement(IconClockOutline16, { size: 20, className: `${U}-clock` }),
+                    React.createElement(IconClockOutlineMedium, { size: 20, className: `${U}-clock` }),
                     React.createElement('span', { className: `${U}-item-body` },
                       React.createElement('span', { className: `${U}-item-title`, 'data-off': String(!task.enabled) }, task.title),
                       React.createElement('span', { className: `${U}-item-line` }, summarize(task)),
@@ -573,7 +573,7 @@ window.__ModuleLoader__.load({
         React.createElement('div', { className: `${U}-toolbar` },
           React.createElement(Button, { type: 'button', variant: 'ghost', size: 'sm', className: `${U}-back`,
             title: t('back'), 'aria-label': t('back'), onClick: onCancel, disabled: saving || mutating },
-          React.createElement(IconChevronLeftOutline14, { size: 14 })),
+          React.createElement(IconChevronLeftOutlineMedium, { size: 14 })),
           React.createElement('div', { className: `${U}-editor-title`, role: 'heading', 'aria-level': 2 }, task ? t('edit') : t('new')),
           task ? React.createElement('label', { className: `${U}-toggle` },
             React.createElement(Switch, { checked: Boolean(task.enabled), onChange: onToggle,

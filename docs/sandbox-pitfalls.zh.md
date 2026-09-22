@@ -603,3 +603,18 @@ node scripts/measure-startup.mjs，可在不使用租户数据或模型调用的
   自己马上要上手的那块屏幕，两者很少是同一扇窗。
 - **只增不等于能改。** 一个只让你往里加的注册表，修不了已经在里面的东西。要么找到那个返回
   装配结果的接缝，要么接受那句话。
+
+## DSH 0.1.7 改变了设置归属和资源地址
+
+第一次升级把模型配置问题当成了层级问题：将模型 CLI overlay 放到租户 patch 下方，
+并把 patch 保存在持久卷。主题写入正常，但实际修改供应商仍报
+`$.providers.__jsExpr expected object`。设置编辑器合并的是原始继承配置，
+整段供应商 JavaScript 表达式被当成供应商记录合并。现在部署自己的组合包构造器
+生成普通模型元数据；`scripts/check-images.sh` 用发布版编辑器在临时卷上修改
+供应商和默认模型，重建容器后再检查保存值。
+
+同一版本把 boot graph 资源地址改成相对路径。直接拼接主机和条目得到
+`http://127.0.0.1:3080plugins/??...`，镜像在采集 shell 前就构建失败。
+source map 也改为仅含 query 的引用。每个引用都要相对文档或所属脚本解析；
+只修 fetch 地址会让 combo 映射和懒加载 chunk 仍然不一致。
+`scripts/check-shell-assets.mjs` 覆盖这些引用，不改写发布的 boot graph。

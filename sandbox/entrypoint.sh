@@ -17,18 +17,6 @@ set -eu
 # shellcheck source=/dev/null  # written by the image build, absent from the tree
 . /app/sandbox/env.sh
 
-# A desktop browser is deliberately lazy, but its profile directory must be
-# ready before either the desktop user or an agent becomes the first caller.
-# The tenant mount is S3-backed persistence; cache remains local to this VM.
-if [ "${SANDBOX_VARIANT:-}" = desktop ]; then
-  DESKTOP_USER="${DESKTOP_USER:-hammy}"
-  CHROME_PROFILE_DIR="${CHROME_PROFILE_DIR:-$MOUNT/browser-profile}"
-  CHROME_CACHE_DIR="${CHROME_CACHE_DIR:-/tmp/desktop-chrome-cache}"
-  export DESKTOP_USER CHROME_PROFILE_DIR CHROME_CACHE_DIR
-  install -d -m 700 -o "$DESKTOP_USER" -g "$DESKTOP_USER" "$CHROME_PROFILE_DIR"
-  install -d -m 700 -o "$DESKTOP_USER" -g "$DESKTOP_USER" "$CHROME_CACHE_DIR"
-fi
-
 # The tenant's own state, all of it under one mount.
 #
 # One CubeSandbox volume is attached at `/mnt`, backed by a prefix in an
@@ -50,24 +38,6 @@ fi
 # directory it is started in, and `DSH_HOME` is an environment variable. So
 # both are simply told where they already are.
 mkdir -p "$WORKSPACE" "$DSH_HOME"
-
-# The one thing here that belongs to the IMAGE rather than to the tenant.
-#
-# `profiles/` holds the composed web profile, this project's plugins, and
-# `node_modules` linked into /src, and the harness hardcodes its location at
-# `$DSH_HOME/profiles` — so a directory that is half the tenant's and half the
-# image's is not a choice this can avoid. It is a link back to the image's own
-# copy, remade on every boot, so an upgrade can never leave a stale profile or
-# a dangling link behind.
-#
-# It sits inside DSH_HOME and not inside the workspace, which is what keeps it
-# out of everything that walks the tenant's files.
-ln -sfn "$IMAGE_DSH_HOME/profiles" "$DSH_HOME/profiles"
-
-# env.sh is what the acceptance suite and every probe read to learn the
-# environment the backend runs with, and DSH_HOME has just moved. Corrected
-# rather than left to disagree.
-sed -i "s|^export DSH_HOME=.*|export DSH_HOME=$DSH_HOME|" /app/sandbox/env.sh
 
 # Bring the tenant's data up to the layout this image understands.
 #
@@ -94,10 +64,26 @@ if [ "$LAYOUT_AT" -lt "$SANDBOX_LAYOUT_VERSION" ]; then
   if node /app/sandbox/migrate-storage-paths.mjs "$DSH_HOME" "$WORKSPACE" "$LAYOUT_AT" "$SANDBOX_LAYOUT_VERSION"; then
     printf '%s\n' "$SANDBOX_LAYOUT_VERSION" > "$LAYOUT_STAMP"
   else
-    # Not fatal: what a failed step costs is the thing it repairs, and the
-    # stamp is left behind so the next boot tries again.
+    # Profile migrations must complete before the harness can write settings.
     echo "sandbox: layout migration failed; the volume stays at $LAYOUT_AT" >&2
+    exit 1
   fi
+fi
+
+# Preserve the tenant profile patch and refresh only image-owned dependencies.
+node /app/sandbox/prepare-profile.mjs "$DSH_HOME" "$IMAGE_DSH_HOME"
+sed -i "s|^export DSH_HOME=.*|export DSH_HOME=$DSH_HOME|" /app/sandbox/env.sh
+
+# A desktop browser is deliberately lazy, but its profile directory must be
+# ready before either the desktop user or an agent becomes the first caller.
+# The tenant mount is S3-backed persistence; cache remains local to this VM.
+if [ "${SANDBOX_VARIANT:-}" = desktop ]; then
+  DESKTOP_USER="${DESKTOP_USER:-hammy}"
+  CHROME_PROFILE_DIR="${CHROME_PROFILE_DIR:-$MOUNT/browser-profile}"
+  CHROME_CACHE_DIR="${CHROME_CACHE_DIR:-/tmp/desktop-chrome-cache}"
+  export DESKTOP_USER CHROME_PROFILE_DIR CHROME_CACHE_DIR
+  install -d -m 700 -o "$DESKTOP_USER" -g "$DESKTOP_USER" "$CHROME_PROFILE_DIR"
+  install -d -m 700 -o "$DESKTOP_USER" -g "$DESKTOP_USER" "$CHROME_CACHE_DIR"
 fi
 
 # The harness as the registry publishes it. DSH is a dependency of this
@@ -115,20 +101,8 @@ cd "$WORKSPACE"
 # The browser that reaches this backend is served by the web deployment and
 # arrives over the tunnel; there is nothing here to open.
 #
-# The model layer is a second `--patch` and only when there is a model to
-# describe. A patch entry replaces the config it names rather than merging into
-# it, so applying that layer with nothing configured overwrites the harness's
-# own default provider and model with nothing — and that entry requires a
-# provider, so the backend refuses to boot. A checkout that has named no model
-# comes up on the harness's defaults instead, which is what it should do.
-MODEL_PATCH=""
-if [ -n "${MODEL_PROVIDER_ID:-}" ]; then
-  MODEL_PATCH="--patch /app/sandbox/cordis.model.patch.yml"
-fi
-# Unquoted on purpose: empty must expand to no argument at all, and quoted it
-# would expand to one empty argument, which `--patch` rejects.
-# shellcheck disable=SC2086
-node "$DSH_BIN" web --patch /app/sandbox/cordis.patch.yml $MODEL_PATCH --port 3080 --no-open &
+# Deployment model defaults are a profile bundle below the tenant patch.
+node "$DSH_BIN" web --patch /app/sandbox/cordis.patch.yml --port 3080 --no-open &
 DSH_PID=$!
 
 # The reporter: what this machine is doing and what changed in the workspace,

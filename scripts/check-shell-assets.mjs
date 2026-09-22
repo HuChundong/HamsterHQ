@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { assetPath, bootGraph, comboMap, lazyAssets, moduleAssets, shellAssets } from '../web/shell-assets.mjs'
+import { assetPath, assetUrl, bootGraph, comboMap, lazyAssets, moduleAssets, shellAssets } from '../web/shell-assets.mjs'
 
 const id = '@deepseek-ai/dsh-client-connection'
 const first = `/plugins/??${id}/client.js&rev=one`
@@ -27,9 +27,34 @@ assert.deepEqual(lazyAssets(graph.entries[0], 'require.async("./../client.bad.js
 assert.throws(() => lazyAssets({ id, url: batch }, 'require.async("./client.pdf.js")'))
 assert.deepEqual(lazyAssets({ id: 'other', url: '/plugins/??other/client.js&rev=two' }, 'require.async("./client.pdf.js")'), ['/plugins/other/client.pdf.js?rev=two'])
 
+// 0.1.7 publishes relative graph URLs and query-only combo source-map URLs.
+// /app deliberately has no trailing slash; upstream's base href="./" keeps
+// these requests under /plugins without editing the harvested document.
+const relativeGraph = {
+  entries: graph.entries.map((entry) => ({ ...entry, url: entry.url.slice(1) })),
+  batches: graph.batches.map((entry) => ({ ...entry, url: entry.url.slice(1) })),
+}
+assert.deepEqual(moduleAssets(relativeGraph, id), moduleAssets(graph, id))
+assert.equal(assetPath(first.slice(1)), assetPath(first))
+assert.equal(assetUrl(map.slice('/plugins/'.length), first.slice(1)), map)
+assert.equal(assetUrl('./client.pdf.js.map?rev=one', lazy[0]), `/plugins/${id}/client.pdf.js.map?rev=one`)
+assert.equal(comboMap([first.slice(1), batch.slice(1), map.slice(1)]), comboMap([first, batch, map]))
+assert.equal(comboMap([first, first.slice(1)]), comboMap([first]))
+assert.deepEqual(lazyAssets(relativeGraph.entries[0], 'require.async("./client.pdf.js")'), [lazy[0]])
+const documentBase = new URL('./', 'https://example.test/app')
+assert.equal(new URL(relativeGraph.entries[0].url, documentBase).pathname, '/plugins/')
+assert.equal(new URL(relativeGraph.entries[0].url, documentBase).search, new URL(first, documentBase).search)
+assert.throws(() => assetUrl('https://another.test/plugins/??example/client.js'))
+assert.throws(() => assetUrl('//another.test/plugins/??example/client.js'))
+assert.throws(() => assetUrl('/plugins/example/client.js#fragment'))
+// Keep the relative boot graph itself unchanged, including through the one
+// sanctioned loopback patch; only harvest requests and disk mapping normalize.
+const relativeHtml = `<head><base href="./"></head><script>globalThis["__DSH_BOOT__"]=${JSON.stringify(relativeGraph)}</script>`
+assert.deepEqual(bootGraph(relativeHtml), relativeGraph)
+
 const shell = await mkdtemp(join(tmpdir(), 'check-dsh-shell-'))
 try {
-  await writeFile(join(shell, 'index.html'), html)
+  await writeFile(join(shell, 'index.html'), relativeHtml)
   const decision = 'isLoopback: transport?.ownsHost === true || pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),'
   for (const file of moduleAssets(graph, id)) {
     await mkdir(join(shell, file, '..'), { recursive: true })
@@ -37,6 +62,7 @@ try {
   }
   const patch = new URL('../web/patch-loopback.mjs', import.meta.url).pathname
   assert.equal(spawnSync(process.execPath, [patch, shell]).status, 0)
+  assert.equal(await readFile(join(shell, 'index.html'), 'utf8'), relativeHtml)
   for (const file of moduleAssets(graph, id)) {
     assert.match(await readFile(join(shell, file), 'utf8'), /isLoopback: true \/\* HamsterHQ:/)
   }
@@ -44,4 +70,4 @@ try {
 } finally {
   await rm(shell, { recursive: true, force: true })
 }
-console.log('check-shell-assets: combo queries remain distinct, lazy chunks retain their owner and revision, and every Connection copy is patched')
+console.log('check-shell-assets: relative URLs and source maps resolve without changing the graph, combo queries remain distinct, and every Connection copy is patched')

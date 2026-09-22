@@ -22,6 +22,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import process from 'node:process'
+import { runInNewContext } from 'node:vm'
 
 const here = import.meta.dirname
 const root = resolve(here, '../..')
@@ -37,23 +38,23 @@ const PACKAGE = '@deepseek-ai/dsh-client-ui-primitives'
  * do that instead, and every one of them can.
  */
 const WANTED = {
-  light: 'IconLightOutline16',
-  dark: 'IconDarkOutline16',
-  'chevron-down': 'IconChevronDownOutline14',
-  'new-chat': 'IconNewChatOutline16',
-  'folder-close': 'IconFolderClose16',
+  light: 'IconLightOutlineMedium',
+  dark: 'IconDarkOutlineMedium',
+  'chevron-down': 'IconChevronDownOutlineMedium',
+  'new-chat': 'IconNewChatOutlineMedium',
+  'folder-close': 'IconFolderCloseMedium',
   // Both states, because the row it draws has both. The front door's picture of
   // the sidebar shows a workspace with its session listed under it — which is
   // an OPEN workspace — while the only folder here was the closed one, so the
   // picture disagreed with the product it is a picture of.
-  'folder-open': 'IconFolderOpen16',
+  'folder-open': 'IconFolderOpenMedium',
   // The source set draws this glyph against the left edge; this interface's
   // panel sits on the right, so the flip is done in the generated table
   // rather than at the call site.
-  'panel-right': { name: 'IconPanelLeftOutline16', flipX: true },
-  plus: 'IconPlusOutline16',
-  send: 'IconSendOutline14',
-  copy: 'IconCopyOutline16',
+  'panel-right': { name: 'IconPanelLeftOutlineMedium', flipX: true },
+  plus: 'IconPlusOutlineMedium',
+  send: 'IconSendOutlineMedium',
+  copy: 'IconCopyOutlineMedium',
 }
 
 /** @returns {string} the harness version this deployment pins. */
@@ -86,30 +87,57 @@ const fetchLib = (version) => {
 /**
  * One icon's geometry, read out of the published module.
  *
- * The published build is not minified and each glyph is one arrow function, so
- * this reads the component by name and takes the `viewBox` and every `d` inside
- * it. Anything the harness draws with a mask, a gradient or an id would not
- * survive being reduced to paths — so rather than emit something subtly wrong,
- * this refuses and says which glyph to require from the shell instead.
+ * The published weight wrapper calls a shared artwork function. Render those
+ * two pure functions and retain each path's own paint attributes: upstream
+ * mixes strokes, fills and opacity within a single glyph. Unsupported nodes
+ * or attributes fail generation instead of silently losing their artwork.
  *
  * @param {string} source - the module's source.
  * @param {string} name - the exported component's name.
  * @returns {{component: string, viewBox: string, paths: string[]}} the glyph.
  */
 const readGlyph = (source, name) => {
-  const start = source.indexOf(`${name} = ({`)
-  if (start < 0) throw new Error(`${PACKAGE} no longer exports ${name}`)
-  const next = source.slice(start).search(/\n(?:const |var |let |function )/)
-  const body = source.slice(start, next < 0 ? undefined : start + next)
-  const viewBox = body.match(/viewBox: "([^"]+)"/)?.[1]
-  if (viewBox === undefined) throw new Error(`${name} has no viewBox`)
-  if (/mask|clipPath|linearGradient|\bid:/.test(body)) {
-    throw new Error(`${name} is drawn with a mask or an id; require it from the shell rather than mirroring it`)
+  if (!source.slice(source.lastIndexOf('export {')).includes(`${name},`)) {
+    throw new Error(`${PACKAGE} no longer exports ${name}`)
   }
-  const paths = [...body.matchAll(/\bd: "([^"]+)"/g)].map((m) => m[1])
-  if (paths.length === 0) throw new Error(`${name} has no path data`)
-  if (/fill: "(?!currentColor|none)/.test(body)) throw new Error(`${name} carries a fill this cannot mirror`)
-  return { component: name, viewBox, paths }
+  const declaration = (symbol) => {
+    const start = source.indexOf(`const ${symbol} = `)
+    if (start < 0) throw new Error(`missing icon declaration ${symbol}`)
+    const next = source.slice(start + 1).search(/\n(?:const |var |let |function )/)
+    return source.slice(start, next < 0 ? undefined : start + 1 + next)
+  }
+  const wrapper = declaration(name)
+  const artwork = wrapper.match(/=> jsx\((\w+),/)?.[1]
+  if (!artwork) throw new Error(`${name} is not an artwork wrapper`)
+  // Evaluate only the selected, published pure artwork and its weight wrapper.
+  // No imports, host APIs or package initialization run in this context.
+  const jsx = (type, props) => typeof type === 'function' ? type(props) : { type, props }
+  const tree = runInNewContext(
+    `${declaration('ICON_MEDIUM_STROKE')}\n${declaration(artwork)}\n${wrapper}\n${name}({})`,
+    { jsx, jsxs: jsx }, { timeout: 1000 },
+  )
+  if (tree.type !== 'svg') throw new Error(`${name} has no svg root`)
+  const rootAllowed = new Set(['width', 'height', 'className', 'viewBox', 'fill', 'xmlns', 'aria-hidden', 'strokeWidth', 'children'])
+  for (const key of Object.keys(tree.props)) {
+    if (!rootAllowed.has(key)) throw new Error(`${name} carries unsupported root attribute ${key}`)
+  }
+  if (!/^0 0 \d+ \d+$/.test(tree.props.viewBox)) throw new Error(`${name} has no supported viewBox`)
+  if (tree.props.fill !== 'none') throw new Error(`${name} carries an unsupported root fill`)
+  const children = Array.isArray(tree.props.children) ? tree.props.children : [tree.props.children]
+  const allowed = new Set(['d', 'fill', 'fillRule', 'clipRule', 'stroke', 'strokeWidth', 'strokeLinecap', 'strokeLinejoin', 'opacity', 'x', 'y', 'width', 'height', 'rx', 'ry'])
+  const elements = children.map((child) => {
+    if (!['path', 'rect'].includes(child.type)) throw new Error(`${name} contains ${child.type}; teach the mirror before shipping it`)
+    for (const key of Object.keys(child.props)) {
+      if (!allowed.has(key)) throw new Error(`${name} carries unsupported drawing attribute ${key}`)
+    }
+    const { d, ...attributes } = child.props
+    if (child.type === 'path' && (typeof d !== 'string' || !d)) throw new Error(`${name} has no path data`)
+    for (const colour of [attributes.fill, attributes.stroke]) {
+      if (colour !== undefined && !['none', 'currentColor'].includes(colour)) throw new Error(`${name} carries a fixed colour`)
+    }
+    return { tag: child.type, attributes: { fill: tree.props.fill ?? 'none', strokeWidth: tree.props.strokeWidth, ...child.props } }
+  })
+  return { component: name, viewBox: tree.props.viewBox, paths: children.filter((child) => child.type === 'path').map((child) => child.props.d), elements }
 }
 
 const version = pinnedVersion()
@@ -141,7 +169,8 @@ const body = Object.entries(glyphs).map(([key, glyph]) => `  /** Upstream's \`${
     viewBox: ${JSON.stringify(glyph.viewBox)},
     paths: [
 ${glyph.paths.map((d) => `      ${JSON.stringify(d)},`).join('\n')}
-    ],${glyph.transform === undefined ? '' : `\n    transform: ${JSON.stringify(glyph.transform)},`}
+    ],
+    elements: ${JSON.stringify(glyph.elements)},${glyph.transform === undefined ? '' : `\n    transform: ${JSON.stringify(glyph.transform)},`}
   },`).join('\n')
 
 writeFileSync(join(here, 'mirrored.js'), `/**

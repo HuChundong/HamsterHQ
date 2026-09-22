@@ -49,7 +49,9 @@ deployment does not have 404s, because the only thing a miss can mean is a web
 image that does not match the sandbox image, and answering it from a sandbox
 would both hide that and put interface bytes back on a per-tenant component.
 
-The official Browser and Terminal own their sidebar tab types. My Computer owns
+The official Browser and Terminal own their sidebar tab types. Both compositions
+explicitly enable Browser, which upstream Web profiles disable by default from
+0.1.7; `scripts/check-dockerfile.mjs` holds that opt-in. My Computer owns
 the shared sandbox desktop; only the recovery page retains the envd terminal,
 because it must work when DSH is down. Per-tenant plugin management is disabled
 in both compositions: installed client bundles cannot update the deployment's
@@ -286,10 +288,13 @@ anything the gateway would have to be trusted to count.
 `entrypoint.sh` creates the workspace and the harness home as real directories
 under the mount — `/mnt/workspace` and `/mnt/dsh` — and tells dsh that is
 where they already are. Nothing is linked or bound out to a second name.
-The one exception is `profiles/`: it holds the composed web profile and this
-project's plugins, so it is a link back to the image's own copy, remade on
-every boot. Persisting it would shadow the image's copy with a stale one and
-leave dangling links after an upgrade.
+The web profile's manifest and patch also live on the tenant volume: DSH 0.1.7
+stores settings in that patch. Only image-owned package entries in its
+node_modules are linked to the current image on each boot; custom packages and
+bundle selections remain the tenant's. Deployment model defaults are a named
+bundle below the tenant patch, not a command-line overlay that would prevent
+settings edits. Layout 3 replaces the old whole-profiles symlink before startup;
+an older image refuses that newer layout.
 
 Writes are acknowledged before they reach the object store. The driver stages a
 block on local disk and uploads it in the background, and the metadata database
@@ -715,17 +720,18 @@ else entirely.
 `MODEL_API`, `MODEL_COMPAT` and their neighbours describe one endpoint: what it
 is called, what protocol it speaks, which model it serves, and the
 compatibility switches an OpenAI-compatible gateway needs that nothing can
-infer from a URL. `sandbox/cordis.model.patch.yml` builds one provider profile
-out of them, as the harness's own default. That layer is applied only when
-`MODEL_PROVIDER_ID` is set, and it is a second patch file for exactly that
-reason: a patch entry replaces the config it names rather than merging into it,
-so applying it with nothing configured overwrites the harness's own default
-model with nothing and the backend refuses to boot. A deployment that has named
-no model applies no layer and comes up on whatever the harness ships. Nothing
-is written into a tenant's
-settings: the profile is the base that a tenant's `llm-pi-ai:` section merges
-over, per provider, so a change to the deployment's model reaches every sandbox
-on its next start — and a tenant who has configured their own keeps it.
+infer from a URL. The `dsh-model-defaults` bundle builds one provider profile
+out of them, as the harness's default. It is enabled only when
+`MODEL_PROVIDER_ID` is set: a patch entry replaces the config it names, so an
+empty model config would prevent startup. A deployment without a model uses
+the harness defaults. The bundle precedes the persistent tenant profile patch. Boot preparation writes
+plain JSON configuration into the tenant-owned bundle; aggregate JavaScript
+expressions leave expression wrappers that the upstream settings editor cannot
+merge into provider form updates. Only the credential environment-variable name
+is serialized, never its value.
+A tenant settings edit stores the entry's complete config under upstream's
+profile rules; that entry then remains overridden until reset. Unmodified
+entries continue to inherit deployment defaults on the next sandbox start.
 
 The names are the deployment's own and deliberately not a provider's. They were
 `DEEPSEEK_*` for a while, which put this deployment's endpoint and key on the

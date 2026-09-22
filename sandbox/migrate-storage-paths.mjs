@@ -16,7 +16,7 @@
  * Usage: node migrate-storage-paths.mjs <dsh-home> <workspace-root> <from> <to>
  */
 
-import { readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { readFileSync, renameSync, writeFileSync, lstatSync, unlinkSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -111,6 +111,11 @@ function relocateWorkspaceRegistry() {
 
 /** Every layout step, by the version it brings a volume TO. */
 const STEPS = [
+  { to: 3, what: 'persistent tenant profiles', run: () => {
+    const profiles = path.join(home, 'profiles')
+    if (lstatSync(profiles, { throwIfNoEntry: false })?.isSymbolicLink()) unlinkSync(profiles)
+    return []
+  } },
   { to: 2, what: 'workspace registry onto the current mount point', run: relocateWorkspaceRegistry },
 ]
 
@@ -121,7 +126,7 @@ if (!Number.isInteger(start) || !Number.isInteger(target)) {
   process.exit(2)
 }
 
-for (const step of STEPS) {
+for (const step of STEPS.sort((a, b) => a.to - b.to)) {
   if (step.to <= start || step.to > target) continue
   process.stdout.write(`migrate-storage-paths: [${String(step.to)}] ${step.what}\n`)
   for (const line of step.run()) process.stdout.write(`migrate-storage-paths:   ${line}\n`)

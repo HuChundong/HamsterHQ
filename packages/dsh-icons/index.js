@@ -52,12 +52,22 @@ export const icons = { ...mirrored, ...extracted }
 /** Which half a name came from, for the check to report and nothing else. */
 export const origin = (name) => (name in extracted ? 'extracted' : name in mirrored ? 'mirrored' : undefined)
 
+/** Render the published primitives without losing per-element paint or opacity. */
+const elementMarkup = (glyph, colour = 'currentColor') => glyph.elements.map(({ tag, attributes }) => {
+  const values = { ...attributes, ...(glyph.transform ? { transform: glyph.transform } : {}) }
+  const markup = Object.entries(values).map(([key, value]) => {
+    const name = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+    return `${name}="${value === 'currentColor' ? colour : value}"`
+  }).join(' ')
+  return `<${tag} ${markup}/>`
+}).join('')
+
 /**
  * One glyph as SVG markup.
  *
  * Each half is painted the way it was drawn, and the glyph says which it is.
- * The harness's are outlines already expanded to filled shapes, so they are
- * filled, `evenodd` leaving the middle of a ring open. Lucide's are strokes,
+ * The harness primitives preserve their own fill, stroke and opacity.
+ * Lucide's are strokes,
  * and filling a stroke turns a drawing into a blot — so a glyph carrying a
  * `stroke` is stroked, at the width it was drawn with, with its own caps and
  * joins. That roundness is the reason for taking them.
@@ -102,7 +112,7 @@ export const svg = (name, options = {}) => {
   // A glyph that needs a horizontal flip carries the transform here, because
   // rewriting path commands is how an arc's flags go wrong.
   const turn = glyph.transform === undefined ? '' : ` transform="${glyph.transform}"`
-  const paths = glyph.paths.map((d) => `<path d="${d}"${turn} ${paint}/>`).join('')
+  const paths = glyph.elements ? elementMarkup(glyph) : glyph.paths.map((d) => `<path d="${d}"${turn} ${paint}/>`).join('')
   return `<svg ${attributes.join(' ')}>${label}${paths}</svg>`
 }
 
@@ -129,9 +139,9 @@ export const cssUrl = (name, colour, size) => {
   const glyph = icons[name]
   if (glyph === undefined) throw new Error(`no icon named ${name}`)
   const edge = size ?? Number(glyph.viewBox.split(' ')[2])
-  const paths = glyph.paths.map((d) => `<path d='${d}'/>`).join('')
+  const paths = glyph.elements ? elementMarkup(glyph, colour) : glyph.paths.map((d) => `<path d='${d}'/>`).join('')
   // On the root, so every path inherits it and the markup stays short.
-  const ink = glyph.stroke === undefined
+  const ink = glyph.elements ? "fill='none'" : glyph.stroke === undefined
     ? `fill='${colour}' fill-rule='evenodd'`
     : `fill='none' stroke='${colour}' stroke-width='${String(glyph.stroke.width)}'`
       + ` stroke-linecap='${glyph.stroke.linecap}' stroke-linejoin='${glyph.stroke.linejoin}'`

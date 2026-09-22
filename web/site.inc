@@ -341,9 +341,9 @@ location @to_app { return 303 /app; }
 # The application. Its own address, so that "am I signed in" is answered by
 # which page you are on rather than by what the same URL happened to serve.
 #
-# The document is upstream's build and names its own assets absolutely — from
-# /assets and /plugins — so serving the document from here changes nothing
-# about where those come from.
+# Upstream's base href="./" resolves against the site root at /app without a
+# trailing slash, so its relative assets and plugins still load from /assets
+# and /plugins. Keep the harvested document and its boot graph unchanged.
 location = /app {
   auth_request /_auth;
   auth_request_set $renew_access $upstream_http_x_renew_access;

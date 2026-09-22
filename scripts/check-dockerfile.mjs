@@ -43,6 +43,10 @@ for (const patch of ['cordis.patch.yml', 'harvest.patch.yml']) {
 // The build owns client artifacts; tenant hosts must not compose or poll them.
 const runtimePatch = readFileSync(join(root, 'sandbox/cordis.patch.yml'), 'utf8')
 const harvestPatch = readFileSync(join(root, 'sandbox/harvest.patch.yml'), 'utf8')
+for (const [name, patch] of [['runtime', runtimePatch], ['harvest', harvestPatch]]) {
+  check(/^- id: ui-sidebar-browser\n  disabled: false$/m.test(patch),
+    `${name} must opt in to the official Browser tab; upstream web profiles disable it by default`)
+}
 for (const id of ['modules', 'client-hmr']) {
   check(new RegExp(`^- id: ${id}\\n  disabled: true$`, 'm').test(runtimePatch),
     `runtime must disable frontend-only ${id}`)

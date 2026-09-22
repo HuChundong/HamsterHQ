@@ -36,7 +36,7 @@ import process from 'node:process'
 const root = resolve(import.meta.dirname, '..')
 const read = (path) => readFileSync(join(root, path), 'utf8')
 
-const { cssUrl, icons, origin } = await import(`file://${join(root, 'packages/dsh-icons/index.js')}`)
+const { cssUrl, icons, origin, svg } = await import(`file://${join(root, 'packages/dsh-icons/index.js')}`)
 const { MIRRORED_FROM, mirrored } = await import(`file://${join(root, 'packages/dsh-icons/mirrored.js')}`)
 const { EXTRACTED_FROM, EXTRACTED_SET, extracted } = await import(`file://${join(root, 'packages/dsh-icons/extracted.js')}`)
 
@@ -130,11 +130,9 @@ for (const attribute of [
 
 // -- each half is painted the way it was drawn --------------------------------
 
-// The two halves are constructed differently and have to be painted
-// differently: upstream expands its strokes into filled shapes, Lucide ships
-// the strokes. A renderer that guessed would fill a stroke, which turns a
-// drawing into a blot, and the guess would keep working for whichever half the
-// author happened to be looking at.
+// Preserve each source's paint: the harness mixes filled and stroked
+// primitives, while the extracted Lucide glyphs use strokes throughout.
+// Filling a stroked contour turns an outline into a blot.
 for (const [name, glyph] of Object.entries(extracted)) {
   check(
     glyph.stroke !== undefined && glyph.stroke.width > 0,
@@ -143,10 +141,18 @@ for (const [name, glyph] of Object.entries(extracted)) {
 }
 for (const [name, glyph] of Object.entries(mirrored)) {
   check(
-    glyph.stroke === undefined,
-    `\`${name}\` is upstream's, which is already a filled outline, and must not be stroked as well`,
+    Array.isArray(glyph.elements) && glyph.elements.length > 0,
+    `\`${name}\` must preserve upstream SVG primitives and their individual paint`,
   )
 }
+
+// The new upstream set mixes filled and stroked primitives. Hold the two
+// cases the former path-only mirror lost: the copy rectangle and folder tint.
+check(svg('copy').includes('<rect '), 'copy must retain its upstream rectangle')
+check(svg('folder-open').includes('opacity="0.16"'), 'folder-open must retain its upstream tint')
+check(svg('light').includes('stroke="currentColor"'), 'light must retain its upstream stroke')
+check(cssUrl('copy', '#000000').includes('%3Crect '), 'CSS copy must retain its rectangle')
+check(cssUrl('light', '#000000').includes('stroke=%22%23000000%22'), 'CSS stroke must use the requested colour')
 
 // The line has to weigh the same in both halves or one of them looks bolder in
 // a row of the other. Upstream draws 1.3 on a 16 box; anything within a tenth
