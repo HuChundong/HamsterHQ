@@ -474,6 +474,9 @@ else
   echo "  (skip — $DESKTOP not built; compose --profile build build desktop)"
 fi
 
+# Boot the published harness twice against one disposable volume.
+VERIFY_PROFILE_IMAGE="$SANDBOX" node "$(dirname "$0")/check-profile-upgrade.mjs" || fail=1
+
 echo
 [ "$fail" -eq 0 ] && echo 'check-images: the images resolve what they will be asked for' \
   || echo 'check-images: something the build could not tell you is wrong'

@@ -16,13 +16,13 @@ try {
     writeFileSync(path.join(profile, 'package.json'), JSON.stringify({ dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } } }))
   }
   symlinkSync(path.join(image, 'profiles'), path.join(home, 'profiles'))
-  writeFileSync(path.join(home, 'settings.yaml'), 'ui-theme:\n  theme: dark\n')
+  writeFileSync(path.join(home, 'settings.yaml'), 'ui-theme:\n  preference: dark\n')
   execFileSync(process.execPath, ['sandbox/migrate-storage-paths.mjs', home, '/mnt/workspace', '2', '3'])
   execFileSync(process.execPath, ['sandbox/prepare-profile.mjs', home, image], { env: { ...process.env, MODEL_PROVIDER_ID: 'test' } })
   assert.equal(lstatSync(path.join(home, 'profiles')).isSymbolicLink(), false)
   const profile = path.join(home, 'profiles/web')
   const patch = path.join(profile, 'cordis.patch.yml')
-  const saved = '- id: ui-theme\n  config:\n    theme: dark\n'
+  const saved = '- id: ui-theme\n  config:\n    preference: dark\n'
   writeFileSync(patch, saved)
   const manifestPath = path.join(profile, 'package.json')
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
@@ -31,7 +31,7 @@ try {
   mkdirSync(path.join(profile, 'node_modules/tenant-custom'))
   execFileSync(process.execPath, ['sandbox/prepare-profile.mjs', home, nextImage], { env: { ...process.env, MODEL_PROVIDER_ID: '' } })
   assert.equal(readFileSync(patch, 'utf8'), saved)
-  assert.equal(readFileSync(path.join(home, 'settings.yaml'), 'utf8'), 'ui-theme:\n  theme: dark\n')
+  assert.equal(readFileSync(path.join(home, 'settings.yaml'), 'utf8'), 'ui-theme:\n  preference: dark\n')
   assert.deepEqual(JSON.parse(readFileSync(manifestPath)).dsh.profile.bundles, ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'tenant-custom'])
   assert.ok(lstatSync(path.join(profile, 'node_modules/tenant-custom')).isDirectory())
   assert.equal(readlinkSync(path.join(profile, 'node_modules/dsh-model-defaults')), path.join(nextImage, 'profiles/web/node_modules/dsh-model-defaults'))

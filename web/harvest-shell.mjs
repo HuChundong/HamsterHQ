@@ -21,7 +21,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import process from 'node:process'
-import { assetPath, bootGraph, comboMap, lazyAssets, shellAssets } from './shell-assets.mjs'
+import { assetPath, assetUrl, bootGraph, comboMap, lazyAssets, shellAssets } from './shell-assets.mjs'
 
 /** Where dsh is booted for the harvest. */
 const AUTHORITY = '127.0.0.1:3080'
@@ -43,7 +43,7 @@ if (outputDir === undefined) {
  * @returns {Promise<{status: number, body: Buffer}>} the response.
  */
 async function get(path) {
-  const response = await fetch(`http://${AUTHORITY}${path}`, {
+  const response = await fetch(new URL(path, `http://${AUTHORITY}/`), {
     headers: { Host: AUTHORITY, ...cookie === undefined ? {} : { Cookie: cookie } },
     redirect: 'manual',
     signal: AbortSignal.timeout(5000),
@@ -144,13 +144,14 @@ try {
   const lazyUrls = new Set()
   const queue = rows.map((row) => ({ ...row, owner: row.id === undefined ? undefined : row }))
   for (const row of queue) {
-    if (urls.has(row.url)) continue
-    const bundle = await get(row.url)
+    const url = assetUrl(row.url)
+    if (urls.has(url)) continue
+    const bundle = await get(url)
     if (bundle.status !== 200) throw new Error(`harvest-shell: ${row.url} answered ${bundle.status}`)
     // Combo identity includes the full query. Save each response separately
     // and let nginx map the exact published URL to its harvested bytes.
-    save(assetPath(row.url), bundle.body)
-    urls.add(row.url)
+    save(assetPath(url), bundle.body)
+    urls.add(url)
     if (row.id !== undefined) save(`/plugins/${row.id}/client.js`, bundle.body)
     // Inspect individual entries, not combos: a relative import belongs to
     // its package, and a batch can contain several packages using the same name.
@@ -163,11 +164,12 @@ try {
       }
     }
     const mapUrl = /\/\/# sourceMappingURL=(\S+)/.exec(bundle.body.toString('utf8'))?.[1]
-    if (mapUrl?.startsWith('/plugins/')) {
-      const sourceMap = await get(mapUrl)
+    if (mapUrl !== undefined) {
+      const resolvedMap = assetUrl(mapUrl, url)
+      const sourceMap = await get(resolvedMap)
       if (sourceMap.status !== 200) throw new Error(`harvest-shell: source map answered ${sourceMap.status}`)
-      save(assetPath(mapUrl), sourceMap.body)
-      urls.add(mapUrl)
+      save(assetPath(resolvedMap), sourceMap.body)
+      urls.add(resolvedMap)
     }
   }
   save('/dsh-combos.conf', Buffer.from(comboMap(urls)))

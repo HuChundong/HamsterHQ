@@ -39,11 +39,15 @@ export function apply(ctx) {
       if (process.env.VERIFY_PHASE === 'write') {
         assert.equal(setting('agent-default-model')?.model, 'deepseek-v4-flash')
         await ctx.settings.update('ui-theme', { preference: 'light' })
+        const providers = structuredClone(setting('llm-pi-ai').providers)
+        providers.verification.displayName = 'Persistent provider'
+        await ctx.settings.replace('llm-pi-ai', { providers })
         await ctx.settings.update('agent-default-model', { provider: 'verification', model: 'persisted-model' })
       }
       assert.equal(setting('agent-default-model')?.model, 'persisted-model')
       assert.equal(setting('agent-default-model')?.provider, 'verification')
       assert.equal(setting('ui-theme')?.preference, 'light')
+      assert.equal(setting('llm-pi-ai')?.providers?.verification?.displayName, 'Persistent provider')
       const before = await readFile('/tmp/image-profile-before', 'utf8')
       const after = await readFile('/root/.dsh/profiles/web/cordis.patch.yml', 'utf8')
       assert.equal(after, before)
