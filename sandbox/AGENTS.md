@@ -16,12 +16,13 @@ The order in that script is not incidental:
 
 1. `source /app/sandbox/env.sh`, because envd does not hand a process the image's
    own `ENV`.
-2. Create the workspace and `DSH_HOME`, and symlink the image's profiles into the
-   tenant's — the profiles are image content, the workspace is the tenant's.
+2. Create the workspace and `DSH_HOME`.
 3. Check the layout version and migrate. `SANDBOX_LAYOUT_VERSION` and
    `migrate-storage-paths.mjs` move together; a layout change in one without the
    other leaves a tenant's files where nothing looks for them.
-4. Start dsh in the background.
+4. Prepare the persistent tenant profile and link image-owned dependencies, then
+   start dsh in the background. `scripts/check-profile-storage.mjs` checks that
+   settings and custom bundles survive image replacement.
 5. Start the reporter in the background, if it is there.
 6. Ensure the display stack (`start-desktop.sh` on desktop images) or the
    headless browser (`start-browser.sh` on light ones). Desktop Cube templates
@@ -63,15 +64,16 @@ image, which is the trap the root file describes from the other direction.
 
 ## Two compositions, and the CA the operator drops in
 
-Three patch files, and which one a plugin belongs in is not interchangeable:
+Two runtime layers and the harvest patch, and which one a plugin belongs in is not interchangeable:
 
 - `cordis.patch.yml` is what a tenant's sandbox runs. `dsh-gateway-tunnel` is
   here and nowhere else.
 - `harvest.patch.yml` is build-time only, for harvesting the static shell.
   `dsh-brand` is here and **not** in the runtime composition, because the shell
   the browser loads already carries it.
-- `cordis.model.patch.yml` is a second layer applied only when
-  `MODEL_PROVIDER_ID` is set.
+- `../packages/dsh-model-defaults/cordis.patch.yml` is a named profile bundle
+  enabled only when `MODEL_PROVIDER_ID` is set. It precedes the tenant profile
+  patch so model settings remain editable.
 
 A plugin put in the wrong file loads for nobody, or loads twice, and neither says
 so at build time.

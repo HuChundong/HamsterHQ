@@ -75,9 +75,10 @@ today:
   is the gateway's, so none of it survives the gateway's removal.
 - `dsh-brand` is this deployment's marks inside the shell.
 
-The other three packages in `packages/` are not plugins: `dsh-icons` and
+The other four packages in `packages/` are not plugins: `dsh-icons` and
 `dsh-ground` serve surfaces that have no module table, and `tunnel-protocol`
-is the frame both ends of the tunnel speak.
+is the frame both ends of the tunnel speak. `dsh-model-defaults` is a declarative
+profile bundle that places deployment defaults below tenant settings.
 
 A change that fits none of the eight is a sign the question above has a new
 answer, not that one of them should grow a second subject —
@@ -171,7 +172,7 @@ specification's own published answers, not against your own reading of it.**
 **Do not draw an icon that `@deepseek-ai/dsh-client-ui-primitives` already
 carries.** The set is MIT, and every browser half of every plugin can `require`
 it from the shell's module table exactly the way it requires React. A window
-may hold only one icon style: the harness's filled outlines. Drawing a
+may hold only one icon style: the harness's Medium-weight outlines. Drawing a
 second set beside them is the thing this rule exists to prevent.
 
 What the harness has no drawing for lives in `packages/dsh-icons`: 24 glyphs,
@@ -181,8 +182,8 @@ version they came from. Attribution is in [NOTICE](NOTICE).
 Lucide because of the two measures that decide whether a glyph belongs beside
 another. Its line weighs 2/24 of its box against the harness's 1.3/16 — two per
 cent apart, which is why a 24-grid set can stand in a 16-grid interface with
-nothing rescaled. And it is stroked rather than solid, which is the harness's
-own construction expressed the other way round; `extract.mjs` refuses a glyph
+nothing rescaled. Both sets use strokes; upstream's per-element fills and
+opacity are retained by the mirror generator. `extract.mjs` refuses a glyph
 whose weight drifts more than a tenth from upstream's. lucide-static is ISC.
 
 Two traps, both of which cost a rebuild to find. Lucide draws with the whole
@@ -191,7 +192,7 @@ extractor that reads `d` attributes drops parts of a drawing **without saying
 so**: `users` arrived as a body with no head and nothing failed. And a name
 that matches is not a meaning that matches, in both directions: `copy` and
 `copy-text` are two buttons side by side and must not become one glyph, while
-the harness's own `IconCodeOutline16` draws a hash. Read the drawing, not the
+the harness's former `IconCodeOutline16` drew a hash. Read the drawing, not the
 name.
 
 Two surfaces cannot require the harness set, and they are the reason that

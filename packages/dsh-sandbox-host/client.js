@@ -57,7 +57,7 @@ window.__ModuleLoader__.load({
 
     /** Which glyph each nav row wears, by the name the call sites use. */
     const GLYPHS = {
-      configuration: primitives.IconListPenOutline16,
+      configuration: primitives.IconListPenOutlineMedium,
       sandbox: SANDBOX_GLYPH,
     }
 

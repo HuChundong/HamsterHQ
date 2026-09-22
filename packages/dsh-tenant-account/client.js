@@ -180,9 +180,9 @@ window.__ModuleLoader__.load({
 
     /** Which glyph each row wears, by the name the call sites use. */
     const GLYPHS = {
-      settings: primitives.IconSettingsOutline16,
-      profile: primitives.IconUserOutline16,
-      account: primitives.IconUserOutline16,
+      settings: primitives.IconSettingsOutlineMedium,
+      profile: primitives.IconUserOutlineMedium,
+      account: primitives.IconUserOutlineMedium,
       signout: DRAWN.signout,
     }
 
@@ -1473,9 +1473,9 @@ window.__ModuleLoader__.load({
      * @param {object} props - `size` in pixels.
      * @returns {object} the icon.
      */
-    const Chevron = ({ size = 14 }) => (primitives.IconChevronUpOutline14 === undefined
+    const Chevron = ({ size = 14 }) => (primitives.IconChevronUpOutlineMedium === undefined
       ? null
-      : React.createElement(primitives.IconChevronUpOutline14, { size, className: `${U}-chev` }))
+      : React.createElement(primitives.IconChevronUpOutlineMedium, { size, className: `${U}-chev` }))
 
     /**
      * Account menu in the shell Settings trigger; Settings is a menu action.

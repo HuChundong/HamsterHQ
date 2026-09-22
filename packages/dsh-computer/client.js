@@ -13,7 +13,7 @@ window.__ModuleLoader__.load({
   factory: (require) => {
     const React = require('react')
     const ReactDom = require('react-dom')
-    const { IconRightUpOutline16 } = require('@deepseek-ai/dsh-client-ui-primitives')
+    const { IconRightUpOutlineMedium } = require('@deepseek-ai/dsh-client-ui-primitives')
     const h = React.createElement
 
     let plugin
@@ -795,7 +795,7 @@ window.__ModuleLoader__.load({
           h(DesktopFrame, { className: `${P}-desktop-frame`, src: frameSrc, preview: !fullscreen }),
           h('a', { className: `${P}-desktop-link`, href, target: '_blank', rel: 'noopener noreferrer',
             'aria-label': t('panel.open'), hidden: fullscreen },
-            h('span', { className: `${P}-launch` }, h(IconRightUpOutline16, { size: 18 }), t('panel.launch')))),
+            h('span', { className: `${P}-launch` }, h(IconRightUpOutlineMedium, { size: 18 }), t('panel.launch')))),
         h('div', { className: `${P}-schedule` }, renderSlot('computer.schedule')))
     }
 

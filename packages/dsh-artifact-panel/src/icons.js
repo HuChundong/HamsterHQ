@@ -80,7 +80,9 @@ export const icon = (name, size = 16) => {
     viewBox: glyph.viewBox,
     fill: 'none',
     'aria-hidden': true,
-  }, ...glyph.paths.map((d, at) => h('path', { key: at, d, transform: glyph.transform, ...paint })))
+  }, ...(glyph.elements
+    ? glyph.elements.map(({ tag, attributes }, at) => h(tag, { key: at, ...attributes, transform: glyph.transform }))
+    : glyph.paths.map((d, at) => h('path', { key: at, d, transform: glyph.transform, ...paint }))))
 }
 
 /**
@@ -105,23 +107,23 @@ export const icon = (name, size = 16) => {
 let TABLE
 
 const glyphs = () => (TABLE ??= {
-  files: primitives.IconFolderClose16,
-  // The globe, not `IconBrowseOutline16` — that one is a document with a
+  files: primitives.IconFolderCloseMedium,
+  // The globe, not `IconBrowseOutlineMedium` — that one is a document with a
   // reading rule through it. An HTML file in the tree means "somewhere on
   // the web", which is what this draws. The canvas TAB used to wear it too
   // and now wears `brush`: a tool and a file that share one mark are two
   // things the eye has to tell apart by position.
-  browser: primitives.IconGlobeOutline14,
+  browser: primitives.IconGlobeOutlineMedium,
   brush: extracted.brush,
-  close: primitives.IconCloseOutline16,
-  new: primitives.IconPlusOutline16,
-  expand: primitives.IconFullscreenOutline16,
+  close: primitives.IconCloseOutlineMedium,
+  new: primitives.IconPlusOutlineMedium,
+  expand: primitives.IconFullscreenOutlineMedium,
   panel: mirrored['panel-right'],
-  chevron: primitives.IconChevronRightOutline14,
-  more: primitives.IconEllipsisOutline16,
+  chevron: primitives.IconChevronRightOutlineMedium,
+  more: primitives.IconEllipsisOutlineMedium,
   code: extracted.code,
-  copy: primitives.IconCopyOutline16,
-  refresh: primitives.IconRefreshOutline16,
+  copy: primitives.IconCopyOutlineMedium,
+  refresh: primitives.IconRefreshOutlineMedium,
   shrink: extracted.shrink,
   file: extracted.file,
   image: extracted.image,

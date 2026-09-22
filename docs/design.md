@@ -286,10 +286,13 @@ anything the gateway would have to be trusted to count.
 `entrypoint.sh` creates the workspace and the harness home as real directories
 under the mount — `/mnt/workspace` and `/mnt/dsh` — and tells dsh that is
 where they already are. Nothing is linked or bound out to a second name.
-The one exception is `profiles/`: it holds the composed web profile and this
-project's plugins, so it is a link back to the image's own copy, remade on
-every boot. Persisting it would shadow the image's copy with a stale one and
-leave dangling links after an upgrade.
+The web profile's manifest and patch also live on the tenant volume: DSH 0.1.7
+stores settings in that patch. Only image-owned package entries in its
+node_modules are linked to the current image on each boot; custom packages and
+bundle selections remain the tenant's. Deployment model defaults are a named
+bundle below the tenant patch, not a command-line overlay that would prevent
+settings edits. Layout 3 replaces the old whole-profiles symlink before startup;
+an older image refuses that newer layout.
 
 Writes are acknowledged before they reach the object store. The driver stages a
 block on local disk and uploads it in the background, and the metadata database
@@ -715,7 +718,7 @@ else entirely.
 `MODEL_API`, `MODEL_COMPAT` and their neighbours describe one endpoint: what it
 is called, what protocol it speaks, which model it serves, and the
 compatibility switches an OpenAI-compatible gateway needs that nothing can
-infer from a URL. `sandbox/cordis.model.patch.yml` builds one provider profile
+infer from a URL. `packages/dsh-model-defaults/cordis.patch.yml` builds one provider profile
 out of them, as the harness's own default. That layer is applied only when
 `MODEL_PROVIDER_ID` is set, and it is a second patch file for exactly that
 reason: a patch entry replaces the config it names rather than merging into it,

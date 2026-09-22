@@ -53,8 +53,9 @@ harness 上才成立的改动，不是这个项目能交付的改动。
   页面。那份持久的列表是网关的，所以它没有一行能在网关消失后成立。
 - `dsh-brand` 是外壳内部这套部署自己的标识。
 
-`packages/` 里另外三个包不是插件：`dsh-icons` 和 `dsh-ground` 服务那些没有模块表的界面，
-`tunnel-protocol` 是隧道两端共用的帧协议。
+`packages/` 里另外四个包不是插件：`dsh-icons` 和 `dsh-ground` 服务那些没有模块表的界面，
+`tunnel-protocol` 是隧道两端共用的帧协议。`dsh-model-defaults` 是声明式 profile 组合包，
+把部署默认值放在租户设置之前。
 
 一处改动八个都放不进去，说明上面那个问题有了新答案，而不是说明其中某一个该再长出第二个
 主题——`dsh-gateway-logout` 就是长到三个主题时被改名的。
@@ -126,7 +127,7 @@ HMAC 加一次取模——为这段 `node:crypto` 算术引一个依赖，风险
 ## 图标来自 harness
 
 **不要画 `@deepseek-ai/dsh-client-ui-primitives` 已经有的图标。** 图标集采用 MIT 许可；每个插件的浏览器半边都可以从 shell 的模块表里 `require` 它，方式和
-require React 完全一样。一个窗口里只允许一种图标风格：harness 的填充
+require React 完全一样。一个窗口里只允许一种图标风格：harness 的 Medium 线宽
 轮廓。在旁边再画一套，正是这条规矩要防的事。
 
 harness 没有画的那些放在 `packages/dsh-icons`：24 个字形，由 `extract.mjs` 从
@@ -134,8 +135,7 @@ lucide-static 写成 path data 并盖上来源版本号。署名见 [NOTICE](NOT
 
 选 Lucide，是因为决定「一个字形能不能挨着另一个」的两条尺度：它的线宽占框
 2/24，harness 是 1.3/16，相差两个百分点——这就是 24 网格的集合能站进 16 网格界面
-而不做任何缩放的依据；而且它是描边而非实心，正是 harness「描边扩成填充」的同一
-种构造反过来说。`extract.mjs` 会拒绝线宽偏离上游超过十分之一的字形。
+而不做任何缩放的依据。两套图标都使用描边，镜像生成器保留上游每个图元的填充与透明度。`extract.mjs` 会拒绝线宽偏离上游超过十分之一的字形。
 lucide-static 是 ISC。
 
 两个坑，都要重建一次才发现。Lucide 用的是整套图元——头是 `<circle>`、画框是

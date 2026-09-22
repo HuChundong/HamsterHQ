@@ -1,18 +1,5 @@
-# The model this deployment serves, as the sandbox's own default.
-#
-# A SECOND patch layer, applied only when the deployment has named a model —
-# the entrypoint adds it to the `--patch` list when `MODEL_PROVIDER_ID` is set,
-# and leaves it out otherwise. That is not a style choice. A patch entry
-# REPLACES the config it names rather than merging into it, so this layer
-# applied with nothing configured would overwrite the harness's own default
-# provider and model with nothing, and the entry it overwrote requires a
-# provider: the backend fails to boot, on a checkout whose only mistake was not
-# having a model yet. It did, and the message named a validation error inside
-# a plugin nobody here had heard of.
-#
-# So there is no "empty" form of this file. It says what a configured
-# deployment wants, and a deployment that has configured nothing never applies
-# it and comes up on whatever the harness would have come up on.
+# Deployment model defaults, enabled as a profile bundle only when MODEL_PROVIDER_ID is set.
+# The tenant profile patch follows this bundle, so settings remain editable.
 
 # Which provider the models actually come from.
 #
@@ -42,8 +29,7 @@
 # nobody, which leaves every provider free for the tenant, including that one.
 #
 # A tenant's own settings document still wins. This is the default a sandbox
-# starts with, not a ceiling: the Models page writes `llm-pi-ai:` into
-# `$DSH_HOME/settings.yaml`, which is on their volume and overrides this
+# starts with, not a ceiling: the Models page writes the profile patch on the tenant volume, overriding this
 # without a restart.
 - id: llm-pi-ai
   config:

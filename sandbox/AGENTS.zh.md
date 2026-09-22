@@ -14,11 +14,11 @@
 那个脚本里的顺序不是随意的：
 
 1. `source /app/sandbox/env.sh`，因为 envd 不会把镜像自己的 `ENV` 交给进程。
-2. 创建 workspace 和 `DSH_HOME`，并把镜像的 profiles 软链进租户的那份——profiles 是镜像内容，
-   workspace 是租户的。
+2. 创建 workspace 和 `DSH_HOME`。
 3. 检查 layout 版本并迁移。`SANDBOX_LAYOUT_VERSION` 和 `migrate-storage-paths.mjs` 是一起动
    的；只改其中一个的 layout 变更，会把租户的文件留在没有东西去找的地方。
-4. 后台启动 dsh。
+4. 准备持久化租户 profile，链接镜像依赖，然后后台启动 dsh。
+   `scripts/check-profile-storage.mjs` 验证设置和自定义组合包能跨镜像更新保留。
 5. 后台启动 reporter，如果它在的话。
 6. ensure 显示栈（desktop 镜像用 `start-desktop.sh`）或无头浏览器（轻量镜像用
    `start-browser.sh`）。Desktop 的 Cube 模板在 `create-from-image` 时冻结 KDE/VNC；有头
@@ -55,12 +55,12 @@ gateway 的那个 reporter。它存在是因为 envd 没法 watch 一个网络�
 
 ## 两套组合，以及运维放进来的那个 CA
 
-三个 patch 文件，而一个插件该属于哪一个是不可互换的：
+两个运行时层和 harvest patch，而一个插件该属于哪一个是不可互换的：
 
 - `cordis.patch.yml` 是一个租户的沙箱真正运行的东西。`dsh-gateway-tunnel` 在这里，别处都没有。
 - `harvest.patch.yml` 只在构建时用，用来 harvest 那个静态 shell。`dsh-brand` 在这里，而**不在**
   运行时的组合里，因为浏览器加载的那个 shell 里已经带着它了。
-- `cordis.model.patch.yml` 是只在 `MODEL_PROVIDER_ID` 被设置时才叠上去的第二层。
+- `../packages/dsh-model-defaults/cordis.patch.yml` 是只在 `MODEL_PROVIDER_ID` 被设置时启用的具名 profile 组合包；它在租户 patch 之前，所以模型设置仍可修改。
 
 一个被放进错误文件里的插件，要么对谁都不加载，要么加载两次，而这两种在构建时都不会说话。
 

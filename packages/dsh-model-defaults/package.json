@@ -1,0 +1,7 @@
+{
+  "name": "dsh-model-defaults",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deployment model defaults below tenant profile settings",
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

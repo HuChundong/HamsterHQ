@@ -203,9 +203,10 @@ JuiceFS 文件系统装下所有租户的目录，元数据放在 Postgres，数
 
 `entrypoint.sh` 在挂载点下把工作区和 harness 家目录建成真实目录——`/mnt/workspace` 与
 `/mnt/dsh`——并告诉 dsh 它们已经在那里。没有任何东西被链接或绑定到第二个名字。
-唯一的例外是 `profiles/`：它装着组合好的 web profile 和本项目的插件，所以它是链回镜像
-自己那份的链接，每次启动都会重做。持久化它会用一份陈旧副本盖住镜像里的那份，并在升级后
-留下断链。
+web profile 的清单和 patch 也放在租户卷上：DSH 0.1.7 把设置写进该 patch。
+每次启动只将 node_modules 中镜像拥有的包链接到当前镜像，保留租户自定义包和组合包选择。
+部署模型默认值作为租户 patch 之前的具名组合包加载，避免命令行 overlay 阻止设置修改。
+layout 3 在启动前替换旧的整个 profiles 软链；旧镜像会拒绝这个新布局。
 
 写入在抵达对象存储之前就被确认。驱动把数据块暂存到本地盘、在后台上传，元数据库也不等自己的
 fsync 就提交——两者合起来把一次小文件写入从 38ms 降到 8ms，代价是节点本身丢失时会丢掉最后一
@@ -498,7 +499,7 @@ CubeSandbox 下这道栅栏是 CubeEgress，在沙箱外面。在纯 Docker 下�
 
 **路由是配置，不是代码。** `MODEL_PROVIDER_ID`、`MODEL_ID`、`MODEL_API`、`MODEL_COMPAT` 这一组描述
 一个端点：它叫什么、说哪种协议、服务哪个模型，以及一个 OpenAI 兼容网关需要而没人能从 URL 猜出来的
-兼容开关。`sandbox/cordis.model.patch.yml` 用它们拼出一份供应商 profile，作为 harness 自己的默认值。
+兼容开关。`packages/dsh-model-defaults/cordis.patch.yml` 用它们拼出一份供应商 profile，作为 harness 自己的默认值。
 这一层只在 `MODEL_PROVIDER_ID` 有值时才被应用，单独成一个补丁文件正是为了这个：补丁条目是**替换**它
 指名的那份 config 而不是并进去，所以什么都没配还应用它，等于把 harness 自己的默认模型覆盖成空，后端
 直接起不来。没指定模型的部署不应用这一层，跟着 harness 自带的默认走。不往

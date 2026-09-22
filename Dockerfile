@@ -33,7 +33,7 @@
 # DSH_VERSION` to bring this default into its own scope — which is the only way
 # to read it after a FROM, and which is what was missing when the footer went
 # blank.
-ARG DSH_VERSION=0.1.6-alpha.2
+ARG DSH_VERSION=0.1.7-alpha.1
 
 # ------------------------------------------------------------------- deps ----
 FROM node:24.19.0-bookworm-slim AS deps
@@ -528,7 +528,7 @@ ENV DSH_PERMISSION_MODE=danger-full-access
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 
 # See migrate-storage-paths.mjs. Raise this only with a matching migration.
-ENV SANDBOX_LAYOUT_VERSION=2
+ENV SANDBOX_LAYOUT_VERSION=3
 ENV DSH_HOME=/mnt/dsh
 
 WORKDIR /mnt/workspace
@@ -549,7 +549,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/package.json ./package.json
 COPY sandbox/entrypoint.sh sandbox/start-browser.sh sandbox/migrate-storage-paths.mjs \
-     sandbox/browser-flags sandbox/cordis.patch.yml sandbox/cordis.model.patch.yml ./sandbox/
+     sandbox/browser-flags sandbox/cordis.patch.yml sandbox/prepare-profile.mjs ./sandbox/
 RUN chmod +x /app/sandbox/entrypoint.sh /app/sandbox/start-browser.sh
 
 # The CubeEgress root, when the operator has dropped one in. It is what makes
@@ -592,6 +592,7 @@ COPY --from=panel-build /panel/lib /src/packages/dsh-artifact-panel/lib
 # installation the host uses; never install a second harness inside a plugin.
 RUN npm install --omit=dev --omit=peer --no-audit --no-fund --install-links \
       --prefix "$IMAGE_DSH_HOME/profiles/web" \
+      /src/packages/dsh-model-defaults \
       /src/packages/dsh-gateway-tunnel \
       /src/packages/dsh-sandbox-host \
       /src/packages/dsh-computer \
@@ -989,11 +990,8 @@ WORKDIR /app
 COPY web/harvest-shell.mjs web/shell-assets.mjs sandbox/harvest.patch.yml web/patch-loopback.mjs ./web/
 # Harvested against the IMAGE's harness home, not the tenant's.
 #
-# `DSH_HOME` points at the mount, where `profiles/` is a link the entrypoint
-# makes at boot — and nothing has booted here. Overridden for this one command
-# rather than by moving the profile, because these are the same directory: at
-# runtime the tenant's `$DSH_HOME/profiles` links straight back to this one, so
-# what is harvested is what the backend will serve.
+# The runtime tenant profile links image-owned packages from this image profile.
+# Harvest against that immutable dependency set before any tenant has booted.
 RUN DSH_HOME="$IMAGE_DSH_HOME" node web/harvest-shell.mjs /shell
 # The one patch this repository applies to the harness, and the only one. It
 # enables the settings plane for browsers that are not on loopback — which is
