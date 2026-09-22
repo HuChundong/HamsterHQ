@@ -16,6 +16,6 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-tools": "0.1.7-alpha.1"
+    "@deepseek-ai/dsh-tools": "0.1.7-alpha.2"
   }
 }
