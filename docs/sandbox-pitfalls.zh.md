@@ -618,3 +618,9 @@ node scripts/measure-startup.mjs，可在不使用租户数据或模型调用的
 source map 也改为仅含 query 的引用。每个引用都要相对文档或所属脚本解析；
 只修 fetch 地址会让 combo 映射和懒加载 chunk 仍然不一致。
 `scripts/check-shell-assets.mjs` 覆盖这些引用，不改写发布的 boot graph。
+
+会话顶部栏的归属也变了：会话插槽现在把标题行和视图标签渲染在外壳的外层
+`header` 内，不再自己渲染 `header`。我们起初以为部署样式已经加载且侧栏验收
+通过，就说明紧凑布局仍然有效。实际共享 CSS 条件一个元素也没有匹配，标题、
+对话／轨迹切换和右侧操作退回两行。原验收只量了标题与操作，漏掉标签。现在
+选择器遵循发布版插槽结构，`verify/verify-sidebar.mjs` 会检查三者处于同一行。

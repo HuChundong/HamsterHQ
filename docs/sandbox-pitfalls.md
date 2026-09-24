@@ -851,3 +851,12 @@ references. Resolve each reference against its document or owning script;
 changing only the fetch URL would leave combo maps and lazy chunks inconsistent.
 `scripts/check-shell-assets.mjs` covers those references without rewriting the
 published boot graph.
+
+The conversation header changed ownership too: the session slot now renders a
+title row and view tabs inside the shell's outer `header`, instead of rendering
+its own `header`. We first took the loaded deployment stylesheet and passing
+sidebar acceptance as evidence that the compact layout survived. The shared
+CSS guard actually matched zero elements, so the title, Conversation/Trajectory
+tabs and trailing actions returned to two rows. The acceptance check measured
+the title and actions but omitted the tabs. The guard now follows the published
+slot nesting, and `verify/verify-sidebar.mjs` measures all three on one row.
