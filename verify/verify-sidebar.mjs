@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
+import { COMPACT_HEADER } from '../packages/dsh-artifact-panel/src/constants.js'
 import { harnessRpc } from './harness-rpc.mjs'
 import { selectFixtureSession } from './select-fixture-session.mjs'
 
@@ -72,7 +73,7 @@ async function footerBelow(navigation, collapsed = false) {
   }
 }
 
-/** The title and actions fit one row; upstream places view tabs below it. */
+/** The title, view tabs and actions fit the deployment's single-row header. */
 async function compactHeader() {
   const header = page.locator('header:has(> [data-slot="conversation.session.header"])')
   await header.waitFor({ state: 'visible' })
@@ -82,27 +83,28 @@ async function compactHeader() {
     const element = globalThis.document.querySelector('header:has(> [data-slot="conversation.session.header"])')
     return element?.getBoundingClientRect().width >= Math.min(globalThis.innerWidth - 70, 400)
   })
-  const result = await header.evaluate((element) => {
+  const result = await header.evaluate((element, guard) => {
     const rect = element.getBoundingClientRect()
     const parts = [
       ...element.querySelectorAll(
-        'nav, [data-slot="conversation.session.header.utilities"] button, [data-conversation-header-corner] button',
+        'nav, [data-conversation-tabs], [data-slot="conversation.session.header.utilities"] button, [data-conversation-header-corner] button',
       ),
     ]
       .map((part) => part.getBoundingClientRect())
       .filter((box) => box.width > 0)
     return {
+      guardMatches: element.matches(guard),
       height: rect.height,
-      titleRowHeight: Math.max(...parts.map(box => box.bottom)) - Math.min(...parts.map(box => box.y)),
+      rowHeight: Math.max(...parts.map(box => box.bottom)) - Math.min(...parts.map(box => box.y)),
       aligned: parts.every(
         (box) => Math.abs(box.y + box.height / 2 - (parts[0].y + parts[0].height / 2)) < 3,
       ),
       inside: parts.every((box) => box.x >= rect.x && box.right <= rect.right + 1),
       titleWidth: parts[0].width,
     }
-  })
-  assert(result.height < 100 && result.titleRowHeight < 40 && result.aligned,
-    'the title and actions must occupy one row above the view tabs')
+  }, COMPACT_HEADER)
+  assert(result.guardMatches && result.height < 60 && result.rowHeight < 40 && result.aligned,
+    `the title, view tabs and actions must occupy one row: ${JSON.stringify(result)}`)
   assert(
     result.inside && result.titleWidth > 20,
     `header controls and title must fit the conversation column: ${JSON.stringify(result)}`,
