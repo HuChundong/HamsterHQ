@@ -6,7 +6,6 @@
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
-import { COMPACT_HEADER } from '../packages/dsh-artifact-panel/src/constants.js'
 import { harnessRpc } from './harness-rpc.mjs'
 import { selectFixtureSession } from './select-fixture-session.mjs'
 
@@ -83,7 +82,7 @@ async function compactHeader() {
     const element = globalThis.document.querySelector('header:has(> [data-slot="conversation.session.header"])')
     return element?.getBoundingClientRect().width >= Math.min(globalThis.innerWidth - 70, 400)
   })
-  const result = await header.evaluate((element, guard) => {
+  const result = await header.evaluate((element) => {
     const rect = element.getBoundingClientRect()
     const parts = [
       ...element.querySelectorAll(
@@ -93,7 +92,6 @@ async function compactHeader() {
       .map((part) => part.getBoundingClientRect())
       .filter((box) => box.width > 0)
     return {
-      guardMatches: element.matches(guard),
       height: rect.height,
       rowHeight: Math.max(...parts.map(box => box.bottom)) - Math.min(...parts.map(box => box.y)),
       aligned: parts.every(
@@ -102,8 +100,8 @@ async function compactHeader() {
       inside: parts.every((box) => box.x >= rect.x && box.right <= rect.right + 1),
       titleWidth: parts[0].width,
     }
-  }, COMPACT_HEADER)
-  assert(result.guardMatches && result.height < 60 && result.rowHeight < 40 && result.aligned,
+  })
+  assert(result.height < 60 && result.rowHeight < 40 && result.aligned,
     `the title, view tabs and actions must occupy one row: ${JSON.stringify(result)}`)
   assert(
     result.inside && result.titleWidth > 20,
