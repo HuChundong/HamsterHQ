@@ -55,7 +55,7 @@ export const CSS = `
     background: var(--dsw-alias-bg-layer-1);
     box-shadow: var(--dsw-shadow-lv1);
   }
-  @media (max-width: 600px) {
+  @media (max-width: 900px) {
     ${COMPACT_HEADER} { column-gap: 6px; padding-inline: 8px; }
     ${COMPACT_HEADER} > [data-slot='conversation.session.header'] > [role='tablist'] > [role='tab'] { padding-inline: 8px; }
     ${COMPACT_HEADER} > [data-slot='conversation.session.header'] > div > div > div:has(> [data-slot='conversation.session.header.actions']) {
@@ -63,6 +63,10 @@ export const CSS = `
       min-width: 0;
       overflow: hidden;
     }
+  }
+  @media (max-width: 600px) {
+    ${COMPACT_HEADER} { column-gap: 4px; padding-inline: 4px; }
+    ${COMPACT_HEADER} > [data-slot='conversation.session.header'] > [role='tablist'] > [role='tab'] { padding-inline: 4px; }
   }
   .${NS}-content { height:100%; min-height:0; min-width:0; display:flex; flex-direction:column; color:var(--dsw-alias-label-primary); }
   /* Shared content controls use the same round ghost geometry as DSH. */
