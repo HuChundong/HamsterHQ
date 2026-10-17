@@ -313,9 +313,16 @@ const browserSockets = new WebSocketServer({ noServer: true })
  * @returns {Promise<{email: string, id: string, admin: boolean} | undefined>} the caller, or undefined when unauthenticated.
  */
 async function callerOf(req, res, renewedAsHeaders = false) {
-  const resolved = await authenticate(req, tokens, accounts)
+  // Whether this call can hand a renewed cookie back. Rotation retires the
+  // token it is given, so authenticating with nowhere to deliver the
+  // replacement leaves the browser holding one the store no longer honours —
+  // and the person meets that as a sign-in prompt, days later, with nothing in
+  // between to say why. A response that has already started is the same
+  // situation as no response at all: the headers are gone.
+  const deliverable = res !== undefined && !res.headersSent
+  const resolved = await authenticate(req, tokens, accounts, deliverable)
   if (resolved === undefined) return undefined
-  if (resolved.cookies !== undefined && res !== undefined && !res.headersSent) {
+  if (resolved.cookies !== undefined && deliverable) {
     if (renewedAsHeaders) {
       // For nginx's auth_request. It discards a subrequest's own `Set-Cookie`,
       // and the one variable that can carry a header back —
@@ -595,7 +602,13 @@ async function handleRequest(req, res) {
   }
 
   if (path === '/logout' && req.method === 'POST') {
-    const caller = await callerOf(req)
+    // Through `callerOf(req, res)` rather than `(req)`: signing out has to find
+    // the caller even when the access token has expired, and the renewal that
+    // takes is delivered and then immediately replaced by the sign-out cookies
+    // below. Without it, a session whose access token had lapsed looks signed
+    // out and revokes nothing — which is the one case the revoke-everywhere
+    // below exists for.
+    const caller = await callerOf(req, res)
     if (caller !== undefined) {
       // Every browser this account has open, not merely the one asking. Signing
       // out on a shared or lost machine is one of the two reasons anyone clicks
@@ -1150,6 +1163,8 @@ server.on('upgrade', (req, socket, head) => {
   // panel, so there is nothing for the tunnel to carry.
   if (path === TERMINAL_PATH) {
     void (async () => {
+      // No response object on an upgrade, so this refuses an expired access
+      // token rather than rotating one it could not hand back.
       const caller = await callerOf(req)
       if (caller === undefined) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
@@ -1170,10 +1185,12 @@ server.on('upgrade', (req, socket, head) => {
   }
 
   void (async () => {
-    // No response object to renew cookies on, so an upgrade whose access token
-    // has expired is refused rather than renewed. The browser reopens these
-    // downlinks on failure, and by then an ordinary request will have renewed
-    // the token — a handshake cannot carry a `Set-Cookie` the page would keep.
+    // No response object, so no renewal: a handshake whose access token has
+    // expired is refused rather than renewed. The browser reopens these
+    // downlinks on failure, and by then an ordinary request has renewed the
+    // token. `callerOf(req)` with no response is what refuses — and, because
+    // `authenticate` is told it cannot deliver, it no longer spends the refresh
+    // token on the way to that refusal.
     const caller = await callerOf(req)
     if (caller === undefined) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')

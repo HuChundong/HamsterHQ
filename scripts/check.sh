@@ -51,6 +51,7 @@ for check in \
   scripts/check-paging.mjs \
   scripts/check-deployment-prompt.mjs \
   scripts/check-patch-inject.mjs \
+  scripts/check-session-renewal.mjs \
   scripts/check-computer-action.mjs \
   scripts/check-profile-storage.mjs \
   scripts/check-computer-layout.mjs \

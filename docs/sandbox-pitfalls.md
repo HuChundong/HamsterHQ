@@ -930,3 +930,47 @@ rename, and it needs the image because upstream's patch file exists nowhere
 else. `scripts/check-patch-inject.mjs` runs in the tree and holds the two
 layers to each other, which catches a fix applied to one and not the other; it
 would NOT have caught this, since both layers carried the stale name.
+
+## A refresh token was spent on a connection that could not keep it
+
+A tenant who left a tab open came back two days later and was asked for a
+sign-in code again, with nothing in between to explain it. The session plane
+looked healthy: the gateway was up, the account existed, and the same browser
+worked if they signed in and used it that day.
+
+A refresh token rotates. Spending one retires it and returns a replacement to
+whoever spent it, which is what makes signing out take effect and what stops a
+stolen token being useful for long. So a caller that spends one and cannot hand
+the replacement back leaves the browser holding a cookie the store no longer
+honours.
+
+The WebSocket-upgrade path is exactly that caller. It has no response object —
+a handshake's only words are its status line — and it authenticated through the
+same `callerOf` as every other route anyway. A tab's event stream reconnects
+whenever the fifteen-minute access token lapses, so on an idle tab that
+happened repeatedly, and each handshake retired the browser's only refresh
+token and delivered nothing.
+
+**What made it look like a timeout rather than a bug.** The rotation grace
+answers a spent token with its replacement for thirty seconds, so the reconnect
+itself was accepted and the browser believed it was signed in. The replacement
+had gone nowhere, and the one the browser held stopped being honoured two days
+later — past the grace — when the next renewal was attempted. Nothing failed at
+the time, and the only symptom arrived long after the cause, on a page that
+looked fine.
+
+`authenticate` now takes whether the caller can deliver, and refuses **before**
+spending when it cannot; `callerOf` derives that from the response it was given.
+Both handshakes pass no response and are refused rather than rotated, which the
+browser answers by reconnecting after some ordinary request has renewed the
+token. `scripts/check-session-renewal.mjs` drives the real authenticator against
+a store that records what happened, because source text can show a guard exists
+and only that shows it is on the path a handshake takes.
+
+Two smaller things were wrong in the same direction and are fixed with it.
+Signing out called `callerOf(req)` — no response — so a session whose access
+token had lapsed looked signed out and revoked nothing, which is the one case
+the revoke-everywhere below it exists for. And `callerOf` set renewed cookies
+whenever a response was present, without checking whether one had already
+started; headers set after that point are gone, which is the same defect in a
+different disguise.
