@@ -358,7 +358,7 @@ textarea，所以上传会完成、通知也会到达 agent，但定位过程什
 难发现的原因在于：草稿是组合器里插件唯一能写的部分，于是它看起来像是够到模型的唯一途径。而
 inbox 在同一个会话的另一侧，够到它只需要客户端本来就有的 session id。
 
-## 非 loopback 的浏览器，设置不会持久化
+## 设置曾经按页面位置决定是否持久化
 
 租户把主题改成深色，刷新，又变回浅色。没有任何报错，隧道一直连着，沙箱里的
 `~/.dsh/settings.yaml` 始终是 0 字节。
@@ -383,6 +383,21 @@ localhost 访问这套部署的租户，什么偏好都留不住：主题、语�
 
 `dsh-tenant-account` 里本来就留着一条注释，说 onboarding 提示对「通过域名进来的租户」
 留不住。那就是这件事，只是当时被看成某一条提示的怪癖，而不是所有设置的规则。
+
+**上游已在 0.2.1-alpha.3 解决，补丁已删除。** 客户端不再按位置选择持久化：它构造一个不带
+任何模式的设置镜像，身份边界是浏览器令牌认证。上游自己的论证见
+[2026-09-15-authenticated-browser-host-preferences.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/bug-fix/2026-09-15-authenticated-browser-host-preferences.md)，
+它否定位置判断用的理由和本节得出一致：*本闸门没有保护任何东西，位置只是请求路由证据，
+不是身份。*
+
+外壳里剩下的唯一一个 `$host.isLoopback` 消费点是 `ui-settings-general` 里的
+**Open configuration file** 动作；上游明说它是对「看不到宿主原生编辑器」的页面做的呈现选择，
+不是持久化规则。而 `dsh-sandbox-host` 已经占着那个座位，所以本部署也不提供这个手势。
+
+于是 `web/patch-loopback.mjs` 和它的每一个挂钩都已删除，本仓库不再修改 harness 的任何一行。
+取代它的是 `scripts/check-images.sh` 里的断言：读取 nginx 服务的设置 bundle，一旦位置判断
+回来就失败。这是对着真实字节验证的，不是推理出来的——0.1.7 的 bundle 里有
+`isLoopback ? "host" : "memory"`，0.2.1 的 bundle 里既没有 `isLoopback` 也没有持久化模式。
 
 ## 装 skill 的程序写在"你在哪"，而不是"你住哪"
 

@@ -2,9 +2,10 @@
 
 English | [中文](AGENTS.zh.md)
 
-nginx, the harvested shell, and the front door. `patch-loopback.mjs` is the one
-sanctioned harness patch and the [root file](../AGENTS.md) carries the argument
-for it; what is here is how the rest of this directory is put together.
+nginx, the harvested shell, and the front door. Nothing here patches the
+harness — the [root file](../AGENTS.md) carries what used to be the one
+exception and why it is gone; what is here is how the rest of this directory is
+put together.
 
 ## Three layers of nginx, and the header that is not inherited
 
@@ -61,23 +62,23 @@ gateway's pages. What it is preventing is not a slow page: it is a deployment
 where a changed mark or screenshot reaches some visitors and not others, and
 which one a visitor got depended on which page they opened first.
 
-`patch-loopback.mjs` runs in the `shell` stage after `harvest-shell.mjs` and
-fails the image build in three ways, all deliberate: a target module or batch is gone,
-the shell is already patched — which means the script ran twice and the second
-run had nothing to do — or the expression it matches is not there exactly once,
-which is what a DSH upgrade that reshaped the decision looks like. In that last
-case the error tells the next reader to update the expression or, better, to
-delete the script if the release made the decision configurable.
+The `shell` stage harvests and does nothing else, so what it saves is upstream's
+bytes. That is worth asserting, because the failure it would hide is a setting
+that silently stops sticking: through 0.2.0 the client picked `memory`
+persistence from the page hostname, and a patch in this stage replaced that
+choice. 0.2.1-alpha.3 removed the decision upstream, which is why the stage is
+now bare.
 
-Because a build can be green and a tag can be moved by hand,
-`scripts/check-images.sh` greps every Connection copy nginx will actually serve for the
-patched value. That is the assertion that catches a patch lost to a cached layer.
+`scripts/check-images.sh` reads the settings bundle nginx will actually serve and
+fails if the locality gate is back. A build can be green and a tag can be moved
+by hand, so this is asserted against the served bytes rather than against the
+build having run.
 
 The shell now carries query-addressed combo scripts. `harvest-shell.mjs` saves
 both module entries and batches, while `shell-assets.mjs` maps each complete URL
 to a distinct file. nginx uses the generated exact request-URI map; dropping the
 query would collapse all bundles into one. `check-shell-assets.mjs` checks that
-mapping and that the existing loopback patch reaches every served copy.
+mapping.
 
 Lazy client chunks are absent from that graph. The harvester follows published
 package-local `require.async('./client.*.js')` imports recursively, using the

@@ -1,9 +1,5 @@
 /** Combo URLs that differ only in their query must never overwrite one another. */
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { assetPath, assetUrl, bootGraph, comboMap, lazyAssets, moduleAssets, shellAssets } from '../web/shell-assets.mjs'
 
 const id = '@deepseek-ai/dsh-client-connection'
@@ -47,27 +43,9 @@ assert.equal(new URL(relativeGraph.entries[0].url, documentBase).search, new URL
 assert.throws(() => assetUrl('https://another.test/plugins/??example/client.js'))
 assert.throws(() => assetUrl('//another.test/plugins/??example/client.js'))
 assert.throws(() => assetUrl('/plugins/example/client.js#fragment'))
-// Keep the relative boot graph itself unchanged, including through the one
-// sanctioned loopback patch; only harvest requests and disk mapping normalize.
+// The relative boot graph itself must survive the harvest unchanged: only
+// harvest requests and the disk mapping normalize.
 const relativeHtml = `<head><base href="./"></head><script>globalThis["__DSH_BOOT__"]=${JSON.stringify(relativeGraph)}</script>`
 assert.deepEqual(bootGraph(relativeHtml), relativeGraph)
 
-const shell = await mkdtemp(join(tmpdir(), 'check-dsh-shell-'))
-try {
-  await writeFile(join(shell, 'index.html'), relativeHtml)
-  const decision = 'isLoopback: transport?.ownsHost === true || pageLocation === void 0 || isLoopbackHostname(pageLocation.hostname),'
-  for (const file of moduleAssets(graph, id)) {
-    await mkdir(join(shell, file, '..'), { recursive: true })
-    await writeFile(join(shell, file), decision)
-  }
-  const patch = new URL('../web/patch-loopback.mjs', import.meta.url).pathname
-  assert.equal(spawnSync(process.execPath, [patch, shell]).status, 0)
-  assert.equal(await readFile(join(shell, 'index.html'), 'utf8'), relativeHtml)
-  for (const file of moduleAssets(graph, id)) {
-    assert.match(await readFile(join(shell, file), 'utf8'), /isLoopback: true \/\* HamsterHQ:/)
-  }
-  assert.notEqual(spawnSync(process.execPath, [patch, shell]).status, 0, 'a repeated patch must fail')
-} finally {
-  await rm(shell, { recursive: true, force: true })
-}
-console.log('check-shell-assets: relative URLs and source maps resolve without changing the graph, combo queries remain distinct, and every Connection copy is patched')
+console.log('check-shell-assets: relative URLs and source maps resolve without changing the graph, and combo queries remain distinct')

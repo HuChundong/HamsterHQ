@@ -987,19 +987,18 @@ RUN npm run build
 # set does not match the backend it talks to.
 FROM sandbox AS shell
 WORKDIR /app
-COPY web/harvest-shell.mjs web/shell-assets.mjs sandbox/harvest.patch.yml web/patch-loopback.mjs ./web/
+COPY web/harvest-shell.mjs web/shell-assets.mjs sandbox/harvest.patch.yml ./web/
 # Harvested against the IMAGE's harness home, not the tenant's.
 #
 # The runtime tenant profile links image-owned packages from this image profile.
 # Harvest against that immutable dependency set before any tenant has booted.
 RUN DSH_HOME="$IMAGE_DSH_HOME" node web/harvest-shell.mjs /shell
-# The one patch this repository applies to the harness, and the only one. It
-# enables the settings plane for browsers that are not on loopback — which is
-# every tenant of a deployment reached by a domain name. `web/patch-loopback.mjs`
-# carries the whole argument, including why the three plugin-shaped fixes are
-# closed. It fails this build if it stops applying, rather than letting a
-# release ship with settings silently back in memory.
-RUN node web/patch-loopback.mjs /shell
+# No patch runs here, and that is the point: this repository does not modify the
+# harness. The loopback patch that used to follow this line enabled the settings
+# plane for browsers that are not on loopback, and 0.2.1-alpha.3 made that
+# decision obsolete upstream — persistence no longer consults page locality.
+# `docs/sandbox-pitfalls.md` records the change;
+# `scripts/check-images.sh` asserts the served bundles carry upstream's version.
 
 # -------------------------------------------------------------------- web ----
 # The whole frontend: hashed assets from the published build, plus the composed

@@ -89,9 +89,10 @@ must resolve to the correct tenant before reaching that host's tunnel.
 
 ## DSH is a dependency, not part of this
 
-The harness is installed from npm at a pinned version. Apart from the one
-[documented exception](../AGENTS.md#dsh-is-a-dependency-and-stays-one),
-the tunnel, the remote-host surfaces, the account controls, the artifact panel,
+The harness is installed from npm at a pinned version and is not modified; the
+one build-gated exception this project used to carry is
+[recorded and gone](../AGENTS.md#dsh-is-a-dependency-and-stays-one). The tunnel,
+the remote-host surfaces, the account controls, the artifact panel,
 and this deployment's own brand are cordis plugins, named in
 [`sandbox/cordis.patch.yml`](../sandbox/cordis.patch.yml) and
 [`sandbox/harvest.patch.yml`](../sandbox/harvest.patch.yml) and resolved out

@@ -356,20 +356,26 @@ check 'plugin tools share the host dependency instance' shared "$shared"
 
 echo "=== the web image ==="
 
-# The one patch this repository applies to the harness. It fails the build when
-# it stops matching, so reaching here means it applied — but the build and the
-# image are separable (a cached layer, a hand-tagged image), and a served bundle
-# that lost the patch is a deployment where nobody can keep a preference and
-# nothing says so. Asserted against the bytes nginx will actually serve.
-patched=$(docker run --rm --entrypoint sh "$WEB" -c '
-  cd /usr/share/nginx/html
-  test -s dsh-connection-assets.txt || exit 1
-  while IFS= read -r asset; do
-    grep -q "isLoopback: true /\* HamsterHQ:" ".${asset}" || exit 1
-  done < dsh-connection-assets.txt
-  echo patched
+# Nothing in this repository patches the harness, so what has to hold is the
+# opposite of an applied patch: the served settings bundle must still be the one
+# that persists off loopback.
+#
+# Through 0.2.0 the client chose `memory` persistence from the page hostname, so
+# a tenant arriving by domain name kept no preference at all, and a patch here
+# replaced that decision. 0.2.1-alpha.3 removed the gate. Asserting the removal
+# against the bytes nginx serves is what makes a future release that brings the
+# gate back fail here rather than in a tenant's browser: the selector is a
+# string, so a rename is silent, and the failure it hides — settings that do not
+# stick — arrives with no error anywhere. `SettingsDescribeMirror` is asserted
+# too, so a missing or empty bundle cannot pass by containing nothing.
+settings=$(docker run --rm --entrypoint sh "$WEB" -c '
+  f=/usr/share/nginx/html/plugins/@deepseek-ai/dsh-client-ui-settings/client.js
+  test -s "$f" || { echo missing; exit 0; }
+  grep -q "SettingsDescribeMirror" "$f" || { echo not-the-settings-bundle; exit 0; }
+  if grep -q "isLoopback ? \"host\"" "$f"; then echo locality-gate; exit 0; fi
+  echo durable
 ' 2>/dev/null || echo error)
-check 'all served Connection copies persist non-loopback settings' patched "$patched"
+check 'the served settings client persists by default, not by page locality' durable "$settings"
 
 # Lazy chunks do not appear in the boot graph. Their entry can load normally
 # while opening a terminal or PDF fails; check the bytes shipped to nginx.

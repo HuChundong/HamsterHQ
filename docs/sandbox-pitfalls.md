@@ -504,7 +504,7 @@ can write, so it looks like the only way to reach the model. The inbox is on the
 other side of the same session, and reaching it needs nothing but the session id
 the client already has.
 
-## Settings do not persist for a browser that is not on loopback
+## Settings used to persist by page locality
 
 A tenant changes the theme, reloads, and it is light again. Nothing errors, the
 tunnel stays up, and `~/.dsh/settings.yaml` in their sandbox stays zero bytes.
@@ -536,6 +536,28 @@ forwarding cannot change that.
 `dsh-tenant-account` already carried a note about the onboarding notice not
 sticking "for a tenant arriving by domain name". That was this, seen once and
 read as a quirk of one notice rather than as the rule for every setting.
+
+**Resolved upstream, 0.2.1-alpha.3, and the patch is deleted.** The client no
+longer selects persistence from locality at all: it builds one settings mirror
+with no mode, and browser token authentication is the identity boundary. The
+argument for that is upstream's own —
+[2026-09-15-authenticated-browser-host-preferences.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/bug-fix/2026-09-15-authenticated-browser-host-preferences.md)
+— and it rejects the locality gate in the same terms this section reached:
+*"the gate protected nothing, and locality is request-routing evidence rather
+than identity."*
+
+The one consumer of `$host.isLoopback` left in the shell is the **Open
+configuration file** action in `ui-settings-general`, which upstream describes
+as a presentation choice for pages that cannot see the Host's native editor,
+not a persistence rule. `dsh-sandbox-host` already occupies that seat, so this
+deployment does not offer the gesture either.
+
+So `web/patch-loopback.mjs` and every hook it had are gone, and this repository
+modifies no harness code. What replaced it is the assertion in
+`scripts/check-images.sh`: it reads the settings bundle nginx serves and fails
+if the locality gate comes back. Verified against real bytes rather than
+reasoned about — the 0.1.7 bundle carries `isLoopback ? "host" : "memory"` and
+the 0.2.1 bundle carries neither `isLoopback` nor a persistence mode.
 
 ## A skill installer that writes where you are, not where you live
 

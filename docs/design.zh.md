@@ -71,7 +71,8 @@ WebSocket 升级都必须先定位到正确租户，才可能抵达该宿主的�
 
 ## DSH 是依赖，不是本项目的一部分
 
-harness 以钉住的版本从 npm 安装。除[已记录的唯一例外](../AGENTS.zh.md)外，隧道、远端宿主界面、账户控件、
+harness 以钉住的版本从 npm 安装，且不做修改；本项目曾经携带的唯一一处受构建门禁约束的例外
+[已记录并已移除](../AGENTS.zh.md)。隧道、远端宿主界面、账户控件、
 产物面板，以及这套部署自己的标识，都是 cordis 插件，在
 [`sandbox/cordis.patch.yml`](../sandbox/cordis.patch.yml) 与
 [`sandbox/harvest.patch.yml`](../sandbox/harvest.patch.yml) 里按名字声明，并像其他插件一样从
