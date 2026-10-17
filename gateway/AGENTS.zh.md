@@ -18,6 +18,15 @@ token 被续期时把 cookie 设到响应上。一条自己去认证的路由会
 于是浏览器在它的下一个请求上被登出——失败比错误晚到一个请求，而且出现在一个看起来毫无
 问题的页面上。
 
+**没有响应的调用者必须是 `callerOf(req)`，一个参数都不加；这是一个决定，不是一个简写。**
+轮换会作废它拿到的那个 token，所以无法把替换品交回去的调用者，一开始就不该花掉它：
+`callerOf` 从第二个参数推出这件事，`authenticate` 在碰数据库之前就拒绝。两个 WebSocket
+握手就是这个形态的调用者——握手的全部话语只有它的状态行——弄错就是上面那个失败换了一根更长的
+引信。一个标签页的事件流会在十五分钟的 access token 过期后重连；握手花掉了浏览器唯一那个
+refresh token 却什么都没交回去，而人是在两天后才遇到它——那时早已过了轮换的宽限期——看到的是
+一个重新登录的提示。当时没有任何东西失败，这就是 `scripts/check-session-renewal.mjs` 要跑真正的
+authenticator、而不是读那段守卫的文本的原因。
+
 `renewedAsHeaders` 那个形态是为 nginx 的 `auth_request` 存在的，后者会丢弃 subrequest 自己
 的 `Set-Cookie`。而唯一能把 header 带回去的变量 `$upstream_http_set_cookie` 只保留同名
 header 中的第一个，这就是为什么两个续期 cookie 要用两个不同名字的头送出去。

@@ -136,6 +136,53 @@ sections=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
 ' 2>/dev/null || echo 0)
 check 'the harness still names both sections the prompt plugin rewrites' 2 "$sections"
 
+# Every service our patch layers inject on a row they override is one the
+# published bundle's own patch injects there too.
+#
+# An override replaces a row's top-level `inject` list outright rather than
+# adding to it, so a name upstream renames or drops goes stale exactly inside
+# our copy — and the composition then waits forever on a service nothing
+# provides. That is what 0.2.1 did to `webRuntime`, and the only symptom was
+# `1 required plugin did not activate` with eleven rows pending on `connection`
+# underneath it. `scripts/check-patch-inject.mjs` holds the two layers to each
+# other; this holds both to upstream, whose patch exists only in the image.
+#
+# The harvest layer ships in no image — it is a build-time input to the web
+# stage — so it is mounted here and read beside the sandbox's own copy.
+injects=$(docker run --rm --entrypoint node \
+  -v "$(git rev-parse --show-toplevel)/sandbox/harvest.patch.yml:/patch/harvest.patch.yml:ro" \
+  "$SANDBOX" -e '
+  const { readFileSync, readdirSync } = require("node:fs")
+  const { join } = require("node:path")
+  const { parse } = require("yaml")
+  const rows = (list) => list.flatMap((row) => [
+    ...(row.id === undefined ? [] : [row]),
+    ...(Array.isArray(row.insert) ? rows(row.insert) : []),
+  ])
+  // One row per id: the Loader keeps the last declaration, and so does this.
+  const upstream = new Map()
+  for (const dir of readdirSync("/app/node_modules/@deepseek-ai")) {
+    let text
+    try { text = readFileSync(join("/app/node_modules/@deepseek-ai", dir, "cordis.patch.yml"), "utf8") } catch { continue }
+    for (const row of rows(parse(text) ?? [])) if (row.id) upstream.set(row.id, row)
+  }
+  const problems = []
+  for (const file of ["/app/sandbox/cordis.patch.yml", "/patch/harvest.patch.yml"]) {
+    for (const row of rows(parse(readFileSync(file, "utf8")) ?? [])) {
+      const source = upstream.get(row.id)
+      if (source === undefined) continue
+      // Only a DECLARED inject replaces the list upstream declared; omitting
+      // the key leaves whatever the bundle put there. web-runtime is the
+      // example: our row sets two config values and no inject at all.
+      if (row.inject === undefined) continue
+      const dropped = (source.inject ?? []).filter((name) => !row.inject.includes(name))
+      if (dropped.length > 0) problems.push(file + ": " + row.id + " drops " + dropped.join(","))
+    }
+  }
+  console.log(problems.length === 0 ? "intact" : "dropped: " + problems.join("; "))
+' 2>/dev/null || echo error)
+check 'both patch layers inject every service upstream injects on those rows' intact "$injects"
+
 # Resolved through `dsh.client.main` rather than assumed to be `client.js`,
 # because one of these is BUILT: the panel bundles xterm and ships
 # `lib/client.js`, which is gitignored and produced during the image build. A
@@ -198,10 +245,19 @@ check 'every tool the image promises resolves' '' "$missing"
 MODULES="pandas duckdb sqlalchemy openpyxl xlsxwriter xlrd pyxlsb odf"
 MODULES="$MODULES pdfplumber PIL matplotlib lxml bs4 markdownify jinja2"
 MODULES="$MODULES magic py7zr rarfile requests"
-stack=$(docker run --rm --entrypoint python3 -e "MODULES=$MODULES" "$SANDBOX" \
-  -c 'import importlib.util, os; names = os.environ["MODULES"].split(); missing = [n for n in names if importlib.util.find_spec(n) is None]; print(" ".join(missing) if missing else "all")' \
-  2>/dev/null || echo docker-error)
-check 'the python stack imports' all "$stack"
+# A build that announced a bare environment is not a broken one. The image
+# records which it is, so the check reports the choice instead of the four
+# dozen import failures it looks like — the signal the tenant build still has
+# to satisfy, without the noise a local build would otherwise produce.
+python_mode=$(docker run --rm --entrypoint cat "$SANDBOX" /etc/dsh-python-stack 2>/dev/null || echo missing)
+if [ "$python_mode" = bare ]; then
+  printf '  \033[33mSKIP\033[0m  %-52s %s\n' 'the python stack imports' 'built bare (AGENT_PYTHON_PACKAGES empty)'
+else
+  stack=$(docker run --rm --entrypoint python3 -e "MODULES=$MODULES" "$SANDBOX" \
+    -c 'import importlib.util, os; names = os.environ["MODULES"].split(); missing = [n for n in names if importlib.util.find_spec(n) is None]; print(" ".join(missing) if missing else "all")' \
+    2>/dev/null || echo docker-error)
+  check 'the python stack imports' all "$stack"
+fi
 
 # pip must install into the virtualenv, not fail against Debian's externally
 # managed system Python — the whole reason the venv is there.
@@ -238,32 +294,51 @@ check 'the officecli skill is where dsh will look' ok "$skill"
 # naming that port. A CLI with no configuration launches a Chromium this image
 # deliberately does not carry, and says so only at the moment a tenant asked
 # for a page.
-# 'Chrom' matches both engines this image may ship: Playwright's shell
-# announces "Chromium …", and so does the anti-detect full build.
-browser=$(docker run --rm --entrypoint /usr/local/bin/headless-shell "$SANDBOX" --version 2>/dev/null | head -1 | grep -c 'Chrom' || echo 0)
-check 'the browser engine runs' 1 "$browser"
+#
+# A build that announced no engine is not a broken one, so the stamp decides
+# which question is asked — the same shape as the python stack above. What a
+# local build gives up is the agent's page, which is exactly what it asked for.
+browser_mode=$(docker run --rm --entrypoint cat "$SANDBOX" /etc/dsh-browser-source 2>/dev/null || echo missing)
+if [ "$browser_mode" = none ]; then
+  printf '  \033[33mSKIP\033[0m  %-52s %s\n' 'the browser engine runs' 'built without one (BROWSER_SOURCE=none)'
+else
+  # 'Chrom' matches both engines this image may ship: Playwright's shell
+  # announces "Chromium …", and so does the anti-detect full build.
+  browser=$(docker run --rm --entrypoint /usr/local/bin/headless-shell "$SANDBOX" --version 2>/dev/null | head -1 | grep -c 'Chrom' || echo 0)
+  check 'the browser engine runs' 1 "$browser"
+fi
 
 # Run the real launch path — the script the entrypoint runs on every backend
 # boot — and ask whether 9222 answers afterwards. A script that quietly
 # starts nothing (a missing tuning file, an engine the flags no longer fit)
 # is a sandbox whose agent has no browser, discovered here instead of by the
 # first tenant to ask for a page.
-warm=$(docker run --rm --entrypoint bash "$SANDBOX" -c '
-  /app/sandbox/start-browser.sh || { echo start-failed; exit 0; }
-  for _ in $(seq 40); do
-    curl -sf http://127.0.0.1:9222/json/version > /dev/null && { echo ok; exit 0; }
-    sleep 0.5
-  done
-  echo never-listened
-' 2>/dev/null || echo error)
-check 'the browser start script leaves the CDP port answering' ok "$warm"
+if [ "$browser_mode" = none ]; then
+  printf '  \033[33mSKIP\033[0m  %-52s %s\n' 'the browser start script leaves the CDP port answering' 'no engine to start'
+  printf '  \033[33mSKIP\033[0m  %-52s %s\n' 'the browser CLI is wired to it' 'no engine to reach'
+else
+  # Run the real launch path — the script the entrypoint runs on every backend
+  # boot — and ask whether 9222 answers afterwards. A script that quietly
+  # starts nothing (a missing tuning file, an engine the flags no longer fit)
+  # is a sandbox whose agent has no browser, discovered here instead of by the
+  # first tenant to ask for a page.
+  warm=$(docker run --rm --entrypoint bash "$SANDBOX" -c '
+    /app/sandbox/start-browser.sh || { echo start-failed; exit 0; }
+    for _ in $(seq 40); do
+      curl -sf http://127.0.0.1:9222/json/version > /dev/null && { echo ok; exit 0; }
+      sleep 0.5
+    done
+    echo never-listened
+  ' 2>/dev/null || echo error)
+  check 'the browser start script leaves the CDP port answering' ok "$warm"
 
-cli=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
-  command -v playwright-cli > /dev/null || { echo no-cli; exit 0; }
-  test -f /opt/playwright-cli.config.json || { echo no-config; exit 0; }
-  grep -q "cdpEndpoint" /opt/playwright-cli.config.json && echo ok || echo config-names-no-endpoint
-' 2>/dev/null || echo error)
-check 'the browser CLI is wired to it' ok "$cli"
+  cli=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
+    command -v playwright-cli > /dev/null || { echo no-cli; exit 0; }
+    test -f /opt/playwright-cli.config.json || { echo no-config; exit 0; }
+    grep -q "cdpEndpoint" /opt/playwright-cli.config.json && echo ok || echo config-names-no-endpoint
+  ' 2>/dev/null || echo error)
+  check 'the browser CLI is wired to it' ok "$cli"
+fi
 
 # Same two questions as OfficeCLI's skill, and for the same reason: this one is
 # also written by the tool at build time, so its absence is silent.
@@ -309,20 +384,26 @@ check 'plugin tools share the host dependency instance' shared "$shared"
 
 echo "=== the web image ==="
 
-# The one patch this repository applies to the harness. It fails the build when
-# it stops matching, so reaching here means it applied — but the build and the
-# image are separable (a cached layer, a hand-tagged image), and a served bundle
-# that lost the patch is a deployment where nobody can keep a preference and
-# nothing says so. Asserted against the bytes nginx will actually serve.
-patched=$(docker run --rm --entrypoint sh "$WEB" -c '
-  cd /usr/share/nginx/html
-  test -s dsh-connection-assets.txt || exit 1
-  while IFS= read -r asset; do
-    grep -q "isLoopback: true /\* HamsterHQ:" ".${asset}" || exit 1
-  done < dsh-connection-assets.txt
-  echo patched
+# Nothing in this repository patches the harness, so what has to hold is the
+# opposite of an applied patch: the served settings bundle must still be the one
+# that persists off loopback.
+#
+# Through 0.2.0 the client chose `memory` persistence from the page hostname, so
+# a tenant arriving by domain name kept no preference at all, and a patch here
+# replaced that decision. 0.2.1-alpha.3 removed the gate. Asserting the removal
+# against the bytes nginx serves is what makes a future release that brings the
+# gate back fail here rather than in a tenant's browser: the selector is a
+# string, so a rename is silent, and the failure it hides — settings that do not
+# stick — arrives with no error anywhere. `SettingsDescribeMirror` is asserted
+# too, so a missing or empty bundle cannot pass by containing nothing.
+settings=$(docker run --rm --entrypoint sh "$WEB" -c '
+  f=/usr/share/nginx/html/plugins/@deepseek-ai/dsh-client-ui-settings/client.js
+  test -s "$f" || { echo missing; exit 0; }
+  grep -q "SettingsDescribeMirror" "$f" || { echo not-the-settings-bundle; exit 0; }
+  if grep -q "isLoopback ? \"host\"" "$f"; then echo locality-gate; exit 0; fi
+  echo durable
 ' 2>/dev/null || echo error)
-check 'all served Connection copies persist non-loopback settings' patched "$patched"
+check 'the served settings client persists by default, not by page locality' durable "$settings"
 
 # Lazy chunks do not appear in the boot graph. Their entry can load normally
 # while opening a terminal or PDF fails; check the bytes shipped to nginx.

@@ -58,18 +58,36 @@ export function isSecureRequest(req) {
 /**
  * Resolve the account behind a request, renewing its tokens when they need it.
  *
+ * `renew` says whether this request can hand the replacement back. Rotation
+ * retires the token it was given, so a caller that cannot deliver the
+ * replacement must not spend one: the browser would keep a cookie the store no
+ * longer honours, and the next request more than a grace period later would ask
+ * the person for a sign-in code. A WebSocket handshake is the case — it has no
+ * response object, and its status line is the only thing it can say — so it
+ * passes `false` and an expired access token is refused instead, which the
+ * browser answers by reconnecting after some ordinary request has renewed it.
+ *
+ * Reading an unexpired access token needs no store either way, so a socket that
+ * was opened while the token was valid keeps working across a renewal.
+ *
  * @param {import('node:http').IncomingMessage} req - the request.
  * @param {import('./tokens.js').Tokens} tokens - the token store.
  * @param {import('./accounts.js').Accounts} accounts - the account store.
+ * @param {boolean} [canRenew] - whether the caller can deliver replacement cookies; default true.
  * @returns {Promise<{account: import('./accounts.js').Account | {email: string, id: string, admin: boolean}, cookies?: string[]} | undefined>} the caller and any cookies to set, or undefined when the request proves nothing.
  */
-export async function authenticate(req, tokens, accounts) {
+export async function authenticate(req, tokens, accounts, canRenew = true) {
   const cookies = parseCookies(req.headers.cookie)
 
   const caller = await tokens.readAccess(cookies[ACCESS_COOKIE])
   // The common path: a valid access token, verified by signature alone. No
   // store is consulted, which is the whole reason the token is short-lived.
   if (caller !== undefined) return { account: caller }
+
+  // Nothing to renew with if this request cannot carry the replacement. Refuse
+  // before spending: see the note on `canRenew` above for what spending here
+  // costs — a browser holding a token the store has retired.
+  if (!canRenew) return undefined
 
   // The access token is missing or expired. A refresh token is the only thing
   // that can replace it, and spending it is where revocation takes effect:

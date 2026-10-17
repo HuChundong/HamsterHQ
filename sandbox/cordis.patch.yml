@@ -114,7 +114,7 @@
 # Custom RPC channels register HTTP routes through Connection's owning context.
 # The web composition supplies its webServer dependency explicitly.
 - id: connection
-  inject: [webRuntime, webServer]
+  inject: [webStartup, webServer]
 
 # Native application launching belongs to a person sitting at the host.
 # Remote users open files and terminals through the workspace or Computer.

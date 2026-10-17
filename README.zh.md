@@ -18,7 +18,7 @@
 [DSH](https://github.com/deepseek-ai/deepseek-harness) 的多租户云端部署：一套独立部署的
 前端、一个负责认证的网关，以及每位登录用户一个 dsh 后端，各自带一块持久卷。
 
-DSH 本身是依赖，从 npm 安装。除 `web/patch-loopback.mjs` 这一处受构建门禁约束的补丁外，不改 harness。本项目要加给它的东西，一律以 cordis 插件的形式加。
+DSH 本身是依赖，从 npm 安装，不改 harness 的任何一行。本项目要加给它的东西，一律以 cordis 插件的形式加。
 
 ![HamsterHQ](docs/assets/screenshot-landing.zh.webp)
 
@@ -50,7 +50,7 @@ DSH 本身是依赖，从 npm 安装。除 `web/patch-loopback.mjs` 这一处受
 
 - **运行时接缝。** `cube` 与 `docker` 的区别仅在于机器如何被创建和回收。接缝之上的一切在两者
   之间没有任何变化——恰恰是因为沙箱主动向外拨号，上层任何组件都不需要一条打进去的路由。
-- **组合接缝。** DSH 是 npm 依赖，版本钉住，除 `web/patch-loopback.mjs` 外不改。本项目加给
+- **组合接缝。** DSH 是 npm 依赖，版本钉住，不改。本项目加给
   它的东西——隧道、远端宿主面、租户账户、电脑交接、右侧 artifact 面板、定时任务、品牌——都是从 profile 按包名
   解析的 cordis 插件。升级 harness 就是改一个版本号，再跑一遍验收。
 

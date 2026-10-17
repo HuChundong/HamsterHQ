@@ -504,7 +504,7 @@ can write, so it looks like the only way to reach the model. The inbox is on the
 other side of the same session, and reaching it needs nothing but the session id
 the client already has.
 
-## Settings do not persist for a browser that is not on loopback
+## Settings used to persist by page locality
 
 A tenant changes the theme, reloads, and it is light again. Nothing errors, the
 tunnel stays up, and `~/.dsh/settings.yaml` in their sandbox stays zero bytes.
@@ -536,6 +536,28 @@ forwarding cannot change that.
 `dsh-tenant-account` already carried a note about the onboarding notice not
 sticking "for a tenant arriving by domain name". That was this, seen once and
 read as a quirk of one notice rather than as the rule for every setting.
+
+**Resolved upstream, 0.2.1-alpha.3, and the patch is deleted.** The client no
+longer selects persistence from locality at all: it builds one settings mirror
+with no mode, and browser token authentication is the identity boundary. The
+argument for that is upstream's own —
+[2026-09-15-authenticated-browser-host-preferences.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/bug-fix/2026-09-15-authenticated-browser-host-preferences.md)
+— and it rejects the locality gate in the same terms this section reached:
+*"the gate protected nothing, and locality is request-routing evidence rather
+than identity."*
+
+The one consumer of `$host.isLoopback` left in the shell is the **Open
+configuration file** action in `ui-settings-general`, which upstream describes
+as a presentation choice for pages that cannot see the Host's native editor,
+not a persistence rule. `dsh-sandbox-host` already occupies that seat, so this
+deployment does not offer the gesture either.
+
+So `web/patch-loopback.mjs` and every hook it had are gone, and this repository
+modifies no harness code. What replaced it is the assertion in
+`scripts/check-images.sh`: it reads the settings bundle nginx serves and fails
+if the locality gate comes back. Verified against real bytes rather than
+reasoned about — the 0.1.7 bundle carries `isLoopback ? "host" : "memory"` and
+the 0.2.1 bundle carries neither `isLoopback` nor a persistence mode.
 
 ## A skill installer that writes where you are, not where you live
 
@@ -860,3 +882,95 @@ CSS guard actually matched zero elements, so the title, Conversation/Trajectory
 tabs and trailing actions returned to two rows. The acceptance check measured
 the title and actions but omitted the tabs. The guard now follows the published
 slot nesting, and `verify/verify-sidebar.mjs` measures all three on one row.
+
+## DSH 0.2.1 deleted a service under a patch we override
+
+The 0.2.1 upgrade renamed nothing. Upstream **deleted** the `webRuntime`
+service, and our patch layers had been writing the old name into `inject` on a
+row they already override, so the whole composition stopped activating.
+
+At 0.1.7 the web compilation provided two services. `webStartup`, from
+`dsh-web-app/startup`, carries the parsed command line. `webRuntime`, provided
+by the web plugin itself after the listener bound, existed to sample the
+machine's LAN IPv4 addresses into `trustedHosts` and to hold dependent rows
+back until that sampling finished. Upstream removed it in the "Bind one
+concrete Web address" change: the listener now accepts one concrete address
+literal, and a browser presenting that literal as `Host` is admitted by the
+fence directly, independently of `trustedHosts`. The note's own words for why
+the old shape went: it was "mixing inferred reachability into configured
+trust". The note is
+[2026-09-19-concrete-web-bind-address.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/architecture/2026-09-19-concrete-web-bind-address.md).
+
+This deployment never used either half of that. It binds loopback inside a
+sandbox and reaches it through the tunnel. But both `sandbox/cordis.patch.yml`
+and `sandbox/harvest.patch.yml` *override* the `connection` row — to add the
+`webServer` dependency our own plugins need to register their channels — and an
+override replaces the row's `inject` outright. So when upstream corrected its
+row to `inject: [webStartup]`, our stale `[webRuntime, webServer]` won, and
+`connection` waited forever on a service nothing provides any more.
+
+**The first conclusion was wrong, and wrong in the expensive direction.** The
+boot log said only `1 required plugin did not activate`. The obvious reading
+was "our plugin broke", so the first probe went looking at
+`dsh-gateway-tunnel`. The actual message was in the pending list beneath it:
+eleven rows waiting on `connection`, which was itself waiting on `webRuntime`.
+
+**Why no gate caught it.** A patch layer that matches nothing warns and skips
+rather than failing, so a renamed id is silent. `scripts/check.sh` reads the
+tree, where a stale service name is a valid string. And the failure is at
+activation, not parse: every file loads, every gate passes, and the process
+exits with a required plugin missing.
+
+**The fix** is one token in two files: `webRuntime` becomes `webStartup` in
+both patch layers. The guard has two halves, because the two halves fail
+differently. `scripts/check-images.sh` reads each row our patches override out
+of the published bundle's own `cordis.patch.yml` and fails when a declared
+`inject` list drops a name upstream declared — that is the one that catches a
+rename, and it needs the image because upstream's patch file exists nowhere
+else. `scripts/check-patch-inject.mjs` runs in the tree and holds the two
+layers to each other, which catches a fix applied to one and not the other; it
+would NOT have caught this, since both layers carried the stale name.
+
+## A refresh token was spent on a connection that could not keep it
+
+A tenant who left a tab open came back two days later and was asked for a
+sign-in code again, with nothing in between to explain it. The session plane
+looked healthy: the gateway was up, the account existed, and the same browser
+worked if they signed in and used it that day.
+
+A refresh token rotates. Spending one retires it and returns a replacement to
+whoever spent it, which is what makes signing out take effect and what stops a
+stolen token being useful for long. So a caller that spends one and cannot hand
+the replacement back leaves the browser holding a cookie the store no longer
+honours.
+
+The WebSocket-upgrade path is exactly that caller. It has no response object —
+a handshake's only words are its status line — and it authenticated through the
+same `callerOf` as every other route anyway. A tab's event stream reconnects
+whenever the fifteen-minute access token lapses, so on an idle tab that
+happened repeatedly, and each handshake retired the browser's only refresh
+token and delivered nothing.
+
+**What made it look like a timeout rather than a bug.** The rotation grace
+answers a spent token with its replacement for thirty seconds, so the reconnect
+itself was accepted and the browser believed it was signed in. The replacement
+had gone nowhere, and the one the browser held stopped being honoured two days
+later — past the grace — when the next renewal was attempted. Nothing failed at
+the time, and the only symptom arrived long after the cause, on a page that
+looked fine.
+
+`authenticate` now takes whether the caller can deliver, and refuses **before**
+spending when it cannot; `callerOf` derives that from the response it was given.
+Both handshakes pass no response and are refused rather than rotated, which the
+browser answers by reconnecting after some ordinary request has renewed the
+token. `scripts/check-session-renewal.mjs` drives the real authenticator against
+a store that records what happened, because source text can show a guard exists
+and only that shows it is on the path a handshake takes.
+
+Two smaller things were wrong in the same direction and are fixed with it.
+Signing out called `callerOf(req)` — no response — so a session whose access
+token had lapsed looked signed out and revoked nothing, which is the one case
+the revoke-everywhere below it exists for. And `callerOf` set renewed cookies
+whenever a response was present, without checking whether one had already
+started; headers set after that point are gone, which is the same defect in a
+different disguise.

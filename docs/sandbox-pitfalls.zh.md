@@ -358,7 +358,7 @@ textarea，所以上传会完成、通知也会到达 agent，但定位过程什
 难发现的原因在于：草稿是组合器里插件唯一能写的部分，于是它看起来像是够到模型的唯一途径。而
 inbox 在同一个会话的另一侧，够到它只需要客户端本来就有的 session id。
 
-## 非 loopback 的浏览器，设置不会持久化
+## 设置曾经按页面位置决定是否持久化
 
 租户把主题改成深色，刷新，又变回浅色。没有任何报错，隧道一直连着，沙箱里的
 `~/.dsh/settings.yaml` 始终是 0 字节。
@@ -383,6 +383,21 @@ localhost 访问这套部署的租户，什么偏好都留不住：主题、语�
 
 `dsh-tenant-account` 里本来就留着一条注释，说 onboarding 提示对「通过域名进来的租户」
 留不住。那就是这件事，只是当时被看成某一条提示的怪癖，而不是所有设置的规则。
+
+**上游已在 0.2.1-alpha.3 解决，补丁已删除。** 客户端不再按位置选择持久化：它构造一个不带
+任何模式的设置镜像，身份边界是浏览器令牌认证。上游自己的论证见
+[2026-09-15-authenticated-browser-host-preferences.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/bug-fix/2026-09-15-authenticated-browser-host-preferences.md)，
+它否定位置判断用的理由和本节得出一致：*本闸门没有保护任何东西，位置只是请求路由证据，
+不是身份。*
+
+外壳里剩下的唯一一个 `$host.isLoopback` 消费点是 `ui-settings-general` 里的
+**Open configuration file** 动作；上游明说它是对「看不到宿主原生编辑器」的页面做的呈现选择，
+不是持久化规则。而 `dsh-sandbox-host` 已经占着那个座位，所以本部署也不提供这个手势。
+
+于是 `web/patch-loopback.mjs` 和它的每一个挂钩都已删除，本仓库不再修改 harness 的任何一行。
+取代它的是 `scripts/check-images.sh` 里的断言：读取 nginx 服务的设置 bundle，一旦位置判断
+回来就失败。这是对着真实字节验证的，不是推理出来的——0.1.7 的 bundle 里有
+`isLoopback ? "host" : "memory"`，0.2.1 的 bundle 里既没有 `isLoopback` 也没有持久化模式。
 
 ## 装 skill 的程序写在"你在哪"，而不是"你住哪"
 
@@ -624,3 +639,70 @@ source map 也改为仅含 query 的引用。每个引用都要相对文档或�
 通过，就说明紧凑布局仍然有效。实际共享 CSS 条件一个元素也没有匹配，标题、
 对话／轨迹切换和右侧操作退回两行。原验收只量了标题与操作，漏掉标签。现在
 选择器遵循发布版插槽结构，`verify/verify-sidebar.mjs` 会检查三者处于同一行。
+
+## DSH 0.2.1 在我们覆盖的那一行上删掉了一个服务
+
+0.2.1 升级没有重命名任何东西。上游**删除**了 `webRuntime` 服务，而我们的 patch
+层一直在往一个已经覆盖的行里写旧名字，于是整个组合都不再激活。
+
+0.1.7 时 web 组合提供两个服务。`webStartup` 来自 `dsh-web-app/startup`，承载解析
+后的命令行。`webRuntime` 由 web 插件自己在监听绑定之后提供，作用是把机器的 LAN
+IPv4 地址采样进 `trustedHosts`，并让依赖它的行等到采样完成。上游在“绑定一个具体
+的 Web 地址”那次改动中删掉了它：监听现在只接受一个具体地址字面量，浏览器以该
+字面量作为 `Host` 时由 fence 直接放行，不再经过 `trustedHosts`。上游笔记里对旧
+形态的判词是：它把“推断出的可达性”混进了“配置的信任”。笔记位于
+[2026-09-19-concrete-web-bind-address.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/architecture/2026-09-19-concrete-web-bind-address.md)。
+
+这两半我们从来没用过。本部署在沙箱内绑定 loopback，通过隧道到达。但
+`sandbox/cordis.patch.yml` 和 `sandbox/harvest.patch.yml` 都**覆盖**了
+`connection` 行——为了加上我们自己插件注册通道所需的 `webServer` 依赖——而覆盖
+会整份替换该行的 `inject`。于是当上游把它自己的行改成 `inject: [webStartup]`
+时，我们过期的 `[webRuntime, webServer]` 赢了，`connection` 永久等待一个已经不
+存在的服务。
+
+**第一个结论是错的，而且错在最费时间的方向上。** 启动日志只说了
+`1 required plugin did not activate`。最直观的读法是“我们的插件坏了”，于是第一次
+排查去看 `dsh-gateway-tunnel`。真正的信息在它下面的 pending 列表里：十一行在等
+`connection`，而 `connection` 自己在等 `webRuntime`。
+
+**为什么没有门禁拦住它。** patch 层匹配不到时只 warn 然后跳过，不会失败，所以
+被改名的 id 是静默的。`scripts/check.sh` 读的是树，而过期的服务名在树里是一个
+合法字符串。而且失败发生在激活阶段而非解析阶段：每个文件都能加载，每个门禁都
+通过，进程带着一个缺失的必需插件退出。
+
+**修法**是两个文件里各一个 token：两处 patch 层的 `webRuntime` 改成
+`webStartup`。门禁分两半，因为两半的失效方式不同。`scripts/check-images.sh`
+从发布包自带的 `cordis.patch.yml` 读出我们覆盖的每一行，当显式写出的 `inject`
+列表丢掉了上游声明的某个名字时失败——能抓住改名的是它，而它需要镜像，因为上游
+的 patch 文件只存在于镜像里。`scripts/check-patch-inject.mjs` 在树里跑，让两个
+层彼此对齐，抓的是"只改了其中一份"；这次它抓不到，因为两层带着同样的过期名字。
+
+## 刷新令牌被花在了一条留不住它的连接上
+
+一个租户留着标签页没关，两天后回来，又被要求输入登录验证码，中间没有任何东西能解释这件事。
+会话面看上去是健康的：网关在跑，账号存在，同一个浏览器当天登录并使用也一切正常。
+
+刷新令牌是会轮换的。花掉一个就作废它，并把替换品交回给花掉它的那一方——这正是"登出"能立刻
+生效、以及被盗的令牌不会长期有用的原因。所以一个花掉了它、却无法把替换品交回去的调用者，会让
+浏览器手里攥着一个存储层已经不再承认的 cookie。
+
+WebSocket 握手这条路径正是这样的调用者。它没有响应对象——握手的全部话语只有它的状态行——可它
+还是和其他每一条路由一样，走同一个 `callerOf` 完成认证。一个标签页的事件流会在十五分钟的
+access token 过期时重连，所以在闲置的标签页上这件事反复发生，而每一次握手都作废了浏览器唯一
+那个 refresh token，并什么都没交回去。
+
+**是什么让它看起来像超时而不是 bug。** 轮换宽限期会在三十秒内用一个已花掉的令牌换回它的替换品，
+所以重连本身是被接受的，浏览器也以为自己还是登录状态。替换品去了没人知道的地方，而浏览器手里
+那一个在两天后——过了宽限期——下一次续期时不再被承认。当时没有任何东西失败，唯一的症状在原因
+之后很久才出现，出现在一个看起来毫无问题的页面上。
+
+现在 `authenticate` 会接收"这个调用者能否交付"，并在**花掉之前**就拒绝那些不能交付的；
+`callerOf` 从它拿到的响应推出这件事。两个握手都不传响应，于是它们被拒绝而不是被轮换——浏览器
+会在某个普通请求完成续期之后重连回去。`scripts/check-session-renewal.mjs` 用真实
+authenticator 去跑一个会记录发生了什么的存储层，因为源码文本只能证明守卫存在，只有这样才能证明
+它在握手实际走的那条路径上。
+
+同一个方向还有两处更小的问题，一并修好了。登出时调的是 `callerOf(req)`——没有响应——所以
+access token 已经失效的会话看起来像"已登出"，却什么都没吊销；而那恰恰是它下面那段"吊销所有
+会话"存在的唯一场景。另外 `callerOf` 只要响应存在就设置续期 cookie，没检查响应是否已经开始；
+在那之后设置的 header 会丢失，这是同一个缺陷换了副面孔。

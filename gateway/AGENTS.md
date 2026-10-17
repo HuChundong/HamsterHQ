@@ -22,6 +22,19 @@ response. A route that authenticates directly gets the right answer and drops
 the renewal, which logs the browser out on its next request — the failure
 arrives one request later than the mistake, on a page that looks fine.
 
+**A caller with no response must be `callerOf(req)` with nothing else, and that
+is a decision rather than a shorthand.** Rotation retires the token it was
+given, so a caller that cannot deliver the replacement must not spend one:
+`callerOf` derives that from its second argument, and `authenticate` refuses
+before touching the store. The two WebSocket handshakes are the callers this
+applies to — a handshake's only words are its status line — and getting it
+wrong is the failure above with a longer fuse. A tab's event stream reconnects
+after the fifteen-minute access token lapses; the handshake spent the browser's
+only refresh token and delivered nothing, and the person met it two days later,
+past the rotation grace, as a sign-in prompt. Nothing failed at the time, which
+is why `scripts/check-session-renewal.mjs` runs the real authenticator rather
+than reading the guard's text.
+
 The `renewedAsHeaders` form exists for nginx's `auth_request`, which discards a
 subrequest's own `Set-Cookie`. The one variable that can carry a header back,
 `$upstream_http_set_cookie`, keeps only the first of several with the same name,

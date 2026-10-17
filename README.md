@@ -21,9 +21,8 @@ A multi-tenant cloud deployment of [DSH](https://github.com/deepseek-ai/deepseek
 an independently deployed frontend, an authenticating gateway, and one dsh
 backend per logged-in user, each with its own persistent volume.
 
-DSH itself is a dependency, installed from npm. Aside from the one
-build-gated patch in `web/patch-loopback.mjs`, the harness is not modified.
-What this project adds to it, it adds as cordis plugins.
+DSH itself is a dependency, installed from npm, and the harness is not
+modified: what this project adds to it, it adds as cordis plugins.
 
 ![HamsterHQ](docs/assets/screenshot-landing.webp)
 

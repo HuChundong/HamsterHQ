@@ -22,24 +22,28 @@ says so.
 If the harness genuinely cannot do what is needed, the answer is an upstream
 issue and a documented limitation here — not a patch layer that silently forks.
 
-**There is exactly one exception, and it is `web/patch-loopback.mjs`.** DSH
-decides whether the settings plane is reachable from `location.hostname`, so
-every tenant of a deployment reached by a domain name keeps no preference at
-all — not the theme, not the language, not the conversation settings.
-Since 0.1.2-alpha.2, upstream authenticates even loopback RPC, but the browser
-still chooses memory persistence by hostname. The gateway authenticates tenants,
-and the tunnel obtains a separate local DSH session through Connection's public
-methods; the browser's hostname check still prevents these accepted writes.
-Configuration cannot express it, composition cannot reorder around
-it, and flipping the flag from a plugin lands after `ui-theme` has already
-bound. The script carries the full argument and the evidence for each of those.
+**There used to be exactly one exception, and it is gone.** Through 0.2.0 the
+client chose `memory` persistence from the page's own `location.hostname`, so
+every tenant of a deployment reached by a domain name kept no preference at
+all — not the theme, not the language, not the conversation settings. The
+gateway authenticates tenants and the tunnel obtains a separate local DSH
+session through Connection's public methods, but the browser judged its own
+address bar, which no amount of forwarding changes; no plugin could fix it,
+because `ui-theme` had already bound by the time one could flip the flag. That
+left `web/patch-loopback.mjs`, a build-gated edit to one published expression.
 
-Two things keep it from becoming a habit. It fails the image build when it stops
-matching, rather than letting a release ship with settings quietly back in
-memory; and `scripts/check-images.sh` asserts it against the bytes nginx will
-serve. **Add nothing beside it.** A second patch is a sign this project has
-started forking the harness, which is the thing the rule above exists to
-prevent — and the first one is only here because upstream is closed to it.
+0.2.1-alpha.3 removed the decision instead of reshaping it. Persistence no
+longer consults page locality at all — the settings client takes no mode, and
+browser token authentication is the identity boundary. The patch and every hook
+it had are deleted; the argument above is kept only so the next reader does not
+re-derive it. **Nothing in this repository modifies the harness now**, and the
+rule at the top of this file holds without an exception.
+
+What replaced the patch is an assertion, not an edit: `scripts/check-images.sh`
+reads the served settings bundle and fails if a release brings the locality gate
+back. That is the shape to reach for if another surface turns out to be
+unreachable from a domain — an upstream fix, and a check that notices its
+return, rather than a patch that silently forks.
 
 ## Everything added to DSH is a cordis plugin
 
