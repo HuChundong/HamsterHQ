@@ -136,6 +136,53 @@ sections=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
 ' 2>/dev/null || echo 0)
 check 'the harness still names both sections the prompt plugin rewrites' 2 "$sections"
 
+# Every service our patch layers inject on a row they override is one the
+# published bundle's own patch injects there too.
+#
+# An override replaces a row's top-level `inject` list outright rather than
+# adding to it, so a name upstream renames or drops goes stale exactly inside
+# our copy — and the composition then waits forever on a service nothing
+# provides. That is what 0.2.1 did to `webRuntime`, and the only symptom was
+# `1 required plugin did not activate` with eleven rows pending on `connection`
+# underneath it. `scripts/check-patch-inject.mjs` holds the two layers to each
+# other; this holds both to upstream, whose patch exists only in the image.
+#
+# The harvest layer ships in no image — it is a build-time input to the web
+# stage — so it is mounted here and read beside the sandbox's own copy.
+injects=$(docker run --rm --entrypoint node \
+  -v "$(git rev-parse --show-toplevel)/sandbox/harvest.patch.yml:/patch/harvest.patch.yml:ro" \
+  "$SANDBOX" -e '
+  const { readFileSync, readdirSync } = require("node:fs")
+  const { join } = require("node:path")
+  const { parse } = require("yaml")
+  const rows = (list) => list.flatMap((row) => [
+    ...(row.id === undefined ? [] : [row]),
+    ...(Array.isArray(row.insert) ? rows(row.insert) : []),
+  ])
+  // One row per id: the Loader keeps the last declaration, and so does this.
+  const upstream = new Map()
+  for (const dir of readdirSync("/app/node_modules/@deepseek-ai")) {
+    let text
+    try { text = readFileSync(join("/app/node_modules/@deepseek-ai", dir, "cordis.patch.yml"), "utf8") } catch { continue }
+    for (const row of rows(parse(text) ?? [])) if (row.id) upstream.set(row.id, row)
+  }
+  const problems = []
+  for (const file of ["/app/sandbox/cordis.patch.yml", "/patch/harvest.patch.yml"]) {
+    for (const row of rows(parse(readFileSync(file, "utf8")) ?? [])) {
+      const source = upstream.get(row.id)
+      if (source === undefined) continue
+      // Only a DECLARED inject replaces the list upstream declared; omitting
+      // the key leaves whatever the bundle put there. web-runtime is the
+      // example: our row sets two config values and no inject at all.
+      if (row.inject === undefined) continue
+      const dropped = (source.inject ?? []).filter((name) => !row.inject.includes(name))
+      if (dropped.length > 0) problems.push(file + ": " + row.id + " drops " + dropped.join(","))
+    }
+  }
+  console.log(problems.length === 0 ? "intact" : "dropped: " + problems.join("; "))
+' 2>/dev/null || echo error)
+check 'both patch layers inject every service upstream injects on those rows' intact "$injects"
+
 # Resolved through `dsh.client.main` rather than assumed to be `client.js`,
 # because one of these is BUILT: the panel bundles xterm and ships
 # `lib/client.js`, which is gitignored and produced during the image build. A

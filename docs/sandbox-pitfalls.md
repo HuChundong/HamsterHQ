@@ -860,3 +860,51 @@ CSS guard actually matched zero elements, so the title, Conversation/Trajectory
 tabs and trailing actions returned to two rows. The acceptance check measured
 the title and actions but omitted the tabs. The guard now follows the published
 slot nesting, and `verify/verify-sidebar.mjs` measures all three on one row.
+
+## DSH 0.2.1 deleted a service under a patch we override
+
+The 0.2.1 upgrade renamed nothing. Upstream **deleted** the `webRuntime`
+service, and our patch layers had been writing the old name into `inject` on a
+row they already override, so the whole composition stopped activating.
+
+At 0.1.7 the web compilation provided two services. `webStartup`, from
+`dsh-web-app/startup`, carries the parsed command line. `webRuntime`, provided
+by the web plugin itself after the listener bound, existed to sample the
+machine's LAN IPv4 addresses into `trustedHosts` and to hold dependent rows
+back until that sampling finished. Upstream removed it in the "Bind one
+concrete Web address" change: the listener now accepts one concrete address
+literal, and a browser presenting that literal as `Host` is admitted by the
+fence directly, independently of `trustedHosts`. The note's own words for why
+the old shape went: it was "mixing inferred reachability into configured
+trust". The note is
+[2026-09-19-concrete-web-bind-address.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/architecture/2026-09-19-concrete-web-bind-address.md).
+
+This deployment never used either half of that. It binds loopback inside a
+sandbox and reaches it through the tunnel. But both `sandbox/cordis.patch.yml`
+and `sandbox/harvest.patch.yml` *override* the `connection` row — to add the
+`webServer` dependency our own plugins need to register their channels — and an
+override replaces the row's `inject` outright. So when upstream corrected its
+row to `inject: [webStartup]`, our stale `[webRuntime, webServer]` won, and
+`connection` waited forever on a service nothing provides any more.
+
+**The first conclusion was wrong, and wrong in the expensive direction.** The
+boot log said only `1 required plugin did not activate`. The obvious reading
+was "our plugin broke", so the first probe went looking at
+`dsh-gateway-tunnel`. The actual message was in the pending list beneath it:
+eleven rows waiting on `connection`, which was itself waiting on `webRuntime`.
+
+**Why no gate caught it.** A patch layer that matches nothing warns and skips
+rather than failing, so a renamed id is silent. `scripts/check.sh` reads the
+tree, where a stale service name is a valid string. And the failure is at
+activation, not parse: every file loads, every gate passes, and the process
+exits with a required plugin missing.
+
+**The fix** is one token in two files: `webRuntime` becomes `webStartup` in
+both patch layers. The guard has two halves, because the two halves fail
+differently. `scripts/check-images.sh` reads each row our patches override out
+of the published bundle's own `cordis.patch.yml` and fails when a declared
+`inject` list drops a name upstream declared — that is the one that catches a
+rename, and it needs the image because upstream's patch file exists nowhere
+else. `scripts/check-patch-inject.mjs` runs in the tree and holds the two
+layers to each other, which catches a fix applied to one and not the other; it
+would NOT have caught this, since both layers carried the stale name.

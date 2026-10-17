@@ -50,6 +50,7 @@ for check in \
   scripts/check-service-env.mjs \
   scripts/check-paging.mjs \
   scripts/check-deployment-prompt.mjs \
+  scripts/check-patch-inject.mjs \
   scripts/check-computer-action.mjs \
   scripts/check-profile-storage.mjs \
   scripts/check-computer-layout.mjs \

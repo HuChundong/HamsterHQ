@@ -624,3 +624,40 @@ source map 也改为仅含 query 的引用。每个引用都要相对文档或�
 通过，就说明紧凑布局仍然有效。实际共享 CSS 条件一个元素也没有匹配，标题、
 对话／轨迹切换和右侧操作退回两行。原验收只量了标题与操作，漏掉标签。现在
 选择器遵循发布版插槽结构，`verify/verify-sidebar.mjs` 会检查三者处于同一行。
+
+## DSH 0.2.1 在我们覆盖的那一行上删掉了一个服务
+
+0.2.1 升级没有重命名任何东西。上游**删除**了 `webRuntime` 服务，而我们的 patch
+层一直在往一个已经覆盖的行里写旧名字，于是整个组合都不再激活。
+
+0.1.7 时 web 组合提供两个服务。`webStartup` 来自 `dsh-web-app/startup`，承载解析
+后的命令行。`webRuntime` 由 web 插件自己在监听绑定之后提供，作用是把机器的 LAN
+IPv4 地址采样进 `trustedHosts`，并让依赖它的行等到采样完成。上游在“绑定一个具体
+的 Web 地址”那次改动中删掉了它：监听现在只接受一个具体地址字面量，浏览器以该
+字面量作为 `Host` 时由 fence 直接放行，不再经过 `trustedHosts`。上游笔记里对旧
+形态的判词是：它把“推断出的可达性”混进了“配置的信任”。笔记位于
+[2026-09-19-concrete-web-bind-address.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/architecture/2026-09-19-concrete-web-bind-address.md)。
+
+这两半我们从来没用过。本部署在沙箱内绑定 loopback，通过隧道到达。但
+`sandbox/cordis.patch.yml` 和 `sandbox/harvest.patch.yml` 都**覆盖**了
+`connection` 行——为了加上我们自己插件注册通道所需的 `webServer` 依赖——而覆盖
+会整份替换该行的 `inject`。于是当上游把它自己的行改成 `inject: [webStartup]`
+时，我们过期的 `[webRuntime, webServer]` 赢了，`connection` 永久等待一个已经不
+存在的服务。
+
+**第一个结论是错的，而且错在最费时间的方向上。** 启动日志只说了
+`1 required plugin did not activate`。最直观的读法是“我们的插件坏了”，于是第一次
+排查去看 `dsh-gateway-tunnel`。真正的信息在它下面的 pending 列表里：十一行在等
+`connection`，而 `connection` 自己在等 `webRuntime`。
+
+**为什么没有门禁拦住它。** patch 层匹配不到时只 warn 然后跳过，不会失败，所以
+被改名的 id 是静默的。`scripts/check.sh` 读的是树，而过期的服务名在树里是一个
+合法字符串。而且失败发生在激活阶段而非解析阶段：每个文件都能加载，每个门禁都
+通过，进程带着一个缺失的必需插件退出。
+
+**修法**是两个文件里各一个 token：两处 patch 层的 `webRuntime` 改成
+`webStartup`。门禁分两半，因为两半的失效方式不同。`scripts/check-images.sh`
+从发布包自带的 `cordis.patch.yml` 读出我们覆盖的每一行，当显式写出的 `inject`
+列表丢掉了上游声明的某个名字时失败——能抓住改名的是它，而它需要镜像，因为上游
+的 patch 文件只存在于镜像里。`scripts/check-patch-inject.mjs` 在树里跑，让两个
+层彼此对齐，抓的是"只改了其中一份"；这次它抓不到，因为两层带着同样的过期名字。
