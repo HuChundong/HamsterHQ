@@ -636,6 +636,17 @@ is chosen at image build by `BROWSER_SOURCE`:
   aligned with that identity without a second Chromium rebuild when a
   deployment changes locale.
 
+- **`none`** (local only) — ship nothing, for a checkout being exercised for
+  its gateway, its frontend, or a page. The default path downloads about
+  110 MB to produce an engine nothing in that work asks for, and on a slow
+  mirror it is the longest step by far. `start-browser.sh` already treats an
+  absent engine as a quiet no rather than a failure, so the sandbox still
+  serves its tenant; what the tenant loses is the page its agent would have
+  opened. The image records its choice in `/etc/dsh-browser-source`, and
+  `scripts/check-images.sh` reports the engine checks as skipped rather than
+  failing them — while a build that asked for an engine still gets the full
+  set. This is the same shape as an empty `AGENT_PYTHON_PACKAGES`.
+
 It replaced Obscura, an independent 30 MB engine chosen for memory, and the
 replacement was decided by measurement rather than preference. Two things
 were measured that no configuration could fix. Obscura rasterizes text only

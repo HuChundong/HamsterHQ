@@ -245,10 +245,19 @@ check 'every tool the image promises resolves' '' "$missing"
 MODULES="pandas duckdb sqlalchemy openpyxl xlsxwriter xlrd pyxlsb odf"
 MODULES="$MODULES pdfplumber PIL matplotlib lxml bs4 markdownify jinja2"
 MODULES="$MODULES magic py7zr rarfile requests"
-stack=$(docker run --rm --entrypoint python3 -e "MODULES=$MODULES" "$SANDBOX" \
-  -c 'import importlib.util, os; names = os.environ["MODULES"].split(); missing = [n for n in names if importlib.util.find_spec(n) is None]; print(" ".join(missing) if missing else "all")' \
-  2>/dev/null || echo docker-error)
-check 'the python stack imports' all "$stack"
+# A build that announced a bare environment is not a broken one. The image
+# records which it is, so the check reports the choice instead of the four
+# dozen import failures it looks like — the signal the tenant build still has
+# to satisfy, without the noise a local build would otherwise produce.
+python_mode=$(docker run --rm --entrypoint cat "$SANDBOX" /etc/dsh-python-stack 2>/dev/null || echo missing)
+if [ "$python_mode" = bare ]; then
+  printf '  \033[33mSKIP\033[0m  %-52s %s\n' 'the python stack imports' 'built bare (AGENT_PYTHON_PACKAGES empty)'
+else
+  stack=$(docker run --rm --entrypoint python3 -e "MODULES=$MODULES" "$SANDBOX" \
+    -c 'import importlib.util, os; names = os.environ["MODULES"].split(); missing = [n for n in names if importlib.util.find_spec(n) is None]; print(" ".join(missing) if missing else "all")' \
+    2>/dev/null || echo docker-error)
+  check 'the python stack imports' all "$stack"
+fi
 
 # pip must install into the virtualenv, not fail against Debian's externally
 # managed system Python — the whole reason the venv is there.
@@ -285,32 +294,51 @@ check 'the officecli skill is where dsh will look' ok "$skill"
 # naming that port. A CLI with no configuration launches a Chromium this image
 # deliberately does not carry, and says so only at the moment a tenant asked
 # for a page.
-# 'Chrom' matches both engines this image may ship: Playwright's shell
-# announces "Chromium …", and so does the anti-detect full build.
-browser=$(docker run --rm --entrypoint /usr/local/bin/headless-shell "$SANDBOX" --version 2>/dev/null | head -1 | grep -c 'Chrom' || echo 0)
-check 'the browser engine runs' 1 "$browser"
+#
+# A build that announced no engine is not a broken one, so the stamp decides
+# which question is asked — the same shape as the python stack above. What a
+# local build gives up is the agent's page, which is exactly what it asked for.
+browser_mode=$(docker run --rm --entrypoint cat "$SANDBOX" /etc/dsh-browser-source 2>/dev/null || echo missing)
+if [ "$browser_mode" = none ]; then
+  printf '  \033[33mSKIP\033[0m  %-52s %s\n' 'the browser engine runs' 'built without one (BROWSER_SOURCE=none)'
+else
+  # 'Chrom' matches both engines this image may ship: Playwright's shell
+  # announces "Chromium …", and so does the anti-detect full build.
+  browser=$(docker run --rm --entrypoint /usr/local/bin/headless-shell "$SANDBOX" --version 2>/dev/null | head -1 | grep -c 'Chrom' || echo 0)
+  check 'the browser engine runs' 1 "$browser"
+fi
 
 # Run the real launch path — the script the entrypoint runs on every backend
 # boot — and ask whether 9222 answers afterwards. A script that quietly
 # starts nothing (a missing tuning file, an engine the flags no longer fit)
 # is a sandbox whose agent has no browser, discovered here instead of by the
 # first tenant to ask for a page.
-warm=$(docker run --rm --entrypoint bash "$SANDBOX" -c '
-  /app/sandbox/start-browser.sh || { echo start-failed; exit 0; }
-  for _ in $(seq 40); do
-    curl -sf http://127.0.0.1:9222/json/version > /dev/null && { echo ok; exit 0; }
-    sleep 0.5
-  done
-  echo never-listened
-' 2>/dev/null || echo error)
-check 'the browser start script leaves the CDP port answering' ok "$warm"
+if [ "$browser_mode" = none ]; then
+  printf '  \033[33mSKIP\033[0m  %-52s %s\n' 'the browser start script leaves the CDP port answering' 'no engine to start'
+  printf '  \033[33mSKIP\033[0m  %-52s %s\n' 'the browser CLI is wired to it' 'no engine to reach'
+else
+  # Run the real launch path — the script the entrypoint runs on every backend
+  # boot — and ask whether 9222 answers afterwards. A script that quietly
+  # starts nothing (a missing tuning file, an engine the flags no longer fit)
+  # is a sandbox whose agent has no browser, discovered here instead of by the
+  # first tenant to ask for a page.
+  warm=$(docker run --rm --entrypoint bash "$SANDBOX" -c '
+    /app/sandbox/start-browser.sh || { echo start-failed; exit 0; }
+    for _ in $(seq 40); do
+      curl -sf http://127.0.0.1:9222/json/version > /dev/null && { echo ok; exit 0; }
+      sleep 0.5
+    done
+    echo never-listened
+  ' 2>/dev/null || echo error)
+  check 'the browser start script leaves the CDP port answering' ok "$warm"
 
-cli=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
-  command -v playwright-cli > /dev/null || { echo no-cli; exit 0; }
-  test -f /opt/playwright-cli.config.json || { echo no-config; exit 0; }
-  grep -q "cdpEndpoint" /opt/playwright-cli.config.json && echo ok || echo config-names-no-endpoint
-' 2>/dev/null || echo error)
-check 'the browser CLI is wired to it' ok "$cli"
+  cli=$(docker run --rm --entrypoint sh "$SANDBOX" -c '
+    command -v playwright-cli > /dev/null || { echo no-cli; exit 0; }
+    test -f /opt/playwright-cli.config.json || { echo no-config; exit 0; }
+    grep -q "cdpEndpoint" /opt/playwright-cli.config.json && echo ok || echo config-names-no-endpoint
+  ' 2>/dev/null || echo error)
+  check 'the browser CLI is wired to it' ok "$cli"
+fi
 
 # Same two questions as OfficeCLI's skill, and for the same reason: this one is
 # also written by the tool at build time, so its absence is silent.

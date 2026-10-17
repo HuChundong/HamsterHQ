@@ -443,6 +443,14 @@ wheel 都有对应平台的预编译版，而从源码构建是唯一需要租�
 - **`playwright`**（默认，CI 构建用）—— chrome-headless-shell，Playwright 自己固定版本的无界面 Chromium，由固定版本的 `@playwright/cli` 内置的那份 Playwright 安装，所以引擎正好是这个 CLI 版本所期待的构建。下载源是 npmmirror，因为这个仓库在中国境内构建，Playwright 默认的 CDN 正是会失败的那一步——和 OfficeCLI 走 CDN 是同一个原因。
 - **`antidetect`**（带有补丁二进制的生产主机构建用）——在该主机上编好的完整 Chromium，带反爬补丁（`navigator.webdriver` 恒为 false、产品名里没有 `Headless`、关掉自动化与坏 flag 的 infobar）。构建镜像前，主机把**最近一次**编译产出的 `chrome-dist/` rsync 进 `sandbox/browser-engine/`（见 [docs/cubesandbox.zh.md](cubesandbox.zh.md)）——不要从过期的打包镜像再抄一份。git 里这个目录只有占位——329 MB 从不入库。轻量沙箱仍然不带 VNC / noVNC / horust，并在 `browser-flags` 里保留 `--disable-gpu`（没有 X；ANGLE+SwiftShader 会让 GPU 进程崩溃循环）。**desktop** 镜像（`hamsterhq-desktop`）才是 TigerVNC + KDE Plasma X11 + noVNC 回来的地方——4 CPU / 8 GiB，冻进 Cube 模板——有头 Chrome 用 `desktop-chrome-flags`。这份 Linux 构建还会在编译期固化一套自洽的 Windows 桌面身份（经典 UA、Client Hints 的 platform/version、`NavigatorBase` 里冻结后的 `navigator.platform`、hardwareConcurrency、deviceMemory），因为拦 Linux 的站点读的是这些底层表面，不是页面脚本能改的那一层。语言和时区仍跟进程走（`--lang=zh-CN`，`start-browser.sh` 里的 `TZ=Asia/Shanghai`），这样换部署的语言不必再编一次 Chromium，又能和那套身份对齐。
 
+- **`none`**（仅本地）——什么都不装，给那些只为网关、前端或页面而做的本地构建用。
+  默认路径要下载约 110 MB，去产出一个这些工作根本用不到的引擎，而在慢镜像源上它是
+  耗时最长的一步。`start-browser.sh` 本来就把引擎缺失当成安静的"没有"而不是失败，
+  所以沙箱照常服务租户；租户失去的是 agent 本可以打开的那个页面。镜像把它的选择记在
+  `/etc/dsh-browser-source`，`scripts/check-images.sh` 会把引擎相关的检查报成跳过而
+  不是失败——而正常要求引擎的构建仍然跑完整那套。这和 `AGENT_PYTHON_PACKAGES` 留空
+  是同一个形状。
+
 它取代了 Obscura——一个为内存而选的 30 MB 独立引擎——而这次替换是量出来的，不是
 偏好。量出了两件配置无法修复的事。Obscura 光栅化文字只用内嵌在二进制里的
 Liberation 字体：把字体挂进 `/usr/share/fonts` 和 `~/.fonts` 都没有任何变化，二

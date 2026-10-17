@@ -326,7 +326,8 @@ RUN python3 -m venv "$VIRTUAL_ENV" \
        echo 'build: AGENT_PYTHON_PACKAGES is empty; the agent gets a bare environment'; \
      fi \
   && find "$VIRTUAL_ENV" -name '__pycache__' -type d -prune -exec rm -rf {} + \
-  && rm -rf /root/.cache/pip
+  && rm -rf /root/.cache/pip \
+  && if [ -n "$AGENT_PYTHON_PACKAGES" ]; then echo full > /etc/dsh-python-stack; else echo bare > /etc/dsh-python-stack; fi
 
 # Matplotlib without a display, and with a writable place for its font cache.
 # Absent both, the first chart an agent draws either fails to pick a backend or
@@ -402,6 +403,13 @@ RUN set -eux; \
 #                  which a production host fills from its latest chrome-dist/
 #                  before the build (see docs/cubesandbox.md). The directory
 #                  in git holds only a placeholder — 329 MB never lands here.
+#   none         (local only)  — ship no engine at all. For a checkout being
+#                  exercised for its gateway, its frontend, or a page, where
+#                  nothing asks the agent to open one. `start-browser.sh`
+#                  already treats the absence as a quiet no, so the sandbox
+#                  serves its tenant; what a tenant loses is the page the agent
+#                  would have opened. `scripts/check-images.sh` says so rather
+#                  than reporting the four failures a missing engine looks like.
 #
 # Either way the binary is reached as `/usr/local/bin/headless-shell`, so
 # the start script, the image check and the conformance probe do not care
@@ -432,6 +440,10 @@ RUN set -eux; \
         ln -s /opt/chrome/chrome /usr/local/bin/headless-shell; \
         ln -s /opt/chrome/chrome /usr/local/bin/chrome; \
         ;; \
+      none) \
+        rm -rf /tmp/chrome-candidate; \
+        echo "build: BROWSER_SOURCE=none; this image ships no browser engine"; \
+        ;; \
       playwright) \
         rm -rf /tmp/chrome-candidate; \
         PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD= \
@@ -443,11 +455,12 @@ RUN set -eux; \
         ln -s "$shell_bin" /usr/local/bin/headless-shell; \
         ;; \
       *) \
-        echo "BROWSER_SOURCE must be playwright or antidetect, got: $BROWSER_SOURCE" >&2; \
+        echo "BROWSER_SOURCE must be playwright, antidetect or none, got: $BROWSER_SOURCE" >&2; \
         exit 1; \
         ;; \
     esac; \
-    /usr/local/bin/headless-shell --version
+    printf '%s\n' "$BROWSER_SOURCE" > /etc/dsh-browser-source; \
+    if [ "$BROWSER_SOURCE" != none ]; then /usr/local/bin/headless-shell --version; fi
 
 # The skill that tells an agent how to drive it, written by the CLI itself for
 # the same reason OfficeCLI's is: a copy kept here would be a second source of
