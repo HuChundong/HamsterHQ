@@ -706,3 +706,64 @@ authenticator 去跑一个会记录发生了什么的存储层，因为源码文
 access token 已经失效的会话看起来像"已登出"，却什么都没吊销；而那恰恰是它下面那段"吊销所有
 会话"存在的唯一场景。另外 `callerOf` 只要响应存在就设置续期 cookie，没检查响应是否已经开始；
 在那之后设置的 header 会丢失，这是同一个缺陷换了副面孔。
+
+## 停在 BUILT 的模板，会挡住那个能清掉它的删除操作
+
+清理旧的 Cube 模板时，有一条卡成了死锁。它在 `template list` 里看着和大家一样，状态 `BUILT`，
+但每一次删除都只回两句话，而且都没给出下一步：
+
+```
+cubemastercli run fail: template attempt is already in progress:
+template <id> deletion is blocked while a build job is still active
+```
+
+在此之前有两个错误结论，都花了时间。第一个是"客户端进程没退"：我们早先那个 `template watch`
+还挂在这个 job 上，所以最自然的读法是那个 watcher 占着 attempt。把它 kill 掉，毫无变化。
+第二个是 Redis —— lifecycle manager 配了 Redis 地址，于是假定锁在那边。按 job id 和 template
+id 各 `KEYS` 一遍，一个 key 都没有。
+
+状态其实在 Cube 自己的 MySQL 里，库名 `cube_mvp`，横跨四张表，而**正是行的形状把两种情况区分开**：
+
+- `t_cube_template_image_job` —— 每次构建尝试一行，带 `status`、`phase`、
+  `expected_node_count`、`ready_node_count`、`failed_node_count`。
+- `t_cube_template_definition` —— 模板本体。
+- `t_cube_template_replica` —— 每个持有它的节点一行。
+- `t_cube_rootfs_artifact` —— 每次构建产出的 ext4。
+
+健康的模板四张表是对得上的：job `READY`，`expected 1 / ready 1`，一条 definition，一条 replica。
+而这一条**只剩 job 行**。它的 definition 和 replica 早就不在了，所以除了那个正在拒绝删除的行，
+已经没有别的东西可删——而那一行写着 `expected 0 / ready 0 / failed 0`，`artifact_status: READY`，
+`distribution: 0/0`。它从来没有被放到任何节点上。挡住删除的就是这个 job 自己的非终态状态，
+而它是唯一还站着的东西。
+
+**真正值得留下的是：怎么把这种情况和一次诚实的失败区分开。** 同一天早些时候确实失败过一次，
+而它看起来完全不同：`template info` 有节点行、`STATUS FAILED`、带真实错误
+（`rpc error: code = DeadlineExceeded`）。那个删得干干净净。卡住的这个，`template info`
+**连一行节点都没有**——这也正是为什么 `set-alias`、`redo`、`merge` 对一个列表里还显示着的条目
+全部回 `template not found`。一条没有 definition、没有 replica、节点 `0/0` 的列表条目，
+实际上从未成为一个模板。
+
+修法是：把那一行的状态改成它真正应得的状态，再让工具去删：
+
+```sh
+# 动手前先确认它就是这个孤儿形态：节点 0/0，且没有节点行。
+cubemastercli template info <id>
+docker exec cube-sandbox-mysql sh -c "mysqldump -uroot -p\$MYSQL_ROOT_PASSWORD \
+  cube_mvp t_cube_template_image_job --where=\"template_id = '<id>'\" > /tmp/orphan-job.sql"
+docker exec cube-sandbox-mysql sh -c "mysql -uroot -p\$MYSQL_ROOT_PASSWORD cube_mvp -e \
+  \"UPDATE t_cube_template_image_job SET status='FAILED', \
+   error_message='never distributed to a node (0/0)' \
+   WHERE job_id='<job-id>' AND status='BUILT' AND expected_node_count=0\""
+cubemastercli template delete <id>
+```
+
+`WHERE` 指名了孤儿形态，所以一个有节点的 job 不可能被它命中。先 dump 那一行，是为了让这次状态
+变更可被复核，而不是靠记忆。
+
+清理本身有两点。删模板**不会**把镜像从 registry 里删掉——`2026-09-23` 以及更早的 tag 事后都还在
+——所以退役模板并不会关掉回滚路径；回滚是从保留的镜像重建。另外，那个卡住构建产出的 ext4 会被留成
+`CLEANUP_PENDING`，`gc_deadline` 大约在一周后，交给 Cube 自己的收集器。**不要手动删那个文件**：
+表才是"它相对于谁算垃圾"的依据，删掉收集器还在等的字节，就是一个存储状态变得无法恢复的方式。
+
+这些都没有任何东西强制执行。它是一套针对活着的 Cube 安装的运维流程，不是这棵树的属性，所以
+`scripts/` 里没有对应的检查——判据是行的形状，而它只能被读出来。

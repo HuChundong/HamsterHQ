@@ -974,3 +974,79 @@ the revoke-everywhere below it exists for. And `callerOf` set renewed cookies
 whenever a response was present, without checking whether one had already
 started; headers set after that point are gone, which is the same defect in a
 different disguise.
+
+## A template stuck at BUILT blocks the deletion that would clear it
+
+Retiring old Cube templates turned into a deadlock on one entry. It appeared in
+`template list` like any other, at `BUILT`, but every attempt to remove it came
+back with two sentences that name no way forward:
+
+```
+cubemastercli run fail: template attempt is already in progress:
+template <id> deletion is blocked while a build job is still active
+```
+
+Two wrong conclusions came first, and both cost time. The first was a stale
+client: an older `template watch` of ours was still running against that job,
+so the obvious reading was that the watcher held the attempt. Killing it
+changed nothing. The second was Redis — the lifecycle manager carries a Redis
+address, so the lock was assumed to live there. `KEYS` for both the job id and
+the template id returned nothing at all.
+
+The state is in Cube's own MySQL, database `cube_mvp`, across four tables, and
+the shape of the rows is what tells the two cases apart:
+
+- `t_cube_template_image_job` — one row per build attempt, with `status`,
+  `phase`, `expected_node_count`, `ready_node_count`, `failed_node_count`.
+- `t_cube_template_definition` — the template itself.
+- `t_cube_template_replica` — one row per node holding it.
+- `t_cube_rootfs_artifact` — the ext4 each build produced.
+
+A healthy template has all four agreeing: job `READY`, `expected 1 / ready 1`,
+one definition, one replica. This one had **only the job row**. Its definition
+and replica were already gone, so there was nothing left to delete except the
+row that was refusing the deletion — and that row said `expected 0 / ready 0 /
+failed 0`, with `artifact_status: READY` and `distribution: 0/0`. It had never
+been placed on a node at all. The block is the job's own non-terminal status,
+and it is the last thing standing.
+
+**Telling this apart from an honest failure is the part worth keeping.** An
+earlier attempt on the same day really did fail, and it looked completely
+different: `template info` showed a node row, `STATUS FAILED`, with a real
+error (`rpc error: code = DeadlineExceeded`). That one deleted normally. The
+stuck one had **no node row in `template info` at all** — which is also why
+`set-alias`, `redo` and `merge` all answered `template not found` for an entry
+the list was still showing. A list entry with no definition, no replica, and
+`0/0` nodes never became a template.
+
+The fix is to give the row the status it actually earned, then let the tool
+delete it:
+
+```sh
+# Confirm it is the orphan shape before touching anything: 0/0 nodes, no node row.
+cubemastercli template info <id>
+docker exec cube-sandbox-mysql sh -c "mysqldump -uroot -p\$MYSQL_ROOT_PASSWORD \
+  cube_mvp t_cube_template_image_job --where=\"template_id = '<id>'\" > /tmp/orphan-job.sql"
+docker exec cube-sandbox-mysql sh -c "mysql -uroot -p\$MYSQL_ROOT_PASSWORD cube_mvp -e \
+  \"UPDATE t_cube_template_image_job SET status='FAILED', \
+   error_message='never distributed to a node (0/0)' \
+   WHERE job_id='<job-id>' AND status='BUILT' AND expected_node_count=0\""
+cubemastercli template delete <id>
+```
+
+The `WHERE` names the orphan shape, so a job that has nodes cannot be caught by
+it. Dumping the row first is what makes the state change reviewable rather than
+remembered.
+
+Two things about the cleanup itself. Deleting a template does **not** remove its
+image from the registry — `2026-09-23` and every earlier tag were still there
+afterwards — so retiring templates does not close the rollback path; rebuilding
+from a retained image does. And the ext4 the stuck build produced is left as
+`CLEANUP_PENDING` with a `gc_deadline` about a week out, for Cube's own
+collector. Do not delete that file by hand: the table is what it is garbage
+relative to, and removing bytes the collector still expects is how a storage
+state stops being recoverable.
+
+Nothing enforces any of this. It is an operator procedure against a live Cube
+installation, not a property of this tree, so there is no `scripts/` check for
+it — the tell is the row shape, and it has to be read.
