@@ -1319,21 +1319,35 @@ window.__ModuleLoader__.load({
 
     /** Restated from the theme's own tokens, like the sign-out button above. */
     const MENU_CSS = `
-      /* The documented slot anchor owns our footer list's layout. No parent
-         walks, hashed classes or imperative style writes are needed. */
+      /* This deployment's three footer actions stack; upstream's shell lays the
+         list out as a row, which is right for the one action it composes.
+
+         The anchor is rendered display: contents, so it is not a box to lay out
+         at all — the declaration below is what turns it into one. It has to be
+         !important for exactly that reason: nothing else about the anchor is
+         being overridden. */
       [data-slot='sidebar.footer.action'] {
         display: flex !important;
         flex-direction: column;
         align-items: stretch;
+        gap: 2px;
         width: 100%;
       }
 
+      /* The seat a launcher occupies. The button inside it is the row, because
+         that is the element the shell layouts and the acceptance suite both
+         address by that name. */
+      .${U}-root { flex: none; min-width: 0; width: 100%; }
+      .${U}-root[data-wide='false'] { width: 36px; }
       .${U}-row {
         display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
-        border: 0; border-radius: 8px; padding: 0; font: inherit;
+        height: 44px; box-sizing: border-box;
+        border: 0; border-radius: var(--dsw-radius-md, 8px); padding: 6px;
+        font: inherit; font-size: 14px; text-align: left;
         background: transparent; color: var(--dsw-alias-label-primary); cursor: pointer;
       }
-      .${U}-row[data-wide='false'] { justify-content: center; gap: 0; }
+      .${U}-row:hover { background: var(--dsw-alias-interactive-bg-hover, rgb(0 0 0 / 5%)); }
+      .${U}-root[data-wide='false'] .${U}-row { justify-content: center; gap: 0; }
       /* Two lines, as the trigger carries two facts: who is signed in, and what
           they are on. Column rather than a second row so the avatar stays
           vertically centred against both. */
@@ -1394,7 +1408,7 @@ window.__ModuleLoader__.load({
         color: var(--dsw-alias-label-tertiary, #81858c);
         transition: transform .15s ease;
       }
-      .${U}-row[data-open='true'] .${U}-chev { transform: rotate(180deg); }
+      .${U}-root[data-open='true'] .${U}-chev { transform: rotate(180deg); }
       .${U}-avatar {
         flex: none; width: 26px; height: 26px; border-radius: 50%;
         /* Clips the picture to the circle the letter already sat in. */
@@ -1483,13 +1497,13 @@ window.__ModuleLoader__.load({
      * @param {object} props - the sidebar owner share.
      * @returns {object} account control and menu.
      */
-    const AccountRow = ({ wide }) => {
+    const AccountRow = ({ wide, openSettings: ownerOpenSettings }) => {
       const t = useT()
       const who = useWhoami()
       const [menu, setMenu] = React.useState(null)
       const [editing, setEditing] = React.useState(false)
       const host = React.useRef(null)
-      const passing = React.useRef(false)
+      const trigger = React.useRef(null)
       /**
        * Open the menu, or shut it.
        *
@@ -1498,7 +1512,7 @@ window.__ModuleLoader__.load({
        * sidebar's edge.
        */
       const toggle = React.useCallback(() => {
-        const rect = host.current?.closest('button')?.getBoundingClientRect()
+        const rect = trigger.current?.getBoundingClientRect()
         setMenu((open) => (open !== null || rect === undefined
           ? null
           // On the rail the button is 40-odd pixels wide and a menu aligned to
@@ -1517,15 +1531,14 @@ window.__ModuleLoader__.load({
           }))
       }, [wide])
 
-      // SettingsRoot keeps open state private and exposes no open command.
-      // This adapter is scoped to this slot's owner button: user clicks open
-      // our menu, while its original click remains the route into Settings.
+      // The launcher owner share carries the opener, so Settings is a call
+      // rather than a synthetic click on somebody else's button. Falling back
+      // to nothing when it is absent is deliberate: a launcher that guessed at
+      // a DOM relationship would be the same coupling this contract replaced.
       const openSettings = React.useCallback(() => {
         setMenu(null)
-        passing.current = true
-        try { host.current?.closest('button')?.click() }
-        finally { passing.current = false }
-      }, [])
+        if (typeof ownerOpenSettings === 'function') ownerOpenSettings()
+      }, [ownerOpenSettings])
       // Deployment shortcuts share this trigger adapter; upstream keeps its
       // modal state private. Select our stable section marker after it mounts.
       React.useEffect(() => {
@@ -1550,18 +1563,11 @@ window.__ModuleLoader__.load({
         document.addEventListener('dsh-settings-open', openSection)
         return () => { stop(); document.removeEventListener('dsh-settings-open', openSection) }
       }, [openSettings])
-      React.useEffect(() => {
-        const button = host.current?.closest('button')
-        if (!button) return undefined
-        const intercept = (event) => {
-          if (passing.current) return
-          event.preventDefault()
-          event.stopPropagation()
-          toggle()
-        }
-        button.addEventListener('click', intercept, true)
-        return () => button.removeEventListener('click', intercept, true)
-      }, [toggle])
+      // No capture-phase interceptor any more. It existed to divorce the outer
+      // button's own click (open Settings) from ours (open this menu); the
+      // button is this component's now, so its onClick is simply not
+      // `openSettings`.
+
 
       // Dismissed the way every menu is: a pointer somewhere else, or Escape.
       React.useEffect(() => {
@@ -1575,7 +1581,7 @@ window.__ModuleLoader__.load({
           //
           // The sandbox settings entry is outside this control, so a
           // press there dismisses the menu like any other press away.
-          if (host.current !== null && target?.closest?.('button') === host.current.closest('button')) return
+          if (trigger.current !== null && trigger.current.contains(target)) return
           setMenu(null)
         }
         const key = (event) => { if (event.key === 'Escape') setMenu(null) }
@@ -1592,32 +1598,12 @@ window.__ModuleLoader__.load({
       // does one whose answer has not arrived yet.
       const named = who.displayName === '' ? who.username : who.displayName
       const label = named === '' ? '—' : named
-      // The owner supplies Settings ARIA attributes. Keep this one button's
-      // accessible identity consistent with the menu it now opens, including
-      // when the settings shell re-renders after its modal closes.
+      // The accessible identity rides on our own button below. It used to be
+      // written onto the shell's launcher button by an effect that then watched
+      // it with a MutationObserver, because the owner owned the element and
+      // re-rendered its attributes; owning the button outright is what retires
+      // that whole exchange.
       const accountLabel = t('account')
-      React.useLayoutEffect(() => {
-        const button = host.current?.closest('button')
-        if (!button) return undefined
-        const values = { 'aria-label': accountLabel, 'aria-haspopup': 'menu',
-          'aria-expanded': String(menu !== null) }
-        const original = Object.fromEntries(Object.keys(values).map((key) => [key, button.getAttribute(key)]))
-        const sync = () => {
-          for (const [key, value] of Object.entries(values)) {
-            if (button.getAttribute(key) !== value) button.setAttribute(key, value)
-          }
-        }
-        sync()
-        const observer = new MutationObserver(sync)
-        observer.observe(button, { attributes: true, attributeFilter: Object.keys(values) })
-        return () => {
-          observer.disconnect()
-          for (const [key, value] of Object.entries(original)) {
-            if (value === null) button.removeAttribute(key)
-            else button.setAttribute(key, value)
-          }
-        }
-      }, [accountLabel, menu !== null])
       // The name's first letter, which is the only part of it that fits on the
       // 56px rail, and what stands in until a picture is set. A question mark
       // while it loads would be a different claim — that nobody is signed in —
@@ -1636,7 +1622,7 @@ window.__ModuleLoader__.load({
           ref: host,
           // Portals hosted here must never bubble into the Settings owner.
           onClick: (event) => { event.stopPropagation() },
-          className: `${U}-row`,
+          className: `${U}-root`,
           'data-wide': String(wide === true),
           'data-open': String(menu !== null),
         },
@@ -1644,17 +1630,37 @@ window.__ModuleLoader__.load({
         // long as the sidebar is, which is longer than the settings panel it
         // applies to.
         React.createElement('style', null, `${MENU_CSS}\n${NAV_GLYPH_CSS}`),
-        // Not part of this row; it just needs an always-mounted host, and this
-        // seat is the only one this plugin holds unconditionally.
+        // Not part of this control; it just needs an always-mounted host, and
+        // this seat is the only one this plugin holds unconditionally. A
+        // sibling of the button rather than a child of it: it portals to
+        // elsewhere today, and an interactive element is not a place to render
+        // something that might one day be inline.
         React.createElement(SecretsInSandboxPage, {}),
-        avatar,
-        wide && React.createElement(
-          'span',
-          { className: `${U}-who` },
-          React.createElement('span', { className: `${U}-name`, title: label }, label),
-          React.createElement(PlanBadge, { plan: who.plan }),
+        // The launcher IS this button. The shell used to render one around us
+        // and hand us only the content; a registered launcher replaces that
+        // button outright, so the responsibilities it carried — the accessible
+        // name, the popup relationship, opening Settings on the shell's own
+        // click path — are stated here instead of borrowed from an ancestor.
+        React.createElement(
+          'button',
+          {
+            ref: trigger,
+            type: 'button',
+            className: `${U}-row`,
+            'aria-label': accountLabel,
+            'aria-haspopup': 'menu',
+            'aria-expanded': String(menu !== null),
+            onClick: toggle,
+          },
+          avatar,
+          wide && React.createElement(
+            'span',
+            { className: `${U}-who` },
+            React.createElement('span', { className: `${U}-name`, title: label }, label),
+            React.createElement(PlanBadge, { plan: who.plan }),
+          ),
+          wide && React.createElement(Chevron, {}),
         ),
-        wide && React.createElement(Chevron, {}),
         menu !== null && ReactDom.createPortal(React.createElement(
           'div',
           {
@@ -1777,13 +1783,30 @@ window.__ModuleLoader__.load({
 
 
 
-        // The account menu owns the existing Settings trigger seat.
+        // The account menu owns the Settings launcher seat.
+        //
+        // `settings.launcher`, not `settings.trigger`. Through 0.1.6 the shell
+        // rendered `settings.trigger` inside a button of its own and the
+        // launcher slot did not exist, so a registrant was the button's
+        // CONTENT. 0.1.7 introduced the launcher and moved that button into its
+        // fallback: a registered launcher displaces the fallback outright, so a
+        // `settings.trigger` registration stops being rendered at all once
+        // upstream's account plugin claims the seat. That is what happened on
+        // the 0.2.1 upgrade — this row vanished, the footer's other actions
+        // fell back to the shell's row layout with it, and upstream's own
+        // signed-out menu took the corner.
+        //
+        // A launcher is the whole control, not its content, so this renders the
+        // button itself and calls `openSettings` from the owner share rather
+        // than clicking an outer button it no longer has. `priority: -1`
+        // shadows upstream's launcher, which registers at the default 0;
+        // equal priorities throw rather than silently picking one.
         ctx.effect(
-          () => ctx.slots.inject('settings.trigger', () => ctx.slots.register(
-            { name: 'settings.trigger', priority: -1 },
+          () => ctx.slots.inject('settings.launcher', () => ctx.slots.register(
+            { name: 'settings.launcher', priority: -1 },
             AccountRow,
           )),
-          'tenant-account: account menu in Settings trigger',
+          'tenant-account: account menu in Settings launcher',
         )
 
         // Retire the onboarding steps.
